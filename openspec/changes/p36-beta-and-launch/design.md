@@ -11,7 +11,7 @@
 - **Критические контракты смежных фаз**:
   - P04: `accounts`, `sessions`, MFA, `IDENTITY_EVENTS` (NATS), `JwtAuthGuard`, `evaluateAccessPolicy`.
   - P05: `shards`, `characters`, `GameTicketVerifier`, выдача игровых билетов.
-  - P06/P07/P32: тиковый цикл 20 Гц, WS-коды `4000..4014` (`4012` используется для штатного закрытия при техработах/вайпе), партиционирование и дренаж партиций.
+  - P06/P07/P32: тиковый цикл 20 Гц, нормативные WS-коды `4100..4199` из `docs/PROTOCOL_REGISTRY.md` (`4127` `WS_CLOSE_SHARD_MAINTENANCE` — закрытие при вайпе/техработах, реконнект «нет»; `4112` `WS_CLOSE_SERVER_SHUTDOWN` — плановый рестарт с автоматическим переподключением), партиционирование и дренаж партиций.
   - P08/P31/P33: `CriticalTxCoordinator` (RPO=0), `item_ledger`, сверка `ledger_reconciliation_runs`, WAL/PITR снимки и `backup_*` restore-drill.
   - P21: денежная масса M1/M2/M3 и телеметрия `FAUCET_*`/`SINK_*`.
   - P27: движок сезонных и GM-событий.
@@ -40,7 +40,7 @@
 - **Отвергнутые альтернативы**: Проверять бета-инвайты и ToS прямо внутри `WorldPartitionRoom.onAuth` — отклонено, так как создаёт лишнюю нагрузку БД на игровых партициях и дублирует логику при переходе между партициями.
 
 ### D2. Оркестратор вайпа поверх Two-Person Rule (P29), RPO=0 снимков (P08/P33) и дренажа партиций (P32)
-- **Выбор**: Вайп оформляется как сущность `beta_wipe_runs`, привязанная к `admin_approval_requests` (P29) с обязательными двумя разными администраторами `AccessLevel >= 5`. Перед запуском `WipeOrchestratorService` проверяет 3 предусловия: (1) валидное двойное подтверждение, (2) соблюдение окна анонса (`>= 24h` для `open_beta`, `>= 6h` для `closed_beta`), (3) наличие свежего `backup_snapshots` (P08/P33) статуса `verified` возрастом `<= 30 min`. За 15 минут до `T-0` оркестратор переводит шард в `pre_launch_freeze` (блокирует `CriticalTxCoordinator` для торговли/домов/банков и создание персонажей), рассылает `0x0368 S2C_MAINTENANCE_COUNTDOWN` через NATS `LAUNCH_EVENTS`, а в `T-0` отправляет команду дренажа всем партициям. Очистка таблиц мира (`characters`, `world_items`, `world_houses`, `world_ships`, `guilds`, `item_ledger`, `world_spawners`, `world_corpses`, `world_npcs` с фильтром `shard_id = $1`) и сброс `serial_leases` стартуют строго после перехода 100% партиций в статус `drained` (таймаут 60 с → `aborted_drain_timeout`).
+- **Выбор**: Вайп оформляется как сущность `beta_wipe_runs`, привязанная к `admin_approval_requests` (P29) с обязательными двумя разными администраторами `AccessLevel >= 5`. Перед запуском `WipeOrchestratorService` проверяет 3 предусловия: (1) валидное двойное подтверждение, (2) соблюдение окна анонса (`>= 24h` для `open_beta`, `>= 6h` для `closed_beta`), (3) наличие свежего `backup_snapshots` (P08/P33) статуса `verified` возрастом `<= 30 min`. За 15 минут до `T-0` оркестратор переводит шард в `pre_launch_freeze` (блокирует `CriticalTxCoordinator` для торговли/домов/банков и создание персонажей), рассылает `0x03C0 ServerShutdownNotice` (P33, `reasonCode='BETA_WIPE'`) через NATS `LAUNCH_EVENTS`, а в `T-0` отправляет команду дренажа всем партициям. Очистка таблиц мира (`characters`, `world_items`, `world_houses`, `world_ships`, `guilds`, `item_ledger`, `world_spawners`, `world_corpses`, `world_npcs` с фильтром `shard_id = $1`) и сброс `serial_leases` стартуют строго после перехода 100% партиций в статус `drained` (таймаут 60 с → `aborted_drain_timeout`).
 - **Обоснование**: Исключает человеческую ошибку одиночного администратора, гарантирует откатываемость по проверенному снимку и предотвращает гонки записи между «живыми» партициями и SQL-очисткой.
 - **Отвергнутые альтернативы**: `TRUNCATE` всей базы данных — отклонено, так как в единой БД могут работать несколько шардов (например, staging и beta) и хранятся аккаунтные таблицы (`accounts`, `legal_consents`, `admin_sanctions`, `beta_badges`).
 
@@ -55,12 +55,12 @@
 - **Отвергнутые альтернативы**: Проверка только `Content-Type` или расширения файла — отклонено как тривиально обходимая.
 
 ### D5. Единый омниканальный поток Support Tickets ↔ Help Pages (P29) и защита от конфликта интересов
-- **Выбор**: Вводится таблица `support_tickets` как канонический источник истины для всех обращений (игровых и веб). При создании внутриигрового тикета категории `stuck_character` или `harassment_report` (опкод `0x0365`) сервис в одной транзакции создаёт запись в `support_tickets` и связанную запись в `help_pages` (P29) с единым `correlation_id` и прикреплённым AOI/чат-снапшотом. Изменения статуса в `help_pages` (например, Auto-Unstuck) синхронизируются обратно в `support_tickets` через NATS `SUPPORT_EVENTS`. Для `ban_appeal` проверяется ограничение `issued_by_account_id <> reviewer_account_id` на уровне бизнес-логики и SQL `CHECK`/`trigger`, возвращая `ERR_CONFLICT_OF_INTEREST`.
+- **Выбор**: Вводится таблица `support_tickets` как канонический источник истины для всех обращений (игровых и веб). При создании внутриигрового тикета категории `stuck_character` или `harassment_report` (опкод `0x03E5`) сервис в одной транзакции создаёт запись в `support_tickets` и связанную запись в `help_pages` (P29) с единым `correlation_id` и прикреплённым AOI/чат-снапшотом. Изменения статуса в `help_pages` (например, Auto-Unstuck) синхронизируются обратно в `support_tickets` через NATS `SUPPORT_EVENTS`. Для `ban_appeal` проверяется ограничение `issued_by_account_id <> reviewer_account_id` на уровне бизнес-логики и SQL `CHECK`/`trigger`, возвращая `ERR_CONFLICT_OF_INTEREST`.
 - **Обоснование**: Игроку достаточно одного интерфейса истории обращений, а GM не нужно переключаться между двумя изолированными очередями при реагировании на инциденты в реальном времени.
 - **Отвергнутые альтернативы**: Полностью независимые тикеты и Help Pages — отклонено из-за дублирования обращений и потери контекста при переходе игрока из клиента на веб-портал.
 
 ### D6. Автономный read-path публичной статус-страницы и трансляция баннеров
-- **Выбор**: Модуль статус-страницы работает в `apps/api` с независимым health-пробером и публикует статический JSON-снимок (`summary.json`) и `incidents.rss` в Valkey + публичный кэшируемый слой (CDN/reverse-proxy, TTL ≤30 с) и резервную реплику, не зависящую от подключения к `apps/game-server`. Аптайм за 90 дней предрасчитывается в `status_daily_rollups` каждые 5 минут. При публикации инцидента уровня `degraded+` или за 60 минут до `maintenance` публикуется событие в NATS `STATUS_EVENTS`; все `ShardHubRoom` и `WorldPartitionRoom` транслируют клиентам `0x0364 S2C_SERVICE_DEGRADATION_BANNER` за ≤30 с.
+- **Выбор**: Статус-страница строится поверх независимого хостинга, модели компонентов и процесса публикации инцидентов P33 (`ops/incident-response`); P36 добавляет игровую витрину. Модуль статус-страницы в `apps/api` с независимым health-пробером лишь генерирует и выталкивает во внешний хостинг P33 статический JSON-снимок (`summary.json`) и `incidents.rss` в Valkey + публичный кэшируемый слой (CDN/reverse-proxy, TTL ≤30 с) и резервную реплику, не зависящую от подключения к `apps/game-server`. Аптайм за 90 дней предрасчитывается в `status_daily_rollups` каждые 5 минут. При публикации инцидента уровня `degraded+` или за 60 минут до `maintenance` публикуется событие в NATS `STATUS_EVENTS`; все `ShardHubRoom` и `WorldPartitionRoom` транслируют клиентам `0x03E4 S2C_SERVICE_DEGRADATION_BANNER` за ≤30 с.
 - **Обоснование**: Статус-страница остаётся доступной (`200 OK`) даже при полном отказе всех игровых шардов и пиковом наплыве игроков, проверяющих причину недоступности.
 - **Отвергнутые альтернативы**: Запрашивать статус шардов напрямую в `apps/game-server` на каждый HTTP-запрос пользователя — отклонено из-за каскадного отказа при падении шардов.
 
@@ -83,11 +83,11 @@
 - `packages/rules`:
   - `src/launch/balance-invariant-validator.ts`: валидатор инвариантов UO:R для балансных патчей (капы 225 / 7000 десятых, арбитраж цен, веса, ссылки шаблонов лута/крафта).
 - `packages/protocol`:
-  - `src/opcodes/launch.ts`: опкоды `0x0360..0x0368` + TypeBox-схемы.
+  - `src/opcodes/launch.ts`: опкоды `0x03E0..0x03E7` + TypeBox-схемы.
   - `src/errors/launch.ts`: коды ошибок `ERR_BETA_INVITE_REQUIRED`, `ERR_INVITE_EXPIRED`, `ERR_INVITE_REVOKED`, `ERR_INVITE_EXHAUSTED`, `ERR_BETA_ALREADY_GRANTED`, `ERR_EMAIL_NOT_VERIFIED`, `ERR_REFERRAL_INELIGIBLE`, `ERR_WIPE_APPROVAL_REQUIRED`, `ERR_WIPE_NOTICE_WINDOW_SHORT`, `ERR_WIPE_SNAPSHOT_MISSING`, `ERR_SHARD_MAINTENANCE_FREEZE`, `ERR_FEEDBACK_RATE_LIMITED`, `ERR_FORBIDDEN_ATTACHMENT`, `ERR_LEGAL_CONSENT_REQUIRED`, `ERR_LEGAL_RECONSENT_REQUIRED`, `ERR_DOCUMENT_VERSION_IMMUTABLE`, `ERR_DSAR_RATE_LIMITED`, `ERR_ACCOUNT_RESTRICTED`, `ERR_AGE_RESTRICTED`, `ERR_AGE_GATE_COOLDOWN`, `ERR_PROPRIETARY_ASSET_FORBIDDEN`, `ERR_TOKEN_EXPIRED`, `ERR_TICKET_VALIDATION_FAILED`, `ERR_TICKET_LIMIT_EXCEEDED`, `ERR_TICKET_NOT_FOUND`, `ERR_ATTACHMENT_LIMIT_EXCEEDED`, `ERR_APPEAL_ALREADY_OPEN`, `ERR_CONFLICT_OF_INTEREST`, `ERR_TICKET_CLOSED`, `ERR_EVENT_SCHEDULE_CONFLICT`, `ERR_AUDIT_REASON_REQUIRED`, `ERR_PATCH_VALIDATION_FAILED`, `ERR_PATCH_STAGING_REQUIRED`, `ERR_PATCH_REQUIRES_MAINTENANCE`, `ERR_PATCH_NOTES_INCOMPLETE`, `ERR_LAUNCH_GATE_FAILED`.
 - `packages/db`: миграции таблиц `beta_*`, `legal_*`, `dsar_*`, `support_*`, `kb_*`, `status_*`, `liveops_*`, `kpi_*` + расширение `shards`.
 - `apps/api`: модули `BetaProgramModule`, `LegalPrivacyModule`, `DsarWorkerModule`, `PlayerSupportModule`, `KnowledgeBaseModule`, `StatusPageModule`, `LiveOpsModule`, `KpiAnalyticsModule`, `LoginQueueModule`.
-- `apps/game-server`: `LaunchProtocolHandlers` (`0x0360..0x0368`), `PreWipeFreezeGuard`, `LiveOpsModifierRuntime` (применение модификаторов на тике 20 Гц), `StatusBannerBroadcaster`.
+- `apps/game-server`: `LaunchProtocolHandlers` (`0x03E0..0x03E7`), `PreWipeFreezeGuard`, `LiveOpsModifierRuntime` (применение модификаторов на тике 20 Гц), `StatusBannerBroadcaster`.
 - `apps/client` & `packages/ui-kit`: экраны инвайта/очереди входа, юридические модалы, раздел приватности/DSAR, форма отзыва/тикета, встроенная БЗ, просмотр Patch Notes, HUD-баннеры деградации и обратного отсчёта.
 - `apps/admin`: разделы «Бета и волны», «Мастер вайпа», «Триаж отзывов», «Юридические документы и DSAR», «Тикеты и База знаний», «Статус-страница», «Календарь LiveOps», «Балансные патчи», «Go/No-Go и KPI».
 
@@ -138,19 +138,19 @@
 
 ### Протокол (`@uo3/protocol`) и состояние Colyseus
 
-**Опкоды `0x0360..0x0368` (TypeBox)**:
+**Опкоды `0x03E0..0x03E7` (TypeBox)**:
 
 | Opcode | Имя | Направление | Поля payload |
 |---|---|---|---|
-| `0x0360` | `C2S_BETA_FEEDBACK_SUBMIT` | C → S | `category`, `title` (5..120), `description` (10..4000), `clientBuild`, `attachmentIds[]` (≤3) |
-| `0x0361` | `S2C_BETA_FEEDBACK_ACK` | S → C | `feedbackId`, `publicRef` (`FB-XXXXXX`), `priority` |
-| `0x0362` | `S2C_LAUNCH_PHASE_NOTICE` | S → C | `shardId`, `launchPhase`, `plannedWipeAt?`, `activePatchVersion`, `rulesetSha256` |
-| `0x0363` | `S2C_LEGAL_RECONSENT_REQUIRED` | S → C | `documents[]` (`docType`, `semver`, `graceEndsAt`, `blocking`) |
-| `0x0364` | `S2C_SERVICE_DEGRADATION_BANNER` | S → C | `incidentId?` (null = снять), `severity`, `titleRu`, `titleEn`, `statusPageUrl` |
-| `0x0365` | `C2S_SUPPORT_TICKET_CREATE` | C → S | `category`, `subject` (5..140), `body` (10..4000), `attachmentIds[]` (≤3) |
-| `0x0366` | `S2C_SUPPORT_TICKET_STATUS` | S → C | `ticketId`, `publicRef` (`SUP-XXXXXX`), `status`, `hasUnreadStaffReply` |
-| `0x0367` | `S2C_LIVEOPS_SCHEDULE_SYNC` | S → C | `activeEvents[]` (`id`, `eventType`, `titleRu`, `titleEn`, `endsAt`, `modifiersSummary`), `upcomingEvents[]` |
-| `0x0368` | `S2C_MAINTENANCE_COUNTDOWN` | S → C | `reason` (`wipe`|`patch`|`maintenance`), `secondsRemaining`, `freezeCriticalTx`, `disconnectCode` (`4012`) |
+| `0x03E0` | `C2S_BETA_FEEDBACK_SUBMIT` | C → S | `category`, `title` (5..120), `description` (10..4000), `clientBuild`, `attachmentIds[]` (≤3) |
+| `0x03E1` | `S2C_BETA_FEEDBACK_ACK` | S → C | `feedbackId`, `publicRef` (`FB-XXXXXX`), `priority` |
+| `0x03E2` | `S2C_LAUNCH_PHASE_NOTICE` | S → C | `shardId`, `launchPhase`, `plannedWipeAt?`, `activePatchVersion`, `rulesetSha256` |
+| `0x03E3` | `S2C_LEGAL_RECONSENT_REQUIRED` | S → C | `documents[]` (`docType`, `semver`, `graceEndsAt`, `blocking`) |
+| `0x03E4` | `S2C_SERVICE_DEGRADATION_BANNER` | S → C | `incidentId?` (null = снять), `severity`, `titleRu`, `titleEn`, `statusPageUrl` |
+| `0x03E5` | `C2S_SUPPORT_TICKET_CREATE` | C → S | `category`, `subject` (5..140), `body` (10..4000), `attachmentIds[]` (≤3) |
+| `0x03E6` | `S2C_SUPPORT_TICKET_STATUS` | S → C | `ticketId`, `publicRef` (`SUP-XXXXXX`), `status`, `hasUnreadStaffReply` |
+| `0x03E7` | `S2C_LIVEOPS_SCHEDULE_SYNC` | S → C | `activeEvents[]` (`id`, `eventType`, `titleRu`, `titleEn`, `endsAt`, `modifiersSummary`), `upcomingEvents[]` |
+| `0x03E8` | — (резерв) | — | Обратный отсчёт вайпа/патча/техработ **не дублируется**: используется `0x03C0` `ServerShutdownNotice` фазы P33 (`mode='MAINTENANCE'`, `reasonCode` `BETA_WIPE`\|`PATCH`\|`MAINTENANCE`); отключение — WS-код `4127` `WS_CLOSE_SHARD_MAINTENANCE` |
 
 **Состояние Colyseus (`@colyseus/schema` v3)** в `ShardHubRoomState`:
 - `launchPhase: string`
@@ -163,14 +163,14 @@
 - `LAUNCH_EVENTS` (retention: `limits`, 7 дней, `WorkQueue`/реплицируемый `Stream`):
   - `launch.phase.changed` — смена `launch_phase` шарда (`shardId`, `fromPhase`, `toPhase`, `actorId`, `timestamp`)
   - `launch.wipe.countdown` — рассылка шагов обратного отсчёта (`T-15m`, `T-5m`, `T-1m`, `T-10s`, `T-0`)
-  - `launch.wipe.drain` — команда партициям завершить flush и отключить клиентов с WS-кодом `4012`
+  - `launch.wipe.drain` — команда партициям завершить flush и отключить клиентов с WS-кодом `4127`
   - `launch.wipe.drained` — подтверждение дренажа каждой партицией (`shardId`, `partitionId`, `flushedEntities`)
 - `SUPPORT_EVENTS` (retention: `limits`, 14 дней):
   - `support.ticket.created` — уведомление маршрутизатора и мониторинга очередей
   - `support.helppage.synced` — двунаправленная синхронизация статуса между `support_tickets` и `help_pages` (P29)
   - `support.sla.escalated` — оповещение супервайзеров уровня ≥4 на 80% SLA
 - `STATUS_EVENTS` (retention: `limits`, 7 дней):
-  - `status.incident.updated` — публикация/изменение/закрытие инцидента для рассылки `0x0364` клиентам за ≤30 с
+  - `status.incident.updated` — публикация/изменение/закрытие инцидента для рассылки `0x03E4` клиентам за ≤30 с
   - `status.maintenance.approaching` — триггер за 60 минут до планового окна техработ
 - `LIVEOPS_EVENTS` (retention: `limits`, 30 дней):
   - `liveops.event.transition` — переходы `scheduled -> announced -> active -> ending -> completed`
@@ -282,7 +282,7 @@ stateDiagram-v2
     closed_beta --> open_beta: "Админ >=5 + MFA"
     closed_beta --> pre_launch_freeze: "Вайп T-15m (2 админа >=5 + снимок)"
     open_beta --> pre_launch_freeze: "Вайп T-15m (2 админа >=5 + анонс 24h)"
-    pre_launch_freeze --> draining: "T-0: flush + disconnect 4012"
+    pre_launch_freeze --> draining: "T-0: flush + disconnect 4127"
     draining --> wiping: "Все партиции drained (<=60s)"
     draining --> aborted_drain_timeout: "Таймаут дренажа >60s"
     aborted_drain_timeout --> open_beta: "Разбор инцидента"
@@ -327,7 +327,7 @@ flowchart LR
     STG --> PN["Двуязычные Patch Notes (RU/EN)"]
     PN --> REL{"hotReloadSafe?"}
     REL -->|Да| P30["2PC ContentSnapshot (тик 20 Гц, P30)"]
-    REL -->|Нет| MNT["Окно техработ + 0x0368 Countdown"]
+    REL -->|Нет| MNT["Окно техработ + 0x03C0 ServerShutdownNotice (P33)"]
     P30 --> HIST["История >=10 снапшотов (откат <=60s)"]
 
     PL["Игрок (вход на запуск)"] --> ADM{"CCU >= 85%?"}

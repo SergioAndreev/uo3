@@ -108,12 +108,16 @@
 - **THEN** менеджер пакетов не выполняет её скрипт автоматически без явного одобрения в корневой конфигурации
 
 ### Requirement: Запрет проприетарных ассетов Ultima Online в репозитории
-Гейт правовой чистоты (`check:assets`, в `pre-commit` и CI) MUST блокировать проприетарные форматы UO (`.mul`, `.uop`, `.idx`, `.def`, `.enu`, `tiledata.*`, `verdata.*`, `hues.*`, `cliloc.*`, `art.*`, `anim*`, `map*.mul`, `statics*.mul`, `multi.*`), бинарники > `512` КиБ и медиафайлы без записи `CC0-1.0` или `synthetic-generated` в реестре ассетов (ADR-002).
+Гейт правовой чистоты (`check:assets`, в `pre-commit` и CI) MUST блокировать проприетарные форматы UO (`.mul`, `.uop`, `.idx`, `.def`, `.enu`; имена `tiledata.*`, `verdata.*`, `hues.*`, `cliloc.*`, `art.*`, `anim*`, `multi.*` — кроме исходников и документации `.ts`/`.tsx`/`.js`/`.mjs`/`.json`/`.md`/`.yaml`), бинарники > `512` КиБ и медиафайлы без записи `CC0-1.0` или `synthetic-generated` в реестре ассетов (ADR-002).
 
 #### Scenario: Блокировка попытки закоммитить проприетарный файл UO
 - **WHEN** в рабочем дереве индексируется файл `map0.mul`, `artLegacyMUL.uop` или `tiledata.mul` в любой директории репозитория
 - **THEN** проверка `check:assets` завершается с ненулевым кодом возврата и кодом нарушения `ERR_PROPRIETARY_UO_ASSET`
 - **AND** указывает запрещённый путь и ссылку на политику ADR-002
+
+#### Scenario: Исходный код с UO-подобным именем не блокируется
+- **WHEN** индексируются файлы `packages/uo-formats/src/tiledata.ts`, `packages/rules/src/world/map-patch.ts` и `packages/uo-formats/docs/anim-multi.md`
+- **THEN** проверка `check:assets` не сообщает `ERR_PROPRIETARY_UO_ASSET` и завершается с кодом возврата `0`
 
 #### Scenario: Допуск задекларированной CC0-заглушки в реестре ассетов
 - **WHEN** добавляется небольшой PNG-спрайт размером `12` КиБ в директорию заглушек с записью SHA-256 и лицензией `CC0-1.0` в манифесте происхождения ассетов

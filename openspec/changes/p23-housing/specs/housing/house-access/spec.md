@@ -66,15 +66,15 @@
 - **THEN** сервер отклоняет действие с кодом `ERR_HOUSE_TARGET_PROTECTED`
 
 ### Requirement: Magic Teleportation Recall and Gate Restrictions
-Реализация региональной политики заклинаний (`IRegionSpellPolicy`) SHALL запрещать сотворение заклинания `Mark` на любом тайле внутри футпринта дома, а также блокировать прибытие через `Recall`, `Gate Travel` и прямое применение `Teleport` на любой тайл внутри футпринта любого дома (даже собственного), возвращая ошибку `ERR_SPELL_TARGET_BLOCKED_BY_HOUSE`.
+Реализация региональной политики заклинаний (`IRegionSpellPolicy`) SHALL запрещать сотворение заклинания `Mark` на любом тайле внутри футпринта дома, а также блокировать прибытие через `Recall`, `Gate Travel` и прямое применение `Teleport` на любой тайл внутри футпринта любого дома (даже собственного), возвращая коды контракта `magic/spell-catalog`: `ERR_TRAVEL_RESTRICTED` для `Mark`/`Recall`/`Gate Travel` и `ERR_TELEPORT_BLOCKED` для `Teleport`.
 
 #### Scenario: Attempting to mark a recall rune inside a house
 - **WHEN** маг пытается скастовать заклинание `Mark` (круг 6), стоя внутри собственного или чужого дома
-- **THEN** сервер прерывает эффект заклинания с кодом `ERR_SPELL_TARGET_BLOCKED_BY_HOUSE`
+- **THEN** сервер прерывает эффект заклинания с кодом `ERR_TRAVEL_RESTRICTED`
 
 #### Scenario: Attempting to teleport onto a house balcony or roof
 - **WHEN** игрок кастует заклинание `Teleport` (круг 3) и указывает курсором на тайл балкона, крыши или двора внутри футпринта дома
-- **THEN** сервер отклоняет телепортацию с кодом `ERR_SPELL_TARGET_BLOCKED_BY_HOUSE`
+- **THEN** сервер отклоняет телепортацию с кодом `ERR_TELEPORT_BLOCKED`
 
 ### Requirement: Safe Instant Logout Inside Permitted Houses
 Персонаж, находящийся внутри основного периметра дома (кроме внешних ступеней крыльца) и имеющий в этом доме роль `Owner`, `Co-Owner` или `Friend`, при отсутствии активного статуса агрессора или преступника SHALL выходить из мира мгновенно (`0` секунд задержки вместо стандартных `300` секунд). Посторонние посетители при логауте внутри чужого дома MUST оставаться в мире 300 секунд и при следующем входе выталкиваться к вывеске дома, если дом стал частным или они были забанены.

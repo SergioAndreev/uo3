@@ -84,16 +84,16 @@
 Критические операции MUST журналировать все предметы безусловно; фоновые события — по политике ценности (валюта, уникальные/blessed/магические предметы, диды домов, действия персонала). REST API (`GameMaster+`) SHALL возвращать историю по `itemSerial` (включая граф разделений), по персонажу/аккаунту за период и по `txId` с p95 ≤ `200` мс.
 
 #### Scenario: Построение полной цепочки происхождения разделённого предмета
-- **WHEN** `GameMaster` запрашивает `GET /v1/admin/shards/:shardId/persistence/ledger/items/0x40005001/lineage`
+- **WHEN** `GameMaster` запрашивает `GET /api/v1/admin/shards/:shardId/persistence/ledger/items/0x40005001/lineage`
 - **THEN** система возвращает упорядоченную по `ledgerSeq` историю `0x40005001` вместе со ссылкой на родительский стак `0x40005000`, все переходы владельцев и `txId` за ≤ `200` мс (p95)
 
 #### Scenario: Выборка операций персонажа за окно времени с пагинацией
-- **WHEN** `GameMaster` запрашивает `GET /v1/admin/shards/:shardId/persistence/ledger?characterSerial=0x0000002A&from=...&to=...&limit=100`
+- **WHEN** `GameMaster` запрашивает `GET /api/v1/admin/shards/:shardId/persistence/ledger?characterSerial=0x0000002A&from=...&to=...&limit=100`
 - **THEN** система возвращает HTTP `200` с курсорной пагинацией всех входящих и исходящих событий персонажа за указанный интервал
 
 #### Scenario: Отклонение доступа к журналу предметов для обычного игрока
 - **WHEN** аккаунт с уровнем доступа `Player` обращается к эндпоинту просмотра журнала предметов
-- **THEN** система возвращает HTTP `403` с кодом `FORBIDDEN_INSUFFICIENT_ACCESS_LEVEL`
+- **THEN** система возвращает HTTP `403` с кодом `RBAC_INSUFFICIENT_PERMISSION`
 
 ### Requirement: Однократная атомарная материализация стартового набора
 При первом входе персонажа со `starterLoadoutGranted = false` система MUST выполнить критическую транзакцию `STARTER_LOADOUT_GRANT`: атомарно выделить серийники, создать рюкзак, одежду, newbie-предметы и золото из `StarterLoadoutV1`, записать события `CREATE` в журнал предметов и переключить `starterLoadoutGranted = true` с защитой от повтора.

@@ -7,7 +7,7 @@
 ## ADDED Requirements
 
 ### Requirement: Отслеживание изменённых сущностей по битовым группам полей
-Любое изменение персистентного поля персонажа, 49 навыков, NPC, предмета, мульти, таймера или состояния шарда MUST помечать сущность грязной с битовой маской групп полей (`CREATED`, `POSITION`, `VITALS`, `STATS`, `SKILLS`, `CONTAINER`, `COMPONENTS`, `LIFECYCLE`, `DELETED`) и увеличивать `changeSeq`. Повторные мутации объединяются, а эфемерные поля игнорируются.
+Любое изменение персистентного поля персонажа, 49 навыков, NPC, предмета, мульти, таймера или состояния шарда MUST помечать сущность грязной с битовой маской групп полей (`CREATED`, `POSITION`, `VITALS`, `STATS`, `SKILLS`, `APPEARANCE`, `CONTAINER`, `COMPONENTS`, `LIFECYCLE`, `DELETED`) и увеличивать `changeSeq`. Повторные мутации объединяются, а эфемерные поля игнорируются.
 
 #### Scenario: Слияние многократных мутаций в одну запись очереди сохранения
 - **WHEN** за 60-секундный интервал персонаж делает 120 шагов, теряет и восстанавливает 20 хитов и повышает навык `Swordsmanship` на `0.1`
@@ -100,15 +100,15 @@
 - **THEN** шард автоматически снимает режим `read_only_degraded` и возобновляет приём критических операций и новых входов
 
 ### Requirement: Административный и сервисный внеочередной flush
-Система SHALL предоставлять `POST /v1/admin/shards/:shardId/persistence/flush` (`Administrator+`) и внутреннюю команду немедленного flush с возвратом `flushId`, числа сущностей, длительности и `checkpointSeq`. Одновременные вызовы MUST схлопываться, а ручные запуски чаще раза в `5` с без `force: true` MUST отклоняться кодом `PERSIST_FLUSH_COOLDOWN_ACTIVE`.
+Система SHALL предоставлять `POST /api/v1/admin/shards/:shardId/persistence/flush` (`Administrator+`) и внутреннюю команду немедленного flush с возвратом `flushId`, числа сущностей, длительности и `checkpointSeq`. Одновременные вызовы MUST схлопываться, а ручные запуски чаще раза в `5` с без `force: true` MUST отклоняться кодом `PERSIST_FLUSH_COOLDOWN_ACTIVE`.
 
 #### Scenario: Успешный ручной запуск внеочередного сохранения администратором
-- **WHEN** `Administrator` вызывает `POST /v1/admin/shards/:shardId/persistence/flush` при `420` грязных сущностях
+- **WHEN** `Administrator` вызывает `POST /api/v1/admin/shards/:shardId/persistence/flush` при `420` грязных сущностях
 - **THEN** система немедленно запускает flush, дожидается коммита и возвращает HTTP `200` с `flushId`, `entitiesSaved = 420`, `durationMs` и `checkpointSeq`
 
 #### Scenario: Отказ при недостаточном уровне доступа
-- **WHEN** игрок или `GameMaster` вызывает `POST /v1/admin/shards/:shardId/persistence/flush`
-- **THEN** система возвращает HTTP `403` с кодом `FORBIDDEN_INSUFFICIENT_ACCESS_LEVEL`
+- **WHEN** игрок или `GameMaster` вызывает `POST /api/v1/admin/shards/:shardId/persistence/flush`
+- **THEN** система возвращает HTTP `403` с кодом `RBAC_INSUFFICIENT_PERMISSION`
 
 #### Scenario: Защита от частых повторных вызовов ручного сохранения
 - **WHEN** администратор вызывает ручной flush повторно через `2` секунды после предыдущего без `force: true`

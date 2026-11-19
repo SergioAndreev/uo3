@@ -4,18 +4,18 @@
 
 Мотивация и границы скоупа фазы зафиксированы в [proposal.md](proposal.md), нормативные требования — в четырёх спецификациях `specs/{shard,characters}/*/spec.md`.
 
-Фаза P05 реализуется поверх фундамента P00, доменной модели и профиля эпохи UO:R из P01 (`Serial`, `Point3D`, `Facet`, `Body`, `Hue`, `Layer`, `AccessLevel`, `EraProfile`, инъецируемые часы) и подсистемы аккаунтов P04 (таблица `accounts`, EdDSA Access JWT, статус глобального бана, роли `AccessLevel`). Вся логика REST API живёт в `apps/api` (NestJS 11 + TypeBox + OpenAPI), персистентность — в PostgreSQL 17 через Drizzle ORM (`packages/db`), оперативное состояние, heartbeat, тикеты и резервирование мест — в Valkey 8, межсервисные уведомления — в NATS JetStream. Игровой сервер `apps/game-server` (Colyseus 0.16, P06) на данном этапе ещё не запускается как runtime-хост, однако P05 обязан зафиксировать и протестировать точный контракт верификации тикетов и формат heartbeat/сессий, который P06 подключит в `WorldPartitionRoom.onAuth` и `ShardHubRoom.onAuth`.
+Фаза P05 реализуется поверх фундамента P00, доменной модели и профиля эпохи UO:R из P01 (`Serial`, `Point3D`, `Facet`, `Body`, `Hue`, `Layer`, `AccessLevel`, `RulesetProfile`, инъецируемые часы) и подсистемы аккаунтов P04 (таблица `accounts`, EdDSA Access JWT, статус глобального бана, роли `AccessLevel`). Вся логика REST API живёт в `apps/api` (NestJS 11 + TypeBox + OpenAPI), персистентность — в PostgreSQL 17 через Drizzle ORM (`packages/db`), оперативное состояние, heartbeat, тикеты и резервирование мест — в Valkey 8, межсервисные уведомления — в NATS JetStream. Игровой сервер `apps/game-server` (Colyseus 0.16, P06) на данном этапе ещё не запускается как runtime-хост, однако P05 обязан зафиксировать и протестировать точный контракт верификации тикетов и формат heartbeat/сессий, который P06 подключит в `WorldPartitionRoom.onAuth` и `ShardHubRoom.onAuth`.
 
 Проектирование строго следует ADR-001..ADR-013 из `docs/ARCHITECTURE.md`: сервер авторитарен (ADR-012), общие формулы и валидаторы находятся в изоморфном `packages/rules`, контракты сообщений — в `packages/protocol`, данные контента — в `packages/content` (YAML + JSON Schema), без проприетарных ассетов UO (ADR-002 — обязательная поддержка `synthetic_dev` шарда).
 
 ## Goals / Non-Goals
 
 **Goals:**
-- Обеспечить p95 ответа `GET /v1/shards` ≤ 50 мс с условным кэшированием (`ETag`) и контролируемой деградацией при недоступности Valkey.
+- Обеспечить p95 ответа `GET /api/v1/shards` ≤ 50 мс с условным кэшированием (`ETag`) и контролируемой деградацией при недоступности Valkey.
 - Гарантировать криптографически стойкую (≥ 256 бит) одноразовую аутентификацию входа в обе комнаты Colyseus (`WorldPartitionRoom` и `ShardHubRoom`) с TTL ≤ 60 с (по умолчанию 30 с), хранением только SHA-256 хэшей и мгновенным отзывом.
 - Заложить партиционно-ориентированную маршрутизацию тикетов, работающую с 1 партицией на фасет в MVP (P06) и без изменений масштабируемую до нескольких партиций в P32 (ADR-007).
 - Гарантировать отсутствие гонок (race conditions) при проверке квот слотов, уникальности имени на шарде, аллокации 32-битных серийников мобайлов и погашении тикетов.
-- Реализовать каноническое создание персонажей UO:R (пул статов 80, виталы `50 + floor(STR/2)` / `DEX` / `INT`, вес `40 + floor(3.5 * STR)`, 49 навыков в десятых долях, пул 100.0, палитры внешности, стартовые города и дескриптор стартового набора) полностью на базе `EraProfile`.
+- Реализовать каноническое создание персонажей UO:R (пул статов 80, виталы `50 + floor(STR/2)` / `DEX` / `INT`, вес `40 + floor(3.5 * STR)`, 49 навыков в десятых долях, пул 100.0, палитры внешности, стартовые города и дескриптор стартового набора) полностью на базе `RulesetProfile`.
 - Обеспечить обратимое отложенное удаление персонажей с защитой от угона аккаунта (72 ч для развитых, 10 мин для новичков), анти-снайпинг имён (24 ч) и расширяемые предохранители удаления для P23/P26.
 
 **Non-Goals:**
@@ -31,10 +31,10 @@
 - **Обоснование:** Исключает постоянные `UPDATE` в PostgreSQL, гарантирует автоматический переход в `offline` через 15 с при падении узла без фоновых кронов и укладывается в p95 ≤ 50 мс даже при 1000 RPS на каталог.
 - **Отвергнутые альтернативы:**
   - *Запись онлайна в PostgreSQL каждые 5 с:* избыточная нагрузка на WAL и вакуум, ложные статусы `online` при падении воркера.
-  - *Прямой HTTP-опрос игровых серверов из `apps/api`:* сильная связанность, каскадные таймауты и рост задержки `GET /v1/shards` пропорционально числу узлов.
+  - *Прямой HTTP-опрос игровых серверов из `apps/api`:* сильная связанность, каскадные таймауты и рост задержки `GET /api/v1/shards` пропорционально числу узлов.
 
 ### D2. Двухтокенный пакет тикетов (`worldTicket` + `hubTicket`) и атомарный Lua-скрипт верификации (ADR-005, ADR-009, ADR-012)
-- **Выбор:** Один запрос `POST /v1/shards/:shardId/tickets` выпускает `GameTicketBundle` с двумя криптографически независимыми токенами (`32` байта CSPRNG → base64url, 43 символа): один для `WorldPartitionRoom`, второй для `ShardHubRoom`. В Valkey под ключом `uo3:ticket:{sha256}` хранится JSON-пейлоад (без сырого токена) с TTL 30 с (настраиваемо 10–60 с). Погашение выполняется атомарным Lua-скриптом `consume_game_ticket.lua`, который в одной операции проверяет наличие ключа, совпадение `(shardId, roomId, roomType)`, сверяет эпохи отзыва (`uo3:revoke:*`) и немедленно удаляет ключ (`DEL`), фиксируя погашение резерва.
+- **Выбор:** Один запрос `POST /api/v1/shards/:shardId/tickets` выпускает `GameTicketBundle` с двумя криптографически независимыми токенами (`32` байта CSPRNG → base64url, 43 символа): один для `WorldPartitionRoom`, второй для `ShardHubRoom`. В Valkey под ключом `uo3:ticket:{sha256}` хранится JSON-пейлоад (без сырого токена) с TTL 30 с (настраиваемо 10–60 с). Погашение выполняется атомарным Lua-скриптом `consume_game_ticket.lua`, который в одной операции проверяет наличие ключа, совпадение `(shardId, roomId, roomType)`, сверяет эпохи отзыва (`uo3:revoke:*`) и немедленно удаляет ключ (`DEL`), фиксируя погашение резерва.
 - **Обоснование:** Клиент держит два независимых WebSocket-подключения (ADR-005). Раздельные одноразовые токены исключают гонку двойного использования одного токена двумя комнатами и предотвращают подмену типа комнаты. Хранение только SHA-256 хэша защищает от компрометации через дампы/логи Valkey.
 - **Отвергнутые альтернативы:**
   - *Stateless EdDSA JWT в качестве game ticket:* не обеспечивает строгую одноразовость без серверного реестра погашенных `jti` и не даёт мгновенного отзыва, что делает stateless-подход бессмысленным.
@@ -82,7 +82,7 @@
   - *JSONB-мапа вместо реляционной таблицы:* сложнее индексировать, валидировать ограничения на уровне БД и обновлять точечно при росте навыков в P08/P15.
 
 ### D8. Декларативный `starterLoadout` JSONB вместо прямой зависимости на движок предметов (P13)
-- **Выбор:** Чистая функция `buildStarterLoadout(input, eraProfile, contentTables)` в `packages/rules` формирует неизменяемый JSON-объект `StarterLoadoutV1` (базовая одежда с `shirtHue`/`pantsHue`, обувь, рюкзак, кинжал, стартовое золото и профильные newbie-предметы для каждого стартового навыка ≥ `300` десятых) и сохраняет его в `characters.starter_loadout` с `starter_loadout_granted = false`. При первом входе персонажа в мир P06/P13 атомарно материализует предметы и выставляет `starter_loadout_granted = true`.
+- **Выбор:** Чистая функция `buildStarterLoadout(input, rulesetProfile, contentTables)` в `packages/rules` формирует неизменяемый JSON-объект `StarterLoadoutV1` (базовая одежда с `shirtHue`/`pantsHue`, обувь, рюкзак, кинжал, стартовое золото и профильные newbie-предметы для каждого стартового навыка ≥ `300` десятых) и сохраняет его в `characters.starter_loadout` с `starter_loadout_granted = false`. При первом входе персонажа в мир P06/P13 атомарно материализует предметы и выставляет `starter_loadout_granted = true`.
 - **Обоснование:** Строго соблюдает границы фаз дорожной карты (P05 не зависит от P13), гарантирует идемпотентность выдачи стартового лута (игрок никогда не получит стартовый набор дважды) и позволяет P09 сразу рисовать превью одежды персонажа в ростере.
 - **Отвергнутые альтернативы:**
   - *Создание записей в таблице `items` прямо в P05:* создало бы циклическую или преждевременную зависимость на схему мира P08 и модель предметов P13.
@@ -306,7 +306,7 @@ sequenceDiagram
   participant GS_W as "WorldPartitionRoom (P06)"
   participant GS_H as "ShardHubRoom (P06)"
 
-  C->>API: POST /v1/shards/:shardId/tickets (JWT, characterId, protocolVersion)
+  C->>API: POST /api/v1/shards/:shardId/tickets (JWT, characterId, protocolVersion)
   API->>PG: Проверка аккаунта (P04), шарда, персонажа, статуса и координат
   PG-->>API: Character (active, facet, x, y, serial) + Shard rules
   API->>VK: Проверка active session (accountId) + partition lookup + rate-limit
@@ -365,22 +365,22 @@ stateDiagram-v2
 
 | Метод и путь | Доступ | Назначение | Коды ответа |
 |---|---|---|---|
-| `GET /v1/shards` | Public / Optional JWT | Список доступных шардов + персональный контекст при JWT + `ETag` | `200`, `304`, `400`, `401` |
-| `GET /v1/shards/:shardId` | Public / Optional JWT | Детальная карточка шарда и правила эпохи | `200`, `401`, `404` |
-| `POST /v1/admin/shards` | `Administrator+` | Регистрация нового шарда и инициализация `shard_serial_sequences` | `201`, `400`, `403`, `409` |
-| `PATCH /v1/admin/shards/:shardId` | `Administrator+` | Обновление правил, вместимости, видимости, баннеров | `200`, `403`, `404`, `409` |
-| `POST /v1/admin/shards/:shardId/status` | `Administrator+` | Переключение `normal` / `maintenance` / `draining` / `archived` | `200`, `403`, `404`, `409` |
-| `POST /v1/shards/:shardId/tickets` | Authenticated JWT | Выдача `GameTicketBundle` (`worldReservation` + `hubReservation`) | `201`, `400`, `403`, `404`, `409`, `426`, `429`, `503` |
-| `GET /v1/shards/:shardId/characters` | Authenticated JWT | Список персонажей аккаунта на шарде + квота слотов | `200`, `401`, `404` |
-| `GET /v1/shards/:shardId/character-creation-options` | Public / Optional JWT | Опции создания персонажа (профессии, палитры, города, лимиты) | `200`, `404` |
-| `POST /v1/shards/:shardId/characters/validate-name` | Authenticated JWT | Предварительная проверка формата, словарей и доступности имени | `200`, `400`, `404`, `429` |
-| `POST /v1/shards/:shardId/characters` | Authenticated JWT | Атомарное создание персонажа (`Idempotency-Key` опционально) | `201`, `400`, `403`, `404`, `409`, `422`, `429` |
-| `DELETE /v1/shards/:shardId/characters/:characterId` | Authenticated JWT | Инициация отложенного удаления (`pending_deletion`) | `200`, `404`, `409` |
-| `POST /v1/shards/:shardId/characters/:characterId/cancel-delete` | Authenticated JWT | Отмена отложенного удаления до `deleteScheduledAt` | `200`, `404`, `409` |
-| `POST /v1/shards/:shardId/characters/:characterId/rename` | Authenticated JWT | Переименование офлайн-персонажа (обязательное или по политике) | `200`, `403`, `404`, `409`, `422`, `429` |
-| `POST /v1/admin/shards/:shardId/characters/:characterId/force-rename` | `GameMaster+` | Принудительное переименование (`rename_required`) | `200`, `403`, `404`, `409` |
-| `POST /v1/admin/shards/:shardId/characters/:characterId/lock` | `GameMaster+` | Блокировка / разблокировка (`staff_locked`) | `200`, `403`, `404`, `409` |
-| `POST /v1/admin/shards/:shardId/characters/:characterId/restore` | `GameMaster+` | Восстановление `deleted` надгробия (≤ 90 дней) | `200`, `403`, `404`, `409`, `410` |
+| `GET /api/v1/shards` | Public / Optional JWT | Список доступных шардов + персональный контекст при JWT + `ETag` | `200`, `304`, `400`, `401` |
+| `GET /api/v1/shards/:shardId` | Public / Optional JWT | Детальная карточка шарда и правила эпохи | `200`, `401`, `404` |
+| `POST /api/v1/admin/shards` | `Administrator+` | Регистрация нового шарда и инициализация `shard_serial_sequences` | `201`, `400`, `403`, `409` |
+| `PATCH /api/v1/admin/shards/:shardId` | `Administrator+` | Обновление правил, вместимости, видимости, баннеров | `200`, `403`, `404`, `409` |
+| `POST /api/v1/admin/shards/:shardId/status` | `Administrator+` | Переключение `normal` / `maintenance` / `draining` / `archived` | `200`, `403`, `404`, `409` |
+| `POST /api/v1/shards/:shardId/tickets` | Authenticated JWT | Выдача `GameTicketBundle` (`worldReservation` + `hubReservation`) | `201`, `400`, `403`, `404`, `409`, `426`, `429`, `503` |
+| `GET /api/v1/shards/:shardId/characters` | Authenticated JWT | Список персонажей аккаунта на шарде + квота слотов | `200`, `401`, `404` |
+| `GET /api/v1/shards/:shardId/character-creation-options` | Public / Optional JWT | Опции создания персонажа (профессии, палитры, города, лимиты) | `200`, `404` |
+| `POST /api/v1/shards/:shardId/characters/validate-name` | Authenticated JWT | Предварительная проверка формата, словарей и доступности имени | `200`, `400`, `404`, `429` |
+| `POST /api/v1/shards/:shardId/characters` | Authenticated JWT | Атомарное создание персонажа (`Idempotency-Key` опционально) | `201`, `400`, `403`, `404`, `409`, `422`, `429` |
+| `DELETE /api/v1/shards/:shardId/characters/:characterId` | Authenticated JWT | Инициация отложенного удаления (`pending_deletion`) | `200`, `404`, `409` |
+| `POST /api/v1/shards/:shardId/characters/:characterId/cancel-delete` | Authenticated JWT | Отмена отложенного удаления до `deleteScheduledAt` | `200`, `404`, `409` |
+| `POST /api/v1/shards/:shardId/characters/:characterId/rename` | Authenticated JWT | Переименование офлайн-персонажа (обязательное или по политике) | `200`, `403`, `404`, `409`, `422`, `429` |
+| `POST /api/v1/admin/shards/:shardId/characters/:characterId/force-rename` | `GameMaster+` | Принудительное переименование (`rename_required`) | `200`, `403`, `404`, `409` |
+| `POST /api/v1/admin/shards/:shardId/characters/:characterId/lock` | `GameMaster+` | Блокировка / разблокировка (`staff_locked`) | `200`, `403`, `404`, `409` |
+| `POST /api/v1/admin/shards/:shardId/characters/:characterId/restore` | `GameMaster+` | Восстановление `deleted` надгробия (≤ 90 дней) | `200`, `403`, `404`, `409`, `410` |
 
 #### Контракт `VerifiedGameTicketClaims` (TypeBox, используется в P06 `onAuth`)
 ```ts
@@ -406,7 +406,7 @@ type VerifiedGameTicketClaims = {
 
 #### Сводный каталог кодов ошибок P05
 - Шарды: `SHARD_NOT_FOUND` (404), `SHARD_OFFLINE` (503), `SHARD_FULL` (503), `SHARD_IN_MAINTENANCE` (503), `SHARD_DRAINING` (503), `SHARD_TELEMETRY_UNAVAILABLE` (503), `SHARD_ACCOUNT_BANNED` (403), `SHARD_MUTATION_REQUIRES_MAINTENANCE` (409), `SHARD_CHARACTER_CREATION_DISABLED` (403), `INVALID_PROTOCOL_VERSION_HEADER` (400), `PROTOCOL_VERSION_UNSUPPORTED` (426).
-- Тикеты: `TICKET_INVALID_OR_EXPIRED` (401/WS close 4001), `PARTITION_UNAVAILABLE` (503), `SEAT_RESERVATION_FAILED` (503), `TICKET_RATE_LIMITED` (429), `ACCOUNT_ALREADY_IN_WORLD` (409).
+- Тикеты: `TICKET_INVALID_OR_EXPIRED` (401 / WS close `4101` `WS_CLOSE_INVALID_TICKET`), `PARTITION_UNAVAILABLE` (503), `SEAT_RESERVATION_FAILED` (503), `TICKET_RATE_LIMITED` (429), `ACCOUNT_ALREADY_IN_WORLD` (409).
 - Ростер и создание: `CHARACTER_NOT_FOUND` (404), `CHARACTER_SLOT_LIMIT_REACHED` (409), `CHARACTER_CREATION_RATE_LIMITED` (429), `CHARACTER_CURRENTLY_ONLINE` (409), `CHARACTER_PENDING_DELETION` (409), `CHARACTER_NOT_PENDING_DELETION` (409), `CHARACTER_RENAME_REQUIRED` (409), `CHARACTER_LOCKED` (409), `CHARACTER_DELETION_BLOCKED` (409), `CHARACTER_RENAME_COOLDOWN_ACTIVE` (429), `CHARACTER_RENAME_DISABLED` (403), `CHARACTER_RESTORE_WINDOW_EXPIRED` (410), `INVALID_CHARACTER_NAME` (422), `CHARACTER_NAME_FORBIDDEN` (422), `CHARACTER_NAME_TAKEN` (409), `CHARACTER_NAME_RESERVED` (409), `NAME_VALIDATION_RATE_LIMITED` (429), `INVALID_STAT_ALLOCATION` (422), `INVALID_SKILL_ALLOCATION` (422), `INVALID_APPEARANCE` (422), `INVALID_STARTING_CITY` (422), `UNSUPPORTED_RACE_FOR_SHARD_ERA` (422), `IDEMPOTENCY_KEY_PAYLOAD_MISMATCH` (422), `FORBIDDEN_INSUFFICIENT_ACCESS_LEVEL` (403).
 
 ### 6. Алгоритмы и канонические формулы UO:R (`packages/rules` & `packages/content`)
@@ -420,7 +420,7 @@ type VerifiedGameTicketClaims = {
 6. Если любая активная партиция сообщает `tickP99Ms > 45` в ≥ 2 последовательных интервалах → `degraded`, иначе `online`.
 7. Расчёт `loadRatio = (onlineCount + reservedSeats) / hardCapacity`: `< 0.5` → `low`, `< 0.8` → `medium`, `< 1.0` → `high`, `>= 1.0` → `full`.
 
-#### Формулы создания персонажа UO:R (по умолчанию, настраиваются в `EraProfile`)
+#### Формулы создания персонажа UO:R (по умолчанию, настраиваются в `RulesetProfile`)
 - **Статы:** `str, dex, int ∈ Z ∩ [10, 60]`, `str + dex + int === 80`.
 - **Производные виталы и вес (из `docs/ARCHITECTURE.md` раздел 5):**
   - `maxHits = 50 + Math.floor(str / 2)`
@@ -451,7 +451,7 @@ type VerifiedGameTicketClaims = {
   - UO:R: `britain` `(1496, 1628, 10)`, `moonglow` `(4406, 1045, 0)`, `minoc` `(2459, 545, 0)`, `trinsic` `(1823, 2821, 0)`, `yew` `(633, 858, 0)`, `jhelom` `(1378, 3817, 0)`, `skara_brae` `(618, 2234, 0)`, `vesper` `(2771, 976, 0)`. Фасет определяется правилом шарда: `trammel` (1) для `renaissance_split` и `trammel_only`, `felucca` (0) для `felucca_only` и `siege_perilous`.
   - Синтетический мир (`assetProfile === 'synthetic_dev'`, ADR-002): `synthetic_haven` `(128, 128, 0)` в активном дефолтном фасете.
 - **Стартовый набор (`StarterLoadoutV1`):**
-  - Базовый комплект (не дублируется): рюкзак, рубашка (`shirtHue`), штаны/юбка по полу (`pantsHue`), сапоги, кинжал, свеча, `startingGold` (по умолчанию 100 золота, настраивается в `EraProfile`).
+  - Базовый комплект (не дублируется): рюкзак, рубашка (`shirtHue`), штаны/юбка по полу (`pantsHue`), сапоги, кинжал, свеча, `startingGold` (по умолчанию 100 золота, настраивается в `RulesetProfile`).
   - Профильные предметы добавляются детерминированно для каждого стартового навыка с `valueTenths >= 300` (сортировка по `skillId`, дедупликация по `itemTemplateId`, флаг `newbied: true`).
 
 ## Risks / Trade-offs
@@ -475,7 +475,7 @@ type VerifiedGameTicketClaims = {
 3. **Загрузка Lua-скриптов и контента:**
    - При старте `apps/api` выполняется валидация YAML-файлов `packages/content/data/creation/*` по JSON Schema (fail-fast) и предзагрузка SHA1-скриптов `consume_game_ticket.lua` и `reserve_seat.lua` в Valkey (`SCRIPT LOAD`).
 4. **Порядок развёртывания и откат:**
-   - Деплой обратно совместим с P04 (добавляются только новые маршруты `/v1/shards/*`, `/v1/admin/shards/*`).
+   - Деплой обратно совместим с P04 (добавляются только новые маршруты `/api/v1/shards/*`, `/api/v1/admin/shards/*`).
    - В случае отката: остановить реплики `apps/api` новой версии, откатить билд к P04; новые таблицы PostgreSQL и ключи `uo3:*` в Valkey не влияют на работу P04 и при необходимости могут быть очищены откатной миграцией до открытия продакшен-трафика.
 
 ## Open Questions

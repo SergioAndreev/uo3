@@ -17,40 +17,58 @@
 
 ## Граф зависимостей фаз
 
+> Рёбра — **жёсткие прямые** зависимости (транзитивные опущены): фаза начинается только после архивации всех фаз, из которых в неё ведут рёбра, а значит и всех их предков. Граф сверен с разделом «Зависимости» в `proposal.md` каждой фазы.
+> Номера фаз образуют допустимый топологический порядок: при последовательной реализации достаточно идти по возрастанию номера.
+> Обращение фазы к фазе **с бóльшим номером** допускается только через порт с реализацией по умолчанию (например, `GuardZoneProvider` P17 → регионы P25, `IHousingRegionPolicy` P23 → P25, `IBankingService` P19 → P21, фейки присутствия P05 → P06, клиентский `CharacterUiIntentPort` P14 → P15/P16/P18). Такие порты перечислены в `proposal.md` фазы-потребителя; фаза-поставщик подменяет реализацию, не меняя требований потребителя.
+
 ```mermaid
 flowchart TD
-  P00 --> P01 --> P02 --> P03
-  P01 --> P04 --> P05
+  P00 --> P01
+  P01 --> P02
+  P02 --> P03
+  P01 --> P04
+  P04 --> P05
   P03 --> P06
-  P05 --> P06 --> P07 --> P08
-  P02 --> P09 --> P10 --> P11
+  P05 --> P06
+  P06 --> P07
+  P07 --> P08
+  P02 --> P09
+  P05 --> P09
+  P03 --> P10
+  P09 --> P10
+  P10 --> P11
   P07 --> P12
-  P10 --> P12
+  P11 --> P12
   P08 --> P13
-  P12 --> P13 --> P14
-  P13 --> P15 --> P16 --> P17
-  P15 --> P18
-  P16 --> P18
-  P16 --> P19
+  P12 --> P13
+  P13 --> P14
+  P14 --> P15
+  P15 --> P16
+  P16 --> P17
+  P17 --> P18
   P18 --> P19
-  P15 --> P20
-  P13 --> P21
-  P19 --> P21
-  P15 --> P22
+  P19 --> P20
+  P20 --> P21
+  P20 --> P22
   P21 --> P23
+  P22 --> P24
   P23 --> P24
-  P12 --> P25
-  P06 --> P26
-  P19 --> P27
-  P11 --> P28
-  P08 --> P29
-  P13 --> P30
-  P07 --> P31
-  P08 --> P32
-  P31 --> P33
+  P24 --> P25
+  P23 --> P26
+  P25 --> P27
+  P26 --> P27
+  P27 --> P28
+  P25 --> P29
+  P26 --> P29
+  P28 --> P30
+  P29 --> P30
+  P29 --> P31
+  P30 --> P32
+  P31 --> P32
   P32 --> P33
-  P14 --> P34
-  P33 --> P35 --> P36
+  P33 --> P34
+  P34 --> P35
+  P35 --> P36
 ```
 
 ## Реестр фаз
@@ -133,7 +151,7 @@ flowchart TD
 - `client/settings-profile` — настройки клиента, синхронизация профиля с аккаунтом.
 
 ### P10 — `p10-world-renderer` — Рендерер мира
-**Зависит от:** P09
+**Зависит от:** P03, P09
 - `render/isometric-camera` — проекция, зум, следование за игроком, pixel-snapping.
 - `render/terrain-and-statics` — земля с высотами, статика, предметы, мульти, стриминг чанков.
 - `render/draw-order` — порядок отрисовки UO, кодирование в depth.
@@ -148,7 +166,7 @@ flowchart TD
 - `render/overhead-text-and-bars` — речь над головой, имена, числа урона, полоски здоровья.
 
 ### P12 — `p12-movement-and-navigation` — Движение и навигация
-**Зависит от:** P07, P10
+**Зависит от:** P07, P11
 - `movement/movement-validation` — правила шага UO, Z, двери, блокировка мобайлами, проталкивание.
 - `movement/client-prediction` — предсказание, очередь шагов, ресинхронизация.
 - `movement/movement-timing` — скорости, анти-спидхак, стамина и перегрузка.
@@ -174,7 +192,7 @@ flowchart TD
 - `ui/window-layout` — сохранение раскладки окон, масштаб UI.
 
 ### P15 — `p15-stats-and-skills` — Статы и навыки
-**Зависит от:** P13
+**Зависит от:** P14
 - `characters/stats-and-vitals` — STR/DEX/INT, hits/stam/mana, реген, рост статов, кап.
 - `skills/skill-system` — 49 навыков, значения, использование, задержки.
 - `skills/skill-gain` — формулы роста, анти-макро.
@@ -197,7 +215,7 @@ flowchart TD
 - `pvp/looting-rules` — права лутинга трупов и последствия.
 
 ### P18 — `p18-magic` — Магия
-**Зависит от:** P15, P16
+**Зависит от:** P17
 - `magic/spellcasting` — каст, задержки, физзл, прерывание, мана, реагенты.
 - `magic/spell-catalog` — 64 заклинания 8 кругов.
 - `magic/spellbooks-and-scrolls` — книги, свитки, руны, рунбуки.
@@ -205,7 +223,7 @@ flowchart TD
 - `magic/spell-resistance` — Resisting Spells, отражение.
 
 ### P19 — `p19-npc-ai-and-creatures` — NPC, ИИ и существа
-**Зависит от:** P16, P18
+**Зависит от:** P18
 - `npc/creature-definitions` — определения существ, статы, навыки, тела, звуки.
 - `npc/ai-behaviors` — деревья поведения: мили, маг, лучник, животное, стражник, вендор.
 - `npc/spawning` — спавнеры, регионы спавна, респаун.
@@ -214,14 +232,14 @@ flowchart TD
 - `npc/npc-speech-and-services` — ключевые слова, банкир, хилер, стражники, обучение навыкам.
 
 ### P20 — `p20-gathering-and-crafting` — Сбор ресурсов и крафт
-**Зависит от:** P15
+**Зависит от:** P19
 - `crafting/resource-gathering` — добыча руды, дерева, рыбы, хлопка/шерсти, банки ресурсов.
 - `crafting/craft-system` — меню крафта, шанс, качество, метка мастера, материалы.
 - `crafting/craft-skill-catalog` — рецепты по навыкам.
 - `crafting/repair-and-durability` — ремонт, прочность, разборка.
 
 ### P21 — `p21-economy-and-trade` — Экономика и торговля
-**Зависит от:** P13, P19
+**Зависит от:** P20
 - `economy/currency-and-banking` — золото, банк, чеки.
 - `economy/secure-trade` — окно обмена, двойное подтверждение, атомарность.
 - `economy/npc-vendors` — покупка/продажа, цены, рестоки.
@@ -229,7 +247,7 @@ flowchart TD
 - `economy/economy-telemetry` — источники/стоки золота, отчёты.
 
 ### P22 — `p22-utility-skills` — Утилитарные навыки
-**Зависит от:** P15
+**Зависит от:** P20
 - `skills/stealth-and-detection` — Hiding, Stealth, Detecting Hidden, Tracking.
 - `skills/thievery` — Snooping, Stealing, Lockpicking, Remove Trap.
 - `skills/bardic-skills` — Musicianship, Peacemaking, Provocation, Discordance.
@@ -245,19 +263,19 @@ flowchart TD
 - `housing/multi-objects` — мульти в мире, коллизии, двери, таблички.
 
 ### P24 — `p24-boats-and-sea` — Корабли и море
-**Зависит от:** P23
+**Зависит от:** P22, P23
 - `sea/boats` — спуск, румпельщик, команды, движение, ключи, докование.
 - `sea/sea-travel` — морская навигация, глубоководная рыбалка, морские монстры.
 
 ### P25 — `p25-world-regions-and-environment` — Регионы и окружение
-**Зависит от:** P12
+**Зависит от:** P24
 - `world/regions` — города, данжи, охраняемые зоны, запреты магии перемещения, музыка регионов.
 - `world/facet-travel` — лунные врата, межфасетные переходы.
 - `world/day-night-and-weather` — цикл дня, погода, сезоны.
 - `world/world-decoration` — декорации, двери, таблички, вывески из данных.
 
 ### P26 — `p26-social-systems` — Социальные системы
-**Зависит от:** P06
+**Зависит от:** P23
 - `social/speech-and-chat` — речь в мире, каналы, эмоуты.
 - `social/party` — группа, общий лут, чат пати.
 - `social/guilds` — гильдкамень, ранги, войны, альянсы, Order/Chaos.
@@ -265,34 +283,34 @@ flowchart TD
 - `social/chat-moderation` — фильтры, жалобы, муты.
 
 ### P27 — `p27-quests-and-world-events` — Квесты и события
-**Зависит от:** P19
+**Зависит от:** P25, P26
 - `events/treasure-maps` — карты сокровищ, раскопки, стражи сундуков.
 - `events/escort-quests` — сопровождение NPC.
 - `events/gm-events` — инструменты событий персонала.
 - `events/seasonal-events` — календарь, сезонный контент.
 
 ### P28 — `p28-audio-and-effects` — Звук и эффекты
-**Зависит от:** P11
+**Зависит от:** P27
 - `audio/sound-effects` — позиционные звуки, лимиты одновременных звуков.
 - `audio/music` — музыка регионов, переходы, настройки.
 - `effects/graphical-effects` — движущиеся/фиксированные эффекты, молния, частицы.
 
 ### P29 — `p29-staff-tools-and-admin` — Инструменты персонала
-**Зависит от:** P08
+**Зависит от:** P25, P26
 - `admin/gm-commands` — внутриигровые команды (`[add`, `[tele`, `[props` ...), права.
 - `admin/admin-console` — веб-консоль: игроки, аккаунты, баны, мир, метрики.
 - `admin/help-paging` — очередь обращений игроков.
 - `admin/audit-log` — аудит действий персонала и критичных событий.
 
 ### P30 — `p30-content-pipeline` — Контент-пайплайн
-**Зависит от:** P13
+**Зависит от:** P28, P29
 - `content/content-definitions` — YAML-определения, JSON Schema, валидация в CI.
 - `content/world-build` — импорт декораций/спавнов/регионов, сборка «мира шарда».
 - `content/localization` — строки RU/EN, cliloc, плюрализация.
 - `content/hot-reload` — горячая перезагрузка контента.
 
 ### P31 — `p31-security-and-anti-cheat` — Безопасность и античит
-**Зависит от:** P07
+**Зависит от:** P29
 - `security/server-authority` — инварианты авторитарности, fuzzing протокола.
 - `security/rate-limiting` — лимиты сообщений, флуд-контроль, защита API.
 - `security/anti-dupe` — инварианты владения, детекторы дюпа, сверка ledger.
@@ -300,28 +318,28 @@ flowchart TD
 - `security/client-hardening` — CSP, SRI, защита токенов, приватность.
 
 ### P32 — `p32-world-scaling` — Масштабирование мира
-**Зависит от:** P08
+**Зависит от:** P30, P31
 - `scaling/world-partitioning` — несколько партиций на фасет, конфигурация границ.
 - `scaling/seamless-handoff` — переход между партициями без разрыва.
 - `scaling/cross-partition-bus` — призрачная репликация, события через NATS.
 - `scaling/horizontal-scaling` — масштабирование API/хаба, размещение комнат.
 
 ### P33 — `p33-observability-and-operations` — Наблюдаемость и эксплуатация
-**Зависит от:** P31, P32
+**Зависит от:** P32
 - `ops/telemetry` — метрики, логи, трейсы, дашборды, алерты.
 - `ops/deployment` — Docker, Helm, окружения, секреты.
 - `ops/release-management` — релизы, рестарты с оповещением, миграции, откат.
 - `ops/incident-response` — ранбуки, on-call, постмортемы.
 
 ### P34 — `p34-client-platform-quality` — Качество клиентской платформы
-**Зависит от:** P14
+**Зависит от:** P33
 - `client/touch-controls` — сенсорное управление и мобильные браузеры.
 - `client/accessibility` — доступность UI, масштаб, контраст, клавиатура.
 - `client/localization-ui` — локализация интерфейса RU/EN.
 - `client/offline-and-updates` — сервис-воркер, обновления клиента, совместимость версий.
 
 ### P35 — `p35-load-and-acceptance-testing` — Нагрузочная и приёмочная валидация
-**Зависит от:** P33
+**Зависит от:** P34
 - `quality/bot-clients` — headless-боты со сценариями поведения.
 - `quality/load-testing` — профили нагрузки, SLO, отчёты.
 - `quality/release-acceptance` — приёмочные сценарии вех, критерии выхода.

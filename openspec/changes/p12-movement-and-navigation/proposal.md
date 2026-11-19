@@ -29,7 +29,7 @@
 - **Затрагиваемые пакеты и приложения**:
   - `packages/domain`: типы состояний движения, режимов перемещения (`Walk`, `Run`, `MountedWalk`, `MountedRun`), причин отказа шага (`MovementDenyReason`), дескрипторов телепортов и запросов пути.
   - `packages/rules`: изоморфный модуль `src/movement/*` (`checkMovement`, `resolveMovementCost`, `calculateStaminaDrain`, `TimeCreditTracker`, `findPathAStar`), опирающийся на `src/world/*` (P03).
-  - `packages/protocol`: опкоды и TypeBox-схемы `WalkRequest` (`0x0101`), `WalkAck` (`0x0102`), `WalkDeny` (`0x0103`), `TeleportSync` (`0x0104`), `PartitionHandoffTicket` (`0x0105`).
+  - `packages/protocol`: опкоды и TypeBox-схемы `WalkRequest` (`0x0101`), `WalkAck` (`0x0102`), `WalkDeny` (`0x0103`), `TeleportSync` (`0x0104`), `PartitionHandoffTicket` (`0x0105`), `ClientGeometryReady` (`0x0106`), `MovementResyncRequest` (`0x0107`) — все в блоке P12 `0x0100..0x011F` реестра `docs/PROTOCOL_REGISTRY.md`.
   - `packages/content`: YAML-реестр статических телепортов мира и входов в подземелья (`teleporters/*.yaml`) с JSON Schema валидацией.
   - `apps/game-server`: обработчики движения в `WorldPartitionRoom`, интеграция с `IntentHandlerRegistry` (P07), тиковый регенератор стамины, триггеры телепортов при входе на тайл и координатор межпартиционного переноса.
   - `apps/client`: контроллер ввода движения (зажатие ПКМ по секторам экрана, WASD/стрелки, автобег), буфер предсказания `PredictionController`, Web Worker автопути по двойному клику/команде, синхронизация с `CameraTargetProvider` (P10) и `MobileAnimationController` (P11).

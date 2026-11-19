@@ -10,10 +10,10 @@
 |---|---:|
 | Фазы реализации (`openspec/changes/p00..p36`) | **37** |
 | Уникальные capabilities (`specs/**/spec.md`) | **165** |
-| Нормативные требования (`SHALL` / `MUST`) | **1 453** |
-| Тестируемые сценарии (`WHEN` / `THEN`) | **3 441** |
-| Пронумерованные группы задач | **555** |
-| Атомарные проверяемые задачи (`- [ ]`) | **4 323** |
+| Нормативные требования (`SHALL` / `MUST`) | **1 458** |
+| Тестируемые сценарии (`WHEN` / `THEN`) | **3 464** |
+| Пронумерованные группы задач | **592** |
+| Атомарные проверяемые задачи (`- [ ]`) | **4 327** |
 | Mermaid-диаграммы в `design.md` | **102** |
 | Объём спецификаций | **~43 000 строк** |
 | Строгая валидация (`openspec validate --all --strict`) | **37 / 37 PASSED** |
@@ -23,7 +23,7 @@
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 13 архитектурных решений (ADR-001..ADR-013), стек, топология, канонические константы UO:R.
 - [docs/ROADMAP.md](docs/ROADMAP.md) — вехи (M0–M5), граф зависимостей фаз и контрактный реестр всех 165 capabilities.
 - [docs/GLOSSARY.md](docs/GLOSSARY.md) — глоссарий терминов Ultima Online и системной архитектуры.
-- [docs/PROTOCOL_REGISTRY.md](docs/PROTOCOL_REGISTRY.md) — единый беcколлизионный реестр `uint16`-опкодов `@uo3/protocol` и кодов закрытия WebSocket (`4000..4099`).
+- [docs/PROTOCOL_REGISTRY.md](docs/PROTOCOL_REGISTRY.md) — единый бесколлизионный реестр `uint16`-опкодов `@uo3/protocol` и кодов закрытия WebSocket (`4100..4199`).
 - [AGENTS.md](AGENTS.md) — правила работы ИИ-агентов с репозиторием.
 - [openspec/config.yaml](openspec/config.yaml) — конфигурация OpenSpec (`schema: spec-driven`, контекст и правила артефактов).
 
@@ -99,7 +99,7 @@
 | **P34** | [`p34-client-platform-quality`](openspec/changes/p34-client-platform-quality/proposal.md) | Качество клиентской платформы | 4 | 40 | 100 | 15 | 117 | [design](openspec/changes/p34-client-platform-quality/design.md) · [tasks](openspec/changes/p34-client-platform-quality/tasks.md) |
 | **P35** | [`p35-load-and-acceptance-testing`](openspec/changes/p35-load-and-acceptance-testing/proposal.md) | Нагрузочная и приёмочная валидация | 3 | 36 | 108 | 15 | 119 | [design](openspec/changes/p35-load-and-acceptance-testing/design.md) · [tasks](openspec/changes/p35-load-and-acceptance-testing/tasks.md) |
 | **P36** | [`p36-beta-and-launch`](openspec/changes/p36-beta-and-launch/proposal.md) | Бета и запуск | 4 | 36 | 108 | 15 | 118 | [design](openspec/changes/p36-beta-and-launch/design.md) · [tasks](openspec/changes/p36-beta-and-launch/tasks.md) |
-| **Итого** | **37 фаз** | **M0 — M5 (от монорепо до запуска)** | **165** | **1 453** | **3 441** | **555** | **4 323** | `openspec validate --all --strict` |
+| **Итого** | **37 фаз** | **M0 — M5 (от монорепо до запуска)** | **165** | **1 458** | **3 464** | **592** | **4 327** | `openspec validate --all --strict` |
 
 ## Правовая политика в отношении ассетов (ADR-002)
 

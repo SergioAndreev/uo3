@@ -30,7 +30,7 @@
 - **Затрагиваемые пакеты (`packages/*`):**
   - `packages/domain` — доменные типы статического мира (`LandTile`, `StaticTile`, `LandTileData`, `ItemTileData`, `MultiDefinition`, `MultiComponent`, `FacetBounds`, `SurfaceCandidate`, `LosResult`, `LosTraceResult`, `WorldDataManifest`, `MapPatchDefinition`, `WorldDataVersionInfo`, коды ошибок `WORLD_DATA_*`, `LOS_*`, `MAP_PATCH_*`).
   - `packages/rules` — изоморфные детерминированные структуры и алгоритмы: компактная матрица тайлов (`FacetTileMatrix`, `TileDataTable`, `MultiCatalog`), формулы рельефа и поверхностей (`GetAverageZ`, `CalcHeight`, `resolveSurfaces`, `checkStaticColumn`), симметричный 3D DDA Line-of-Sight, движок применения патчей и расчёта блочных SHA-256 хэшей.
-  - `packages/uo-formats` — интеграция выходов парсеров P02 (`map*`, `statics*`, `tiledata`, `multi`, `mapdif*`, `stadif*`) и бинарная сериализация/десериализация предкомпилированных снапшотов и компактных бинарных патчей UO3 (без дублирования базовой capability `assets/uo-file-formats`).
+  - `packages/uo-formats` — интеграция выходов парсеров P02 (`map*`, `statics*`, `tiledata`, `multi`), новые читатели классических диффов `mapdif*`/`stadif*` (P02 их не предоставляет; переиспользуется `MulIdxStore`) и бинарная сериализация/десериализация предкомпилированных снапшотов и компактных бинарных патчей UO3 (без дублирования базовой capability `assets/uo-file-formats`).
   - `packages/protocol` — TypeBox-схемы метаданных версии мира и результата проверки совместимости клиента/сервера (`WorldDataVersionSchema`, `WorldDataCompatibilitySchema`).
   - `packages/config` — типизированные переменные окружения группы `WORLD_DATA_*` (каталог данных, режим `uo`/`synthetic`, список фасетов, каталог патчей, политика конфликтов, каталог предкомпилированного кэша, параметры LOS).
   - `packages/test-kit` — фабрики и фикстуры детерминированных тестовых карт (склоны, мосты, лестницы, подземелья с nodraw, окна, крыши, диагональные стены, мульти, цепочки патчей) для юнит- и симуляционных тестов.
@@ -40,8 +40,8 @@
 - **Внешние зависимости:** Без новых сторонних runtime-зависимостей — используются стандартные примитивы Node.js 22 (`node:crypto`, `node:fs/promises`, `TypedArray`/`SharedArrayBuffer`), TypeBox и инструменты монорепо из P00–P02.
 - **Входные зависимости (должны быть завершены до реализации P03):**
   - **P00** (`p00-monorepo-foundation`) — структура монорепо, конфигурация, CI-гейты и запрет проприетарных ассетов.
-  - **P01** (`p01-shared-domain-model`) — `Point3D`, фасеты, границы карт, перечисления и флаги `TileFlag`, `EraProfile`, константы `PersonHeight`/`StepHeight`.
-  - **P02** (`p02-uo-asset-formats-and-import`) — парсеры MUL/UOP/tiledata/multi/dif (`packages/uo-formats`), синтетический мир для разработки и CI, базовая платформа `apps/asset-tool`.
+  - **P01** (`p01-shared-domain-model`) — `Point3D`, фасеты, границы карт, перечисления и флаги `TileFlag`, `RulesetProfile`, константы `PersonHeight`/`StepHeight`.
+  - **P02** (`p02-uo-asset-formats-and-import`) — парсеры MUL/IDX/UOP, `map*`/`statics*`, `tiledata`, `multi` (`packages/uo-formats`), синтетический мир для разработки и CI, базовая платформа `apps/asset-tool`.
 - **Что разблокируется после P03:**
   - **P06** (`p06-game-server-runtime`) — запуск `WorldPartitionRoom` и симуляционного харнеса с авторитарными данными карты.
   - **P12** (`p12-movement-and-navigation`) — валидация шагов и A*-поиск пути поверх запросов высот/поверхностей P03.

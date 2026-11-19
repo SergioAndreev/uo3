@@ -30,15 +30,15 @@
 - Предоставить клиентские гампы и визуальные индикаторы в `apps/client` и `@uo3/ui-kit`: меню и стрелку `Tracking`, гамп `Animal Lore`, окно карты `MapGump` и индикацию скрытых шагов.
 
 ### Non-Goals
-- Раскопки кладов по декодированным `TreasureMap` и спавн сундуков-хранителей — относятся к фазе P25 (`world/treasure-hunting`); P22 отвечает только за декодирование и рендер карты с булавкой.
+- Раскопки кладов по декодированным `TreasureMap` и спавн сундуков-хранителей — относятся к фазе P27 (`events/treasure-maps`); P22 отвечает только за декодирование и рендер карты с булавкой.
 - Правила домовладения (раскрытие скрытых персонажей владельцем дома, взлом домашних сундуков) — реализуются в P23 (`housing/*`).
-- Воровство фракционных сигилов в городах — реализуется в P27 (`pvp/factions`).
-- Клиентский синтез и микширование аудио-треков инструментов — реализуется в P28 (`client/audio`); P22 передаёт детерминированные `soundId`.
+- Воровство фракционных сигилов — механика после эпохи UO:R, вне скоупа ROADMAP.
+- Клиентский синтез и микширование аудио-треков инструментов — реализуется в P28 (`audio/sound-effects`); P22 передаёт детерминированные `soundId`.
 
 ## Decisions
 
 ### Decision 1: Серверно-авторитарное исключение скрытых сущностей из `StateView` AOI
-- **Выбор**: Когда мобиль переходит в `Hidden = true`, `VisibilityEntitySource` (P07) вызывает `stateView.remove(mobileSchema)` для всех наблюдателей в секторе, кроме самого игрока, членов его партии (`PartyMember`, P26), владельца (для скрытых питомцев) и аккаунтов персонала с `effectiveAccessLevel >= 2` (Counselor/GM).
+- **Выбор**: Когда мобиль переходит в `Hidden = true`, `VisibilityEntitySource` (P07) вызывает `stateView.remove(mobileSchema)` для всех наблюдателей в секторе, кроме самого игрока, владельца (для скрытых питомцев) и аккаунтов персонала с `effectiveAccessLevel >= 2` (Counselor/GM).
 - **Обоснование**: Если передавать скрытого игрока в AOI с булевым флагом `isHidden: true`, модифицированный клиент или сниффер пакетов сможет видеть точные координаты воров и засад (мапхак/радар). Исключение из `StateView` гарантирует отсутствие сетевого трафика о скрытой сущности.
 - **Отвергнутые альтернативы**:
   - *Передача флага `isHidden` всем клиентам в AOI*: нарушает жёсткое правило авторитарности сервера и защиту от читов (ADR-005).
@@ -47,7 +47,7 @@
 - **Выбор**: Расширить `MovementValidationContext` (P12) полями `isHidden`, `hidingTenths`, `stealthTenths`, `stealthStepsRemaining` и `stealthArmorRating`. При обработке `WalkRequest` (опкод `0x0101`), если `isHidden == true`:
   1. Если флаг бега `(direction & 0x80) !== 0`, персонаж верхом (`isMounted`) или `hidingTenths < 800`, статус `Hidden` немедленно сбрасывается.
   2. Если `stealthStepsRemaining > 0`, счётчик уменьшается на 1 без броска ГСЧ.
-  3. Если `stealthStepsRemaining == 0`, вызывается `evaluateStealthStep()` из `@uo3/rules`: проверяется `stealthArmorRating <= 15` и бросок шанса; при успехе начисляется `floor(stealthTenths / 50)` шагов, при провале `Hidden` сбрасывается.
+  3. Если `stealthStepsRemaining == 0`, вызывается `evaluateStealthStep()` из `@uo3/rules`: проверяется `stealthArmorRating <= 15` и бросок шанса; при успехе начисляется `floor(stealthTenths / 100)` шагов, при провале `Hidden` сбрасывается.
   4. После завершения шага проверяются соседи в радиусе `<= 2` тайлов на пассивный `Detecting Hidden`.
 - **Обоснование**: Скрытное движение в UO:R жёстко привязано к каждому дискретному шагу сетки. Обработка внутри `checkMovement` исключает гонки состояний между сетевым тиком движения и тиком навыков.
 - **Отвергнутые альтернативы**:
@@ -84,7 +84,7 @@
   - *Запрос в PostgreSQL `item_ledger` при каждом применении Forensic Evaluation*: нарушает запрет блокирующих I/O-запросов в тике симуляции.
 
 ### Decision 7: Трансформация речи призраков в `SpeechRouter` для `Spirit Speak`
-- **Выбор**: Встроить в `SpeechRouter` (P14) фильтр `formatGhostSpeech(text, seed)`: когда отправитель имеет `isDead == true`, маршрутизатор один раз генерирует детерминированную строку той же длины, заменяя непробельные символы на `'o'` или `'O'`. При рассылке пакета `OverheadSpeech` (опкод `0x0263`) по получателям в AOI сервер проверяет `recipient.isDead || recipient.hasActiveEffect('SpiritSpeak') || recipient.effectiveAccessLevel >= 2`: если условие истинно, отправляется оригинал `text`, иначе — замаскированная строка.
+- **Выбор**: Встроить в `SpeechRouter` (P14) фильтр `formatGhostSpeech(text, seed)`: когда отправитель имеет `isDead == true`, маршрутизатор один раз генерирует детерминированную строку той же длины, заменяя непробельные символы на `'o'` или `'O'`. При рассылке пакета `ServerSpeechEvent` (опкод P14 `0x0154`) по получателям в AOI сервер проверяет `recipient.isDead || recipient.hasActiveEffect('SpiritSpeak') || recipient.effectiveAccessLevel >= 2`: если условие истинно, отправляется оригинал `text`, иначе — замаскированная строка.
 - **Обоснование**: Серверная маскировка текста гарантирует, что клиент без активного `Spirit Speak` физически не получает текст призрака в сетевом пакете и не может прочитать его через инспектор трафика.
 - **Отвергнутые альтернативы**:
   - *Замена символов на стороне клиента*: позволяет легко прочитать речь любого призрака перехватом WebSocket-фрейма.
@@ -92,7 +92,7 @@
 ### Decision 8: Интеграция `Meditation` в тикер виталов и `Camping` в контроллер логаута
 - **Выбор**:
   - В `VitalRegenSystem` (P15) расчёт регенерации маны использует чистую функцию `computeManaRegenRateBp(int, meditationTenths, isMeditatingActive, hasBlockingEquipment)` из `@uo3/rules`. Любое событие движения, атаки, начала каста или экипировки предмета с `BlocksMeditation = true` синхронно сбрасывает флаг `isMeditatingActive = false`.
-  - Для `Camping` создаётся временная пространственная зона `CampZone` (`radius = 7`, `expiresAtTick = now + 1800 тиков`). Каждые 1000 мс таймер проверяет присутствие создателя и членов его партии в зоне вне боя; по достижении 30 с выставляется `campSecured = true`, который учитывается в `DisconnectPolicy` (P06/P08) для немедленной сериализации и выгрузки персонажа.
+  - Для `Camping` создаётся временная пространственная зона `CampZone` (`radius = 7`, `expiresAtTick = now + 1800 тиков`). Каждые 1000 мс таймер проверяет присутствие создателя (члены партии учитываются через порт `IPartyMembershipQuery`, реализация по умолчанию до P26 — пустой набор) в зоне вне боя; по достижении 30 с выставляется `campSecured = true`, который учитывается в `DisconnectPolicy` (P06/P08) для немедленной сериализации и выгрузки персонажа.
 - **Обоснование**: Прямая интеграция с существующими системами P15 и P06 сохраняет единый источник истины для виталов и жизненного цикла сессии.
 - **Отвергнутые альтернативы**:
   - *Отдельный таймер начисления маны для Meditation параллельно базовой регенерации*: приводит к дрейфу округления и двойным тикам регенерации.
@@ -108,7 +108,7 @@ flowchart TD
     UI_Stealth["StealthStepBadge & GhostAlphaShader"]
   end
 
-  subgraph Protocol["@uo3/protocol (0x02C0..0x02CF)"]
+  subgraph Protocol["@uo3/protocol (0x0290..0x02AF)"]
     P_Schema["MobileSchema (isMeditating, stealthSteps)"]
     P_Packets["UtilitySkillPackets (TypeBox)"]
   end
@@ -179,23 +179,23 @@ flowchart TD
 
 ## Сетевой протокол (`@uo3/protocol`) и модели данных (`@uo3/db`)
 
-### Новые опкоды `0x02C0..0x02CF`
+### Новые опкоды `0x0290..0x02AF`
 | Опкод | Направление | Имя пакета | Поля TypeBox | Назначение |
 |---|---|---|---|---|
-| `0x02C0` | S $\rightarrow$ C | `TrackingCategoryPromptPacket` | `sessionId: uint32` | Открытие меню выбора из 4 категорий Tracking |
-| `0x02C1` | C $\rightarrow$ S | `TrackingCategorySelectPacket` | `sessionId: uint32, category: uint8` | Выбор категории выслеживания игроком |
-| `0x02C2` | S $\rightarrow$ C | `TrackingTargetListPacket` | `sessionId: uint32, targets: Array<{ serial: uint32, name: string, dir: uint8, distBucket: uint8 }>` | Список обнаруженных целей в радиусе |
-| `0x02C3` | C $\rightarrow$ S | `TrackingTargetSelectPacket` | `sessionId: uint32, targetSerial: uint32` | Начало преследования выбранной цели |
-| `0x02C4` | S $\rightarrow$ C | `TrackingArrowUpdatePacket` | `active: boolean, targetSerial: uint32, targetX: uint16, targetY: uint16` | Обновление или скрытие стрелки следопыта |
-| `0x02C5` | S $\rightarrow$ C | `StealthStepUpdatePacket` | `stepsRemaining: uint8, isHidden: boolean` | Индикатор оставшихся скрытых шагов для владельца |
-| `0x02C6` | S $\rightarrow$ C | `AnimalLoreGumpPacket` | `serial: uint32, name: string, hits: uint16, maxHits: uint16, stam: uint16, maxStam: uint16, mana: uint16, maxMana: uint16, str: uint16, dex: uint16, int: uint16, ar: uint16, skills: Record<uint8, uint16>, dietMask: uint8, loyalty: uint8` | Данные для гампа `AnimalLoreGump` |
-| `0x02C7` | S $\rightarrow$ C | `LoreInspectionResultPacket` | `skillId: uint8, targetSerial: uint32, clilocId: uint32, args: string[], details?: Record<string, number \| string>` | Унифицированный ответ инспекций Anatomy/ArmsLore/ItemID/EvalInt/Forensics/TasteID |
-| `0x02C8` | S $\rightarrow$ C | `ContainerTrapStatePacket` | `containerSerial: uint32, trapDetected: boolean, trapType: uint8, triggered: boolean, damage?: uint16` | Индикация обнаружения или срабатывания ловушки |
-| `0x02C9` | S $\rightarrow$ C | `BardEffectStatePacket` | `targetSerial: uint32, effectKind: 'Pacified' \| 'Provoked' \| 'Discorded', active: boolean, penaltyBp?: uint16, durationMs?: uint32` | Визуально-звуковой статус бардовского эффекта |
-| `0x02CA` | S $\rightarrow$ C | `CartographyMenuPromptPacket` | `penSerial: uint32, availableCharts: uint8[]` | Открытие меню выбора создаваемой карты |
-| `0x02CB` | C $\rightarrow$ S | `CartographyCraftSelectPacket` | `penSerial: uint32, chartKind: uint8` | Запрос на рисование карты выбранного масштаба |
-| `0x02CC` | S $\rightarrow$ C | `MapDisplayGumpPacket` | `mapSerial: uint32, chartKind: uint8, facetId: uint8, bounds: { x1: uint16, y1: uint16, x2: uint16, y2: uint16 }, pin?: { x: uint16, y: uint16 }, decoded: boolean` | Открытие окна карты местности или клада |
-| `0x02CD` | S $\rightarrow$ C | `CampSecureStatusPacket` | `secured: boolean, campfireSerial: uint32, remainingSeconds: uint8` | Уведомление о статусе безопасности лагеря |
+| `0x0290` | S $\rightarrow$ C | `TrackingCategoryPromptPacket` | `sessionId: uint32` | Открытие меню выбора из 4 категорий Tracking |
+| `0x0291` | C $\rightarrow$ S | `TrackingCategorySelectPacket` | `sessionId: uint32, category: uint8` | Выбор категории выслеживания игроком |
+| `0x0292` | S $\rightarrow$ C | `TrackingTargetListPacket` | `sessionId: uint32, targets: Array<{ serial: uint32, name: string, dir: uint8, distBucket: uint8 }>` | Список обнаруженных целей в радиусе |
+| `0x0293` | C $\rightarrow$ S | `TrackingTargetSelectPacket` | `sessionId: uint32, targetSerial: uint32` | Начало преследования выбранной цели |
+| `0x0294` | S $\rightarrow$ C | `TrackingArrowUpdatePacket` | `active: boolean, targetSerial: uint32, targetX: uint16, targetY: uint16` | Обновление или скрытие стрелки следопыта |
+| `0x0295` | S $\rightarrow$ C | `StealthStepUpdatePacket` | `stepsRemaining: uint8, isHidden: boolean` | Индикатор оставшихся скрытых шагов для владельца |
+| `0x0296` | S $\rightarrow$ C | `AnimalLoreGumpPacket` | `serial: uint32, name: string, hits: uint16, maxHits: uint16, stam: uint16, maxStam: uint16, mana: uint16, maxMana: uint16, str: uint16, dex: uint16, int: uint16, ar: uint16, skills: Record<uint8, uint16>, dietMask: uint8, loyalty: uint8` | Данные для гампа `AnimalLoreGump` |
+| `0x0297` | S $\rightarrow$ C | `LoreInspectionResultPacket` | `skillId: uint8, targetSerial: uint32, clilocId: uint32, args: string[], details?: Record<string, number \| string>` | Унифицированный ответ инспекций Anatomy/ArmsLore/ItemID/EvalInt/Forensics/TasteID |
+| `0x0298` | S $\rightarrow$ C | `ContainerTrapStatePacket` | `containerSerial: uint32, trapDetected: boolean, trapType: uint8, triggered: boolean, damage?: uint16` | Индикация обнаружения или срабатывания ловушки |
+| `0x0299` | S $\rightarrow$ C | `BardEffectStatePacket` | `targetSerial: uint32, effectKind: 'Pacified' \| 'Provoked' \| 'Discorded', active: boolean, penaltyBp?: uint16, durationMs?: uint32` | Визуально-звуковой статус бардовского эффекта |
+| `0x029A` | S $\rightarrow$ C | `CartographyMenuPromptPacket` | `penSerial: uint32, availableCharts: uint8[]` | Открытие меню выбора создаваемой карты |
+| `0x029B` | C $\rightarrow$ S | `CartographyCraftSelectPacket` | `penSerial: uint32, chartKind: uint8` | Запрос на рисование карты выбранного масштаба |
+| `0x029C` | S $\rightarrow$ C | `MapDisplayGumpPacket` | `mapSerial: uint32, chartKind: uint8, facetId: uint8, bounds: { x1: uint16, y1: uint16, x2: uint16, y2: uint16 }, pin?: { x: uint16, y: uint16 }, decoded: boolean` | Открытие окна карты местности или клада |
+| `0x029D` | S $\rightarrow$ C | `CampSecureStatusPacket` | `secured: boolean, campfireSerial: uint32, remainingSeconds: uint8` | Уведомление о статусе безопасности лагеря |
 
 ### Расширение схемы БД PostgreSQL 17 (`@uo3/db`)
 1. В таблице `world_items` (контейнеры, карты и инструменты в JSONB `props` + типизированные колонки):
@@ -265,7 +265,7 @@ stateDiagram-v2
 
 1. **Схема БД (`@uo3/db`)**: создать миграцию Drizzle `0022_utility_skills.sql`, добавляющую поля замков/ловушек/карт и поля гильдии воров в `character_pvp_states`. Все новые колонки имеют безопасные значения по умолчанию (`DEFAULT FALSE` / `'None'` / `0`), что обеспечивает обратную совместимость с существующими шардами.
 2. **Контент (`@uo3/content`)**: добавить YAML-реестры `stealth-armor-ratings.yaml`, `bard-instruments.yaml`, `cartography-charts.yaml` и обновить шаблоны сундуков параметрами `lockLevelTenths` и `trapType`.
-3. **Пакеты ядра (`@uo3/domain`, `@uo3/rules`, `@uo3/protocol`)**: опубликовать типы, чистые функции 23 навыков и кодеки пакетов `0x02C0..0x02CD`.
+3. **Пакеты ядра (`@uo3/domain`, `@uo3/rules`, `@uo3/protocol`)**: опубликовать типы, чистые функции 23 навыков и кодеки пакетов `0x0290..0x029D`.
 4. **Сервер и клиент (`apps/game-server`, `apps/client`)**: подключить обработчики в `SkillUseIntent`, хук `Stealth` в `MovementController`, фильтр `StateView` и клиентские гампы.
 
 ## Open Questions

@@ -46,7 +46,7 @@
   - *Отказ от кэша в памяти (чтение БД на каждый тик):* несовместимо с ADR-006/ADR-008 и тиком 20 Гц.
 
 ### D3. Fencing-эпохи владения партициями в PostgreSQL (`partition_leases`) против split-brain (ADR-007, ADR-008, ADR-012)
-- **Выбор:** Вводится таблица `partition_leases (shard_id, partition_id, partition_epoch, owner_node_id, lease_expires_at, facet, bounds_json)`. Перед гидратацией `PartitionFencingService` атомарно захватывает аренду (`INSERT ... ON CONFLICT DO UPDATE ... WHERE lease_expires_at <= now() OR owner_node_id = $node RETURNING partition_epoch`), инкрементируя `partition_epoch` на `+1`, и продлевает её каждые `5` с (TTL `15` с). Каждая SQL-транзакция фонового flush и каждая критическая транзакция партиции в самом начале проверяет `SELECT partition_epoch FROM partition_leases WHERE shard_id = $1 AND partition_id = $2 FOR KEY SHARE` и сравнивает с локальной эпохой процесса. При несовпадении транзакция немедленно откатывается с `PERSIST_FENCING_TOKEN_STALE`, а процесс переводит комнату в аварийную остановку.
+- **Выбор:** Вводится таблица `partition_leases (shard_id, partition_id, partition_epoch, owner_node_id, lease_expires_at, facet, bounds_json)`. Перед гидратацией `PartitionFencingService` атомарно захватывает аренду (`INSERT ... ON CONFLICT DO UPDATE ... WHERE lease_expires_at <= now() OR owner_node_id = $node RETURNING partition_epoch`), инкрементируя `partition_epoch` на `+1`, и продлевает её каждые `5` с (TTL `15` с). Каждая SQL-транзакция фонового flush и каждая критическая транзакция партиции в самом начале проверяет `SELECT partition_epoch FROM partition_leases WHERE shard_id = $1 AND partition_id = $2 FOR KEY SHARE` и сравнивает с локальной эпохой процесса. При несовпадении транзакция немедленно откатывается с `PERSIST_FENCING_TOKEN_STALE`, а процесс переводит комнату в аварийную остановку, закрывая клиентские подключения кодом `4117` (`WS_CLOSE_EPOCH_FENCED`) из PROTOCOL_REGISTRY.
 - **Обоснование:** Valkey-лок сам по себе не защищает PostgreSQL от «зомби-процесса», застрявшего в GC-паузе или сетевом разделении: старый процесс может проснуться и перезаписать свежие данные нового владельца. Проверка монотонной `partition_epoch` прямо внутри PostgreSQL-транзакции гарантирует строгую сериализуемость владения партицией и готова к мульти-партиционному P32 без доработок.
 - **Отвергнутые альтернативы:**
   - *Распределённый Redlock только в Valkey:* небезопасен без fencing-токена на стороне хранилища данных (классическая проблема Kleppmann).
@@ -538,21 +538,21 @@ flowchart TD
 
 | Метод и путь | Доступ (P04) | 2FA | Назначение | Коды ответа |
 |---|---|---|---|---|
-| `GET /v1/admin/shards/:shardId/persistence/status` | `GameMaster+` | — | Статус персистентности, `flushLagMs`, `partitionEpoch`, `dirtyEntityCount`, режим `read_only_degraded` | `200`, `403`, `404` |
-| `POST /v1/admin/shards/:shardId/persistence/flush` | `Administrator+` | Recent 2FA | Внеочередной flush мира (`force?: boolean`, cooldown `5` с) | `200`, `403`, `404`, `429`, `503` |
-| `GET /v1/admin/shards/:shardId/persistence/ledger` | `GameMaster+` | — | Поиск в `item_ledger` по `characterSerial`, `accountId`, `txId`, `txType`, `from`/`to` с курсорной пагинацией | `200`, `400`, `403`, `404` |
-| `GET /v1/admin/shards/:shardId/persistence/ledger/items/:itemSerial/lineage` | `GameMaster+` | — | Полный граф происхождения предмета и его `SPLIT`/`MERGE`-потомков (p95 ≤ `200` мс) | `200`, `403`, `404` |
-| `GET /v1/admin/shards/:shardId/persistence/backups` | `GameMaster+` | — | Каталог снапшотов, статус `verification_status`, доступное окно PITR `[earliest, latest]` | `200`, `403`, `404` |
-| `GET /v1/admin/shards/:shardId/persistence/backups/:backupId` | `GameMaster+` | — | Детали снапшота (без ключевого материала и PII) | `200`, `403`, `404` |
-| `POST /v1/admin/shards/:shardId/persistence/backups` | `Administrator+` | Recent 2FA | Запуск внеочередного согласованного снапшота с `reason` | `202`, `400`, `403`, `409` |
-| `POST /v1/admin/shards/:shardId/persistence/backups/:backupId/verify` | `Administrator+` | — | Ручной запуск restore-drill верификации снапшота | `202`, `403`, `404`, `409` |
-| `POST /v1/admin/shards/:shardId/persistence/restore-points` | `Administrator+` | Recent 2FA | Создание именованной точки восстановления + flush | `201`, `400`, `403`, `409` |
-| `POST /v1/admin/shards/:shardId/persistence/rollbacks/character/preview` | `GameMaster+` | — | Dry-run предпросмотр отката персонажа к `targetTimestamp`, возврат `diff`, `conflicts`, `previewToken` | `200`, `400`, `403`, `404`, `422` |
-| `POST /v1/admin/shards/:shardId/persistence/rollbacks/character/execute` | `Administrator+` | Recent 2FA | Атомарное выполнение отката персонажа по `previewToken` и `reason` | `200`, `400`, `403`, `404`, `409`, `422` |
-| `POST /v1/admin/shards/:shardId/persistence/rollbacks/item/preview` | `GameMaster+` | — | Dry-run предпросмотр восстановления/отката предмета с проверкой `SPLIT`-потомков | `200`, `400`, `403`, `404` |
-| `POST /v1/admin/shards/:shardId/persistence/rollbacks/item/execute` | `Administrator+` | Recent 2FA | Выполнение восстановления предмета (`strict_no_conflict` \| `reclaim_original` \| `reissue_new_serial`) | `200`, `400`, `403`, `404`, `409` |
-| `GET /v1/admin/shards/:shardId/persistence/restore-operations` | `GameMaster+` | — | История выполненных операций восстановления | `200`, `403`, `404` |
-| `POST /v1/admin/shards/:shardId/persistence/restore-operations/:operationId/undo` | `Administrator+` | Recent 2FA | Отмена ошибочного отката из `before_snapshot` (в окне `30` дней) | `200`, `403`, `404`, `409`, `410` |
+| `GET /api/v1/admin/shards/:shardId/persistence/status` | `GameMaster+` | — | Статус персистентности, `flushLagMs`, `partitionEpoch`, `dirtyEntityCount`, режим `read_only_degraded` | `200`, `403`, `404` |
+| `POST /api/v1/admin/shards/:shardId/persistence/flush` | `Administrator+` | Recent 2FA | Внеочередной flush мира (`force?: boolean`, cooldown `5` с) | `200`, `403`, `404`, `429`, `503` |
+| `GET /api/v1/admin/shards/:shardId/persistence/ledger` | `GameMaster+` | — | Поиск в `item_ledger` по `characterSerial`, `accountId`, `txId`, `txType`, `from`/`to` с курсорной пагинацией | `200`, `400`, `403`, `404` |
+| `GET /api/v1/admin/shards/:shardId/persistence/ledger/items/:itemSerial/lineage` | `GameMaster+` | — | Полный граф происхождения предмета и его `SPLIT`/`MERGE`-потомков (p95 ≤ `200` мс) | `200`, `403`, `404` |
+| `GET /api/v1/admin/shards/:shardId/persistence/backups` | `GameMaster+` | — | Каталог снапшотов, статус `verification_status`, доступное окно PITR `[earliest, latest]` | `200`, `403`, `404` |
+| `GET /api/v1/admin/shards/:shardId/persistence/backups/:backupId` | `GameMaster+` | — | Детали снапшота (без ключевого материала и PII) | `200`, `403`, `404` |
+| `POST /api/v1/admin/shards/:shardId/persistence/backups` | `Administrator+` | Recent 2FA | Запуск внеочередного согласованного снапшота с `reason` | `202`, `400`, `403`, `409` |
+| `POST /api/v1/admin/shards/:shardId/persistence/backups/:backupId/verify` | `Administrator+` | — | Ручной запуск restore-drill верификации снапшота | `202`, `403`, `404`, `409` |
+| `POST /api/v1/admin/shards/:shardId/persistence/restore-points` | `Administrator+` | Recent 2FA | Создание именованной точки восстановления + flush | `201`, `400`, `403`, `409` |
+| `POST /api/v1/admin/shards/:shardId/persistence/rollbacks/character/preview` | `GameMaster+` | — | Dry-run предпросмотр отката персонажа к `targetTimestamp`, возврат `diff`, `conflicts`, `previewToken` | `200`, `400`, `403`, `404`, `422` |
+| `POST /api/v1/admin/shards/:shardId/persistence/rollbacks/character/execute` | `Administrator+` | Recent 2FA | Атомарное выполнение отката персонажа по `previewToken` и `reason` | `200`, `400`, `403`, `404`, `409`, `422` |
+| `POST /api/v1/admin/shards/:shardId/persistence/rollbacks/item/preview` | `GameMaster+` | — | Dry-run предпросмотр восстановления/отката предмета с проверкой `SPLIT`-потомков | `200`, `400`, `403`, `404` |
+| `POST /api/v1/admin/shards/:shardId/persistence/rollbacks/item/execute` | `Administrator+` | Recent 2FA | Выполнение восстановления предмета (`strict_no_conflict` \| `reclaim_original` \| `reissue_new_serial`) | `200`, `400`, `403`, `404`, `409` |
+| `GET /api/v1/admin/shards/:shardId/persistence/restore-operations` | `GameMaster+` | — | История выполненных операций восстановления | `200`, `403`, `404` |
+| `POST /api/v1/admin/shards/:shardId/persistence/restore-operations/:operationId/undo` | `Administrator+` | Recent 2FA | Отмена ошибочного отката из `before_snapshot` (в окне `30` дней) | `200`, `403`, `404`, `409`, `410` |
 
 #### Контракт критической транзакции (`packages/protocol/src/p08/critical-tx.schema.ts`)
 ```ts
@@ -596,7 +596,7 @@ export interface CriticalTxRequest {
 - `uo3.audit.events` — единый поток аудита для P29 (`persistence.manual_flush`, `persistence.staff_item_grant`, `persistence.staff_item_modify`, `persistence.staff_item_delete`, `persistence.backup_created`, `persistence.restore_point_created`, `persistence.character_rollback`, `persistence.item_rollback`, `persistence.rollback_undone`, `persistence.quarantine_detected`, `persistence.conservation_violation`).
 
 #### Сводный каталог кодов ошибок P08 (`packages/protocol/src/p08/errors.ts`)
-- World Store & Fencing: `PERSIST_SERIAL_COLLISION` (409), `PERSIST_VERSION_CONFLICT` (409), `PERSIST_OWNERSHIP_INVARIANT_VIOLATION` (422), `PERSIST_CONTAINER_CYCLE_DETECTED` (422), `PERSIST_CONTAINER_DEPTH_EXCEEDED` (422), `PERSIST_SERIAL_RANGE_EXHAUSTED` (507), `PERSIST_FENCING_TOKEN_STALE` (409), `PERSIST_PARTITION_LEASE_HELD` (409), `PERSIST_WORLD_LOAD_CORRUPTED` (500), `PERSIST_UNSUPPORTED_SCHEMA_VERSION` (500), `PERSIST_WORLD_NOT_READY` (503), `PERSIST_CHARACTER_UNAVAILABLE` (404).
+- World Store & Fencing: `PERSIST_SERIAL_COLLISION` (409), `PERSIST_VERSION_CONFLICT` (409), `PERSIST_OWNERSHIP_INVARIANT_VIOLATION` (422), `PERSIST_CONTAINER_CYCLE_DETECTED` (422), `PERSIST_CONTAINER_DEPTH_EXCEEDED` (422), `PERSIST_SERIAL_RANGE_EXHAUSTED` (507), `PERSIST_FENCING_TOKEN_STALE` (409), `PERSIST_PARTITION_LEASE_HELD` (409), `PERSIST_WORLD_LOAD_CORRUPTED` (500), `PERSIST_UNSUPPORTED_SCHEMA_VERSION` (500), `PERSIST_WORLD_NOT_READY` (503; для WebSocket-входа — код закрытия `4128` `WS_CLOSE_PARTITION_NOT_READY`), `PERSIST_CHARACTER_UNAVAILABLE` (404).
 - Incremental Save: `PERSIST_HANDOFF_FLUSH_FAILED` (503), `PERSIST_SERVICE_DEGRADED` (503), `PERSIST_FLUSH_COOLDOWN_ACTIVE` (429).
 - Critical Transactions: `PERSIST_ENTITY_TX_LOCKED` (409), `PERSIST_TX_IDEMPOTENCY_MISMATCH` (422), `PERSIST_CONSERVATION_VIOLATION` (422), `PERSIST_TX_TIMEOUT` (504), `PERSIST_TX_CONFLICT` (409), `PERSIST_TX_UNAVAILABLE` (503), `PERSIST_AUDIT_REASON_REQUIRED` (400).
 - Backup & Restore: `PERSIST_PITR_WINDOW_UNAVAILABLE` (422), `PERSIST_RESTORE_POINT_EXISTS` (409), `PERSIST_ROLLBACK_PREVIEW_REQUIRED` (422), `PERSIST_CHARACTER_ONLINE_BLOCKED` (409), `PERSIST_RESTORE_DUPE_CONFLICT` (409), `PERSIST_ROLLBACK_UNDO_EXPIRED` (410), `PERSIST_RECONCILIATION_FAILED` (500).
@@ -655,7 +655,7 @@ export interface CriticalTxRequest {
 6. **Расчёт экспоненциального backoff с детерминированным jitter (через `SeededRng`):**
    - `baseDelayMs = min(30_000, 1_000 * (2 ** min(attempt, 5)))`
    - `jitterMs = rng.nextInt(0, Math.floor(baseDelayMs * 0.25))`
-   - `nextRetryAtMs = clock.nowMs() + baseDelayMs + jitterMs`.
+   - `nextRetryAtMs = clock.nowMs() + min(30_000, baseDelayMs + jitterMs)` (итоговая задержка всегда в диапазоне `1..30` с).
 
 ## Risks / Trade-offs
 
@@ -680,7 +680,7 @@ export interface CriticalTxRequest {
    - В локальном Docker Compose (`infra/postgres/wal-archiving.conf`) включается WAL-архивация в локальный том/S3-совместимый контейнер для тестирования PITR и restore-drill в CI.
 3. **Порядок развёртывания и откат:**
    - Порядок: (1) применить миграцию БД `0008` → (2) развернуть `apps/api` с `AdminPersistenceModule` → (3) планово перевести `apps/game-server` в draining, дождаться остановки, развернуть версию P08 с `WorldPersistenceModule` → (4) выполнить контрольный ручной снапшот и создать named restore point `post-p08-deploy`.
-   - Откат кода на версию P07 возможен без потери таблиц P04/P05, однако после накопления боевых данных мира откат к in-memory режиму P07 не применяется — вместо него используется PITR к `pre-p08-deploy` или исправленный релиз с сохранением `schema_version`.
+   - Откат кода на версию P07 возможен без потери таблиц P04/P05, однако после накопления боевых данных мира откат к in-memory режиму P07 не применяется — вместо него используется PITR к именованной точке `pre-p08-deploy` (создаётся оператором вручную через `SELECT pg_create_restore_point('pre-p08-deploy')` перед шагом (1), т.к. REST API точек восстановления появляется только вместе с P08) или исправленный релиз с сохранением `schema_version`.
 
 ## Open Questions
 

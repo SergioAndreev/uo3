@@ -5,10 +5,10 @@
 До фазы P32 архитектура UO3 поддерживает один процесс `apps/game-server`, обслуживающий фасет в одной комнате `WorldPartitionRoom` (P06), единый экземпляр `ShardHubRoom` и один инстанс `apps/api`. В предыдущих фазах были сознательно заложены все необходимые точки расширения для P32:
 - **P03**: срезы `WorldDataModule` с буфером `≥ 32` тайлов, `WorldDataVersionSchema` (SHA-256) и `DynamicTileProvider`.
 - **P05**: `GameTicketVerifier` и ключи присутствия/партиций в Valkey 8.
-- **P06**: `WorldPartitionRoom` (20 Гц, 50 мс/тик, сектора 16×16) и `ShardHubRoom`, коды закрытия WS `4000..4014`.
+- **P06**: `WorldPartitionRoom` (20 Гц, 50 мс/тик, сектора 16×16) и `ShardHubRoom`, коды закрытия WS `4100..4199` (нормативно — `docs/PROTOCOL_REGISTRY.md`).
 - **P07**: `VisibilityEntitySource` с буфером `≥ 32` тайлов, `@colyseus/schema` v3 `StateView` (AOI 18/24/31).
 - **P08**: колонка `partition_epoch` для fencing-записей, `CriticalTxCoordinator` (RPO=0), `item_ledger`, handoff-flush.
-- **P12**: опкод `0x0106` (`PartitionHandoffTicket`) и `TimeCreditTracker` (100/200/400 мс, джиттер 150 мс, карантин 1000 мс).
+- **P12**: опкод `0x0105` (`PartitionHandoffTicket`) и `TimeCreditTracker` (100/200/400 мс, джиттер 150 мс, карантин 1000 мс).
 - **P13–P26**: `HeldItem` (30 с), `Secure Trade`, `AggressorRecord` (120 с), `SwingTimer`, `MultiSpatialIndex` (31 тайл), тороидальный океан кораблей `X=0↔5119`, регионы 16×16, питомцы `FOLLOW`/`GUARD`, гильдии/пати.
 - **P30–P31**: 2PC горячая перезагрузка `ContentSnapshot` через NATS JetStream и сверка инвариантов `item_ledger`.
 
@@ -27,7 +27,7 @@
 - Межшардовый перенос персонажей между разными шардами и базами данных.
 - Автоматическое геометрическое переразбиение границ (Voronoi/динамический quadtree) в реальном времени без подтверждения топологии.
 - Multi-region active-active репликация PostgreSQL 17 и production IaC/Kubernetes Helm-чарты (реализуются в P33).
-- Итоговая нагрузочная сертификация на 5000+ ботах (реализуется в P34; в P32 создаются базовые нагрузочные и хаос-сценарии).
+- Итоговая нагрузочная сертификация на 5000+ ботах (реализуется в P35; в P32 создаются базовые нагрузочные и хаос-сценарии).
 
 ## Decisions
 
@@ -49,7 +49,7 @@
 - **Отвергнутые альтернативы**: Active-active репликация пограничных сущностей с CRDT — неприменима к строгим игровым инвариантам UO:R (атомарное списание HP, смерть, лут, кража, инвентарь). Уменьшение буфера до 18 тайлов — ломает видимость мульти/домов (31 тайл, P23) и расширенный AOI (24 тайла).
 
 ### Decision 4: Четырёхфазный атомарный Handoff с предпрогревом и `partitionEpoch` Fencing
-- **Выбор**: Протокол перехода состоит из предварительного прогрева транспорта клиентом (`≤ 24` тайла) и 4-фазного атомарного переключения (`Freeze → Persist → Transfer → Activate`) с подписанным EdDSA одноразовым билетом `PartitionHandoffTicket` (`0x0106`, TTL 5000 мс), буферизацией до 4 шагов движения на время паузы (p99 ≤ 150 мс, таймаут 2000 мс) и привязкой к `partitionEpoch` (P08). Перед фазой `Freeze` выполняются анти-дюп инварианты: возврат `HeldItem` (P13) и отмена `Secure Trade` (P21).
+- **Выбор**: Протокол перехода состоит из предварительного прогрева транспорта клиентом (`≤ 24` тайла) и 4-фазного атомарного переключения (`Freeze → Persist → Transfer → Activate`) с подписанным EdDSA одноразовым билетом `PartitionHandoffTicket` (`0x0105`, TTL 5000 мс), буферизацией до 4 шагов движения на время паузы (p99 ≤ 150 мс, таймаут 2000 мс) и привязкой к `partitionEpoch` (P08). Перед фазой `Freeze` выполняются анти-дюп инварианты: возврат `HeldItem` (P13) и отмена `Secure Trade` (P21).
 - **Обоснование**: Гарантирует RPO=0 при переходе, исключает гонку «вещь осталась в старой партиции и появилась в новой» и позволяет безопасно откатиться на исходную партицию при сбое приёмника без разрыва сессии игрока.
 - **Отвергнутые альтернативы**: «Ленивый» handoff через дисконнект и переподключение через `apps/api` — вызывает паузу 1–3 с, сброс UI, мигание сцены и разрыв боя/движения. Передача состояния исключительно по NATS без фиксации чекпоинта в PG17 — риск потери предметов и дублирования при одновременном краше источника и приёмника.
 
@@ -130,30 +130,30 @@ sequenceDiagram
     participant P2 as Target Partition (P2)
 
     Note over C,P1: Игрок входит в зону <= 24 тайла от границы
-    P1->>C: 0x0320 HandoffPrepareNotice (P2 endpoint, topologyVer)
+    P1->>C: 0x03A0 HandoffPrepareNotice (P2 endpoint, topologyVer)
     C->>P2: Standby TLS/WS Pre-warm (<= 500 ms)
-    C->>P1: 0x0321 HandoffAckClient (ready=true)
+    C->>P1: 0x03A1 HandoffAckClient (ready=true)
 
     Note over C,P1: Шаг пересекает границу X >= maxX (Фаза 1: Freeze)
     P1->>P1: Bounce HeldItem + Cancel SecureTrade + Freeze + Buffer <= 4 WalkReq
     P1->>PG: Handoff Flush (CriticalTx, partitionEpoch fencing) + Mark handoffId
     P1->>BUS: Publish HandoffEnvelope (state, timers, credits, groupHandoffId)
-    P1->>C: 0x0106 PartitionHandoffTicket (signed EdDSA, TTL 5000 ms)
+    P1->>C: 0x0105 PartitionHandoffTicket (signed EdDSA, TTL 5000 ms)
 
     Note over C,P2: Фаза 2-3: Transfer & Activate (цель p99 <= 150 ms)
-    C->>P2: 0x0322 HandoffResumeRequest (ticket, walkSeq, clientTick)
+    C->>P2: 0x03A2 HandoffResumeRequest (ticket, walkSeq, clientTick)
     P2->>PG: Verify handoffId (single-use) & Epoch Fencing
     P2->>P2: Load State + Apply Buffered Walks + Activate on next 50 ms tick
-    P2->>C: 0x0323 HandoffCompleteSync (newPartitionId, epoch, walkSeqBase)
+    P2->>C: 0x03A3 HandoffCompleteSync (newPartitionId, epoch, walkSeqBase)
     P2->>BUS: Publish HandoffCommitted (handoffId, targetEpoch)
 
     alt Успешное подтверждение <= 2000 ms (Фаза 4: Cleanup)
         BUS->>P1: HandoffCommitted
         P1->>P1: Remove Authoritative -> Convert to Ghost if <= 32 tiles
-        P1->>C: Close Old WS (Code 4015 HANDOFF_COMPLETED)
+        P1->>C: Close Old WS (Code 4114 WS_CLOSE_HANDOFF_COMPLETE)
     else Таймаут > 2000 ms или ERR_PARTITION_OVERLOADED
         P1->>P1: Abort Handoff + Increment Local Guard + Unfreeze at Safe Tile
-        P1->>C: 0x0324 HandoffRollbackNotice (reason, safePos)
+        P1->>C: 0x03A4 HandoffRollbackNotice (reason, safePos)
         P1->>BUS: Publish HandoffAborted (handoffId)
     end
 ```
@@ -192,8 +192,8 @@ stateDiagram-v2
    - `src/scaling/placement-scoring.ts`: детерминированная функция расчёта `PlacementScore(node, partition)` и детектор перегрузки (`OverloadEvaluator`).
    - `src/scaling/handoff-movement-carry.ts`: перенос `walkSequence` (`0..255`), `TimeCreditTracker` balance и остатка карантина (`quarantineRemainingMs`) без инфляции кредитов.
 3. **`@uo3/protocol`**:
-   - Расширение `0x0106` `PartitionHandoffTicket` (зарезервирован в P12) и новые опкоды `0x0320..0x0327` (TypeBox-схемы).
-   - Коды закрытия WS: `4015` (`HANDOFF_COMPLETED`), `4016` (`PARTITION_DRAINING`), `4017` (`PARTITION_EPOCH_FENCED`), `4018` (`HANDOFF_TOKEN_INVALID`).
+   - Расширение `0x0105` `PartitionHandoffTicket` (зарезервирован в P12) и новые опкоды `0x03A0..0x03A7` (TypeBox-схемы).
+   - Коды закрытия WS (P32 новых кодов не вводит, использует нормативные коды `docs/PROTOCOL_REGISTRY.md`): `4114` (`WS_CLOSE_HANDOFF_COMPLETE`, перенаправление), `4115` (`WS_CLOSE_HANDOFF_FAILED`, реконнект), `4116` (`WS_CLOSE_PARTITION_DRAINING`, перенаправление), `4117` (`WS_CLOSE_EPOCH_FENCED`, реконнект), `4118` (`WS_CLOSE_SPLIT_MERGE_RECONNECT`, реконнект); невалидный/повторно использованный билет перехода или входа — `4101` (`WS_CLOSE_INVALID_TICKET`).
    - Схемы NATS (`src/bus/*.ts`): `GhostDeltaBatchSchema`, `GhostKeyframeSchema`, `GhostDespawnSchema`, `GhostResyncRequestSchema`, `CrossPartitionCommandSchema`, `CrossPartitionSpeechSchema`, `CrossPartitionDynamicTileSchema`, `HandoffEnvelopeSchema`, `ClusterNodeHeartbeatSchema`, `ClusterControlCommandSchema`.
    - Расширение `@colyseus/schema` v3 (`MobileSchema`, `GroundItemSchema`, `MultiSchema`): поля `@type('boolean') isGhost`, `@type('string') ownerPartitionId`, `@type('uint32') ghostEpoch`.
 4. **`@uo3/db`**:
@@ -211,13 +211,13 @@ stateDiagram-v2
    - `CrossPartitionIntentRouter`: перехват намерений по призракам (бой, магия, AOE, речь 1/15/18, осмотр, взаимодействие), проксирование на авторитативную партицию, обработка `ERR_ENTITY_MOVED_PARTITION` (≤ 1 хоп).
    - `SeamlessHandoffCoordinator`: предпрогрев, выпуск/валидация EdDSA билетов, 4-фазный автомат, буфер ≤ 4 шагов, анти-дюп (возврат `HeldItem`, отмена `Secure Trade`), сборка пакетов `groupHandoffId` (питомцы `FOLLOW`/`GUARD`, корабли с экипажем), детерминированный откат и защита от late commit.
    - `ClusterPlacementAgent` & `PlacementCoordinator`: регистрация узла, хартбиты, выбор лидера координации, аренды Valkey + PG fencing, `GracefulDrainController` (50 игроков/с), `FailoverManager` (RTO ≤ 15 с), `OverloadDetector`.
-   - `DistributedShardHubRoom`: масштабируемый хаб с NATS fan-out для чата/гильдий/пати/объявлений, Valkey presence и плавным redirect `0x0326`.
+   - `DistributedShardHubRoom`: масштабируемый хаб с NATS fan-out для чата/гильдий/пати/объявлений, Valkey presence и плавным redirect `0x03A6`.
 2. **`apps/api`**:
    - `PartitionRoutingService`: кэшированный резолв `(facetId, x, y) → partitionId → node/room` с возвратом `503` + `ERR_PARTITION_UNAVAILABLE` + `Retry-After` при `STARTING`/`FAILING_OVER`.
    - `ClusterAdminController` (`/api/v1/admin/cluster/*`): управление топологией, валидация/запуск `split`/`merge`, `POST /nodes/:nodeId/drain`, просмотр метрик и графа партиций (доступ через `AccessLevel >= 5` + аудит P29).
    - Stateless shutdown hook (`SIGTERM` → `/health/ready` 503 → 30 с drain).
 3. **`apps/client`**:
-   - `HandoffConnectionManager` в `GameSessionConnector` (P09): обработка `0x0320` (standby WS pre-warm ≤ 500 мс, автозакрытие через 10 с вне зоны), `0x0106` (переключение на standby и отправка `0x0322`), `0x0323` (активация и дедупликация сущностей без сброса `WorldViewportHost` P10 и открытых UI-окон P14), `0x0324` (откат), `0x0326` (реконнект хаба с джиттером 0..3000 мс).
+   - `HandoffConnectionManager` в `GameSessionConnector` (P09): обработка `0x03A0` (standby WS pre-warm ≤ 500 мс, автозакрытие через 10 с вне зоны), `0x0105` (переключение на standby и отправка `0x03A2`), `0x03A3` (активация и дедупликация сущностей без сброса `WorldViewportHost` P10 и открытых UI-окон P14), `0x03A4` (откат), `0x03A6` (реконнект хаба с джиттером 0..3000 мс).
 4. **`apps/admin`**:
    - Экран «Кластер и партиции»: 2D-карта границ партиций поверх мини-карты фасетов с цветовой индикацией нагрузки тика, таблица узлов (`HEALTHY`/`SUSPECT`/`DRAINING`/`DEAD`), кнопки `Drain`, `Migrate`, `Split/Merge` с предпросмотром конфликтов домов.
 5. **`apps/bot-client`**:
@@ -329,7 +329,7 @@ RETURNING partition_epoch;
 - `uo3:cluster:{shardId}:node:{nodeId}` (Hash, TTL `6000 ms`, обновляется каждые `2000 ms`): `status`, `wsEndpoint`, `cpuLoad`, `memFreeMb`, `rooms`, `players`, `tickP95Ms`, `tickP99Ms`, `eventLoopLagP99Ms`, `lastBeatMs`.
 - `uo3:cluster:{shardId}:lease:{partitionId}` (String JSON `{nodeId, epoch, roomId}`, TTL `8000 ms`, CAS-продление через Lua-скрипт каждые `2500 ms`).
 - `uo3:cluster:{shardId}:leader` (String `nodeId`, TTL `5000 ms`, лидер-координатор размещения и failover).
-- `uo3:handoff:used:{handoffId}` (`SET NX PX 300000`, одноразовая защита от replay билета `0x0106`).
+- `uo3:handoff:used:{handoffId}` (`SET NX PX 300000`, одноразовая защита от replay билета `0x0105`).
 - `uo3:presence:{shardId}:char:{serial}` (Hash, TTL `60 s`, обновляется атомарно при handoff без сброса online-флага): `accountId`, `partitionId`, `nodeId`, `hubReplicaId`, `guildId`, `partyId`, `online`.
 - `uo3:rebalance:cooldown:{shardId}:{partitionId}` (`SET NX PX 300000`, защита от частых миграций).
 
@@ -351,15 +351,15 @@ RETURNING partition_epoch;
 
 | Опкод | Направление | Имя сообщения | Ключевые поля TypeBox |
 |---|---|---|---|
-| `0x0106` | S → C | `PartitionHandoffTicket` | `handoffId`, `groupHandoffId?`, `fromPartitionId`, `toPartitionId`, `targetWsEndpoint`, `targetRoomId`, `targetEpoch`, `handoffToken` (EdDSA JWT), `issuedAtMs`, `expiresAtMs`, `spawnPos`, `reason`, `worldDataVersion`, `traceparent` |
-| `0x0320` | S → C | `HandoffPrepareNotice` | `targetPartitionId`, `targetWsEndpoint`, `targetEpoch`, `topologyVersion`, `distanceTiles`, `prewarmTtlMs` (10000) |
-| `0x0321` | C → S | `HandoffAckClient` | `targetPartitionId`, `targetEpoch`, `standbyReady: boolean`, `rttMs`, `errorCode?` |
-| `0x0322` | C → S | `HandoffResumeRequest` | `handoffId`, `handoffToken`, `lastConfirmedWalkSeq` (0..255), `bufferedWalks[]` (≤ 4), `clientTick`, `traceparent` |
-| `0x0323` | S → C | `HandoffCompleteSync` | `handoffId`, `newPartitionId`, `partitionEpoch`, `walkSeqBase`, `serverTick`, `worldTimeSync`, `transferredPetSerials[]`, `shipSerial?`, `activeEffectsHash` |
-| `0x0324` | S → C | `HandoffRollbackNotice` | `handoffId`, `reasonCode`, `safePos`, `walkSeqReset`, `serverTick` |
-| `0x0325` | S → C | `GhostBorderStateHint` | `partitionId`, `bounds`, `bufferTiles`, `neighbors[]` (debug/staff) |
-| `0x0326` | S → C | `ClusterTopologyNotice` | `kind: 'HUB_REDIRECT' \| 'SHARD_DRAIN'`, `newEndpoint`, `jitterMinMs`, `jitterMaxMs` |
-| `0x0327` | S → C | `PartitionTelemetryEvent` | `shardId`, `nodes[]`, `partitions[]`, `handoffsPerSec`, `busLagP99Ms` (для `apps/admin`) |
+| `0x0105` | S → C | `PartitionHandoffTicket` | `handoffId`, `groupHandoffId?`, `fromPartitionId`, `toPartitionId`, `targetWsEndpoint`, `targetRoomId`, `targetEpoch`, `handoffToken` (EdDSA JWT), `issuedAtMs`, `expiresAtMs`, `spawnPos`, `reason`, `worldDataVersion`, `traceparent` |
+| `0x03A0` | S → C | `HandoffPrepareNotice` | `targetPartitionId`, `targetWsEndpoint`, `targetEpoch`, `topologyVersion`, `distanceTiles`, `prewarmTtlMs` (10000) |
+| `0x03A1` | C → S | `HandoffAckClient` | `targetPartitionId`, `targetEpoch`, `standbyReady: boolean`, `rttMs`, `errorCode?` |
+| `0x03A2` | C → S | `HandoffResumeRequest` | `handoffId`, `handoffToken`, `lastConfirmedWalkSeq` (0..255), `bufferedWalks[]` (≤ 4), `clientTick`, `traceparent` |
+| `0x03A3` | S → C | `HandoffCompleteSync` | `handoffId`, `newPartitionId`, `partitionEpoch`, `walkSeqBase`, `serverTick`, `worldTimeSync`, `transferredPetSerials[]`, `shipSerial?`, `activeEffectsHash` |
+| `0x03A4` | S → C | `HandoffRollbackNotice` | `handoffId`, `reasonCode`, `safePos`, `walkSeqReset`, `serverTick` |
+| `0x03A5` | S → C | `GhostBorderStateHint` | `partitionId`, `bounds`, `bufferTiles`, `neighbors[]` (debug/staff) |
+| `0x03A6` | S → C | `ClusterTopologyNotice` | `kind: 'HUB_REDIRECT' \| 'SHARD_DRAIN'`, `newEndpoint`, `jitterMinMs`, `jitterMaxMs` |
+| `0x03A7` | S → C | `PartitionTelemetryEvent` | `shardId`, `nodes[]`, `partitions[]`, `handoffsPerSec`, `busLagP99Ms` (для `apps/admin`) |
 
 **Реестр кодов ошибок P32**:
 - Топология: `ERR_PARTITION_TOPOLOGY_GAP`, `ERR_PARTITION_TOPOLOGY_OVERLAP`, `ERR_PARTITION_BOUNDARY_UNALIGNED`, `ERR_MULTI_CROSSES_PARTITION_BORDER`, `ERR_TOPOLOGY_CUTS_EXISTING_HOUSE`, `ERR_PARTITION_BUFFER_TOO_SMALL`, `ERR_PARTITION_HYSTERESIS_INVALID`, `ERR_PARTITION_VERSION_MISMATCH`, `ERR_TOPOLOGY_CUTOVER_ABORTED`.
@@ -415,13 +415,13 @@ $$\text{PlacementScore}(n, p) = 0.40 \cdot (1 - \text{cpuLoad}_n) + 0.25 \cdot \
 ## Risks / Trade-offs
 
 - **[Дюп предметов при одновременном краше узла во время Handoff]** → Митигация: атомарный возврат `HeldItem` и отмена `Secure Trade` до фазы `Freeze`; фиксация чекпоинта и `partitionEpoch` fencing в PG17 в рамках `CriticalTxCoordinator` (RPO=0); автоматическая сверка `item_ledger` (P31) при failover.
-- **[Split-brain двух экземпляров одной партиции при сетевой сегментации]** → Митигация: двухуровневая защита — быстрые TTL-аренды в Valkey (8 с) + жёсткий `partitionEpoch` fencing в PG17. Изолированный узел физически не может зафиксировать ни одну запись в БД и при потере продления аренды немедленно отключает клиентов с кодом `4017`.
+- **[Split-brain двух экземпляров одной партиции при сетевой сегментации]** → Митигация: двухуровневая защита — быстрые TTL-аренды в Valkey (8 с) + жёсткий `partitionEpoch` fencing в PG17. Изолированный узел физически не может зафиксировать ни одну запись в БД и при потере продления аренды немедленно отключает клиентов с кодом `4117`.
 - **[Шторм трафика призраков при массовой битве (> 300 игроков) прямо на линии границы]** → Митигация: коалесцирование обновлений в рамках 50 мс тика, приоритетный токен-бакет 10 МБ/с (троттлинг предметов на земле до 2 Гц), кольцевой буфер с drop-stale и отсутствие блокировки основного игрового цикла 20 Гц.
 - **[Эффект «пинг-понга» на границе (злонамеренный или случайный бег взад-вперёд)]** → Митигация: зона предпрогрева 24 тайла (выход 28), полоса гистерезиса 2 тайла с `hysteresisCooldownMs = 1500 мс` и ограничение частоты переходов одного аккаунта в анти-чите (P31).
 - **[Задержка кросс-партиционного боя (лишние 10–30 мс на NATS-хоп)]** → Митигация: проверка LOS и дистанции выполняется мгновенно на стороне отправителя по 32-тайловому буферу (отсекая невалидные намерения локально), а боевая команда уходит напрямую по локальному LAN NATS кластеру (< 5 мс RTT), укладываясь в целевые ≤ 100 мс (2 тика).
-- **[Thundering herd при `Graceful Drain` или перезапуске реплики `ShardHubRoom`]** → Митигация: ограничение скорости миграции игроков на уровне 50 игроков/с для `Graceful Drain` и случайный джиттер переподключения 0..3000 мс для клиентов хаба (`0x0326`).
+- **[Thundering herd при `Graceful Drain` или перезапуске реплики `ShardHubRoom`]** → Митигация: ограничение скорости миграции игроков на уровне 50 игроков/с для `Graceful Drain` и случайный джиттер переподключения 0..3000 мс для клиентов хаба (`0x03A6`).
 - **[Рассинхронизация времени или динамических тайлов между узлами]** → Митигация: обязательный NTP/chrony на узлах (дрейф < 10 мс), привязка игрового времени к монотонному `shardEpochMs`, репликация `DynamicTileProvider` через персистентный JetStream с `GhostResync` при расхождении `seqNo`.
-- **[Рост сложности отладки багов, проходящих через 2–3 узла]** → Митигация: обязательный проброс W3C `traceparent` через WS-пакеты handoff (`0x0106`, `0x0322`) и заголовки NATS, таблица аудита `partition_handoff_logs` и детерминированный `MultiPartitionHarness` в `@uo3/test-kit`.
+- **[Рост сложности отладки багов, проходящих через 2–3 узла]** → Митигация: обязательный проброс W3C `traceparent` через WS-пакеты handoff (`0x0105`, `0x03A2`) и заголовки NATS, таблица аудита `partition_handoff_logs` и детерминированный `MultiPartitionHarness` в `@uo3/test-kit`.
 
 ---
 
@@ -444,5 +444,5 @@ $$\text{PlacementScore}(n, p) = 0.40 \cdot (1 - \text{cpuLoad}_n) + 0.25 \cdot \
 ## Open Questions
 
 - **Аффинность горячих подземелий**: стоит ли в пост-релизе выделять популярные подземелья (Deceit, Destard, Shame) в отдельные микро-партиции внутри восточной полосы `X ∈ [5120, 7168)` с индивидуальным `partitionSoftCap = 200`? (Не блокирует P32 — текущая прямоугольная модель с шагом 16×16 уже поддерживает это на уровне конфигурации топологии).
-- **WebTransport / HTTP3 для предпрогрева**: в P32 предпрогрев опирается на стандартный WebSocket поверх TLS (`uWebSockets.js`); переход на WebTransport с 0-RTT остаётся опциональной оптимизацией после P34.
+- **WebTransport / HTTP3 для предпрогрева**: в P32 предпрогрев опирается на стандартный WebSocket поверх TLS (`uWebSockets.js`); переход на WebTransport с 0-RTT остаётся опциональной оптимизацией после запуска (P36).
 - **Авто-скейлинг инстансов (KEDA / HPA) по метрикам `uo3_partition_tick_duration_ms`**: сами метрики и эндпоинты `Drain` реализуются в P32, а конкретные манифесты автоскейлера и политики масштабирования нод выносятся в P33.

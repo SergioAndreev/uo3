@@ -46,10 +46,10 @@
   - Для каждого живого персонажа в памяти партиции поддерживается структура `VitalRegenState` с тремя аккумуляторами в миллисекундах (`hitsElapsedMs`, `stamElapsedMs`, `manaElapsedMs`), увеличиваемыми на `50` мс на каждом серверном тике 20 Гц.
   - Интервалы регенерации (в мс на `+1` ед.):
     - `HitsPeriodMs = isPoisoned || isBleeding || isDead ? Infinity : 10000` (базовый UO:R темп 1 ед. за 10 с).
-    - `StamPeriodMs = max(1000, 7000 - Math.floor(effectiveDex / 25) * 1000)` (от 7 с при низком DEX до 3 с при DEX 100 и 1 с при DEX 150).
-    - `ManaPeriodMs = max(1000, 7000 - Math.floor(effectiveInt / 30) * 1000)` (базовый темп до модификаторов `Meditation` из P17).
+    - `StamPeriodMs = isRunning || isOverweight ? 10000 : 5000` (единый контракт с P12 `movement/movement-timing`; формула вынесена в общий модуль `packages/rules`, а не дублируется).
+    - `ManaPeriodMs = max(1000, 7000 - Math.floor(effectiveInt / 30) * 1000)` (базовый темп до модификаторов `Meditation` из P22).
   - Когда `elapsedMs >= periodMs`, начисляется `Math.floor(elapsedMs / periodMs)` единиц витала (с зажатием до `Max`), а в аккумуляторе остаётся `elapsedMs % periodMs`. Если витал уже равен `Max`, аккумулятор держится на `0`.
-  - Для расхода выносливости при движении в `MovementStaminaTracker` ведётся счётчик шагов бегом `runStepCounter`: каждые `8` шагов бегом пешком (или `16` верхом) списывается `1 Stam`. При перегрузе (`CurrentWeight > MaxWeight`) каждый шаг дополнительно списывает `2 Stam`, а при `CurrentWeight > MaxWeight + 40` или `Stam == 0` шаг блокируется.
+  - Расход выносливости при движении НЕ переопределяется: используется `calculateStepStaminaDrain` из P12 (`1 Stam` за `16` шагов бегом пешком / `48` верхом, доп. `1 + floor((CurrentWeight - MaxWeight) / 25)` за шаг в перегрузе, блок при `CurrentWeight > MaxWeight + 60` или `Stam == 0` в перегрузе), которому P15 поставляет `MaxWeight` и пул `Stam`. Коды отказа — `ERR_MOVE_*` из P12.
 - **Обоснование**: Аккумулятор в миллисекундах работает за $O(1)$ на тик, не создаёт отдельные таймеры в колесе таймеров на каждую единицу регенерации для тысяч мобов и корректно пересчитывает прогресс при динамическом изменении `EffectiveDEX` или `EffectiveINT` посреди цикла.
 - **Отвергнутые альтернативы**:
   - *Индивидуальные задачи в `HierarchicalTimerWheel` на каждый тик регенерации каждого персонажа*: создаёт лишний churn перепланирования таймеров при каждом баффе/дебаффе характеристик.
@@ -112,8 +112,8 @@
 ### Decision 7: Разделение публичного AOI `StateView` и приватных пакетов статов и навыков
 - **Выбор**:
   - В публичной схеме сущности моба/игрока `MobileSchema` (`@colyseus/schema`, видимой всем в AOI 18 тайлов) присутствует только `hitsPercent: uint8` (`0..100`) и `title: string` (для запроса профиля/Paperdoll).
-  - Полный массив 49 навыков передаётся владельцу при входе в партицию пакетом `SkillsSnapshotPacket` (`0x1501`), а далее синхронизируется точечными дельта-пакетами `SkillUpdatedPacket` (`0x1502`) и `SkillLockUpdatedPacket` (`0x1503`).
-  - Полное состояние характеристик и виталов владельца (`STR/DEX/INT` base & effective, `Hits/MaxHits`, `Stam/MaxStam`, `Mana/MaxMana`, `Weight/MaxWeight`, `StatLocks`) синхронизируется через приватный `PlayerPrivateStatsSchema` в `@colyseus/schema` `StateView` владельца и пакет `StatVitalUpdatedPacket` (`0x1504`).
+  - Полный массив 49 навыков передаётся владельцу при входе в партицию пакетом `SkillsSnapshotPacket` (`0x0181`), а далее синхронизируется точечными дельта-пакетами `SkillUpdatedPacket` (`0x0182`) и `SkillLockUpdatedPacket` (`0x0183`).
+  - Полное состояние характеристик и виталов владельца (`STR/DEX/INT` base & effective, `Hits/MaxHits`, `Stam/MaxStam`, `Mana/MaxMana`, `Weight/MaxWeight`, `StatLocks`) синхронизируется через приватный `PlayerPrivateStatsSchema` в `@colyseus/schema` `StateView` владельца и пакет `StatVitalUpdatedPacket` (`0x0184`).
 - **Обоснование**: Исключает утечку билда противника (маны, выносливости, силы и навыков) через инспекцию сетевого трафика WebSocket и минимизирует размер широковещательных патчей в AOI при частых тиках регенерации.
 - **Отвергнутые альтернативы**:
   - *Размещение `mana`, `stam` и 49 навыков в публичной `MobileSchema`*: позволяет чит-клиентам видеть точную ману и билд соперников в PvP и раздувает трафик AOI в десятки раз.
@@ -125,7 +125,7 @@
 ```mermaid
 flowchart TD
     Client["apps/client (Zustand useStatsStore / useSkillsStore)"]
-    Proto["@uo3/protocol (TypeBox Schemas & Opcodes 0x1500..0x151F)"]
+    Proto["@uo3/protocol (TypeBox Schemas & Opcodes 0x0180..0x019F)"]
     GS["apps/game-server (SkillExecutionService & CharacterStatsService)"]
     Rules["@uo3/rules (Pure Stats, Vitals, SkillCheck, SkillGain, CapEviction)"]
     Content["@uo3/content (49 UO:R Skills YAML & Curves)"]
@@ -150,7 +150,7 @@ sequenceDiagram
     participant R as "@uo3/rules (SkillCheckPipeline)"
     participant DB as "PostgreSQL (DirtyFlush)"
 
-    C->>S: "UseSkillIntent (0x1510, skillId=1 Anatomy)"
+    C->>S: "UseSkillIntent (0x0190, skillId=1 Anatomy)"
     S->>S: "Validate Alive, Not Frozen, isActive=true, Cooldown==0"
     S-->>C: "TargetCursorRequest (cursorId, range=8, requiresLos=true)"
     C->>S: "TargetCursorResponse (cursorId, targetSerial=0x20000042)"
@@ -159,7 +159,7 @@ sequenceDiagram
     R->>R: "Compute chanceBp, roll Success, roll SkillGain & StatGain"
     R->>R: "Apply Cap Eviction (7000 / 225) on DOWN skills/stats"
     R-->>S: "SkillCheckOutcome (isSuccess, skillDeltas, statDeltas)"
-    S-->>C: "SkillUpdatedPacket (0x1502) & StatVitalUpdatedPacket (0x1504)"
+    S-->>C: "SkillUpdatedPacket (0x0182) & StatVitalUpdatedPacket (0x0184)"
     S->>DB: "Mark character dirty (60s batch or immediate on logout)"
 ```
 
@@ -206,19 +206,19 @@ sequenceDiagram
 
 ### 3. Протокол сообщений (`packages/protocol`)
 
-Опкоды диапазона `0x1500..0x151F`:
+Опкоды диапазона `0x0180..0x019F`:
 - **Клиентские намерения (Client -> Server)**:
-  - `0x1510 UseSkillIntent`: `{ skillId: uint8, targetSerial?: uint32 }`
-  - `0x1511 SetSkillLockIntent`: `{ skillId: uint8, lockState: uint8 }` (`0 = UP, 1 = DOWN, 2 = LOCKED`)
-  - `0x1512 SetStatLockIntent`: `{ statType: uint8, lockState: uint8 }` (`0 = STR, 1 = DEX, 2 = INT`)
+  - `0x0190 UseSkillIntent`: `{ skillId: uint8, targetSerial?: uint32 }`
+  - `0x0191 SetSkillLockIntent`: `{ skillId: uint8, lockState: uint8 }` (`0 = UP, 1 = DOWN, 2 = LOCKED`)
+  - `0x0192 SetStatLockIntent`: `{ statType: uint8, lockState: uint8 }` (`0 = STR, 1 = DEX, 2 = INT`)
 - **Серверные пакеты (Server -> Client)**:
-  - `0x1501 SkillsSnapshotPacket`: `{ totalCapTenths: uint16, skills: Array<{ skillId: uint8, baseTenths: uint16, effectiveTenths: uint16, lockState: uint8 }> }`
-  - `0x1502 SkillUpdatedPacket`: `{ skillId: uint8, baseTenths: uint16, effectiveTenths: uint16, lockState: uint8, totalSkillTenths: uint16, gainSource?: 'prng' | 'pity' | 'eviction' | 'admin' | 'modifier' }`
-  - `0x1503 SkillLockUpdatedPacket`: `{ skillId: uint8, lockState: uint8 }`
-  - `0x1504 StatVitalUpdatedPacket`: `{ strBase: uint8, strEff: uint8, dexBase: uint8, dexEff: uint8, intBase: uint8, intEff: uint8, strLock: uint8, dexLock: uint8, intLock: uint8, hits: uint16, maxHits: uint16, stam: uint16, maxStam: uint16, mana: uint16, maxMana: uint16, weight: uint16, maxWeight: uint16, title: string }`
-  - `0x1505 SkillCooldownPacket`: `{ skillId: uint8, remainingMs: uint16 }`
+  - `0x0181 SkillsSnapshotPacket`: `{ totalCapTenths: uint16, skills: Array<{ skillId: uint8, baseTenths: uint16, effectiveTenths: uint16, lockState: uint8 }> }`
+  - `0x0182 SkillUpdatedPacket`: `{ skillId: uint8, baseTenths: uint16, effectiveTenths: uint16, lockState: uint8, totalSkillTenths: uint16, gainSource?: 'prng' | 'pity' | 'eviction' | 'admin' | 'modifier' }`
+  - `0x0183 SkillLockUpdatedPacket`: `{ skillId: uint8, lockState: uint8 }`
+  - `0x0184 StatVitalUpdatedPacket`: `{ strBase: uint8, strEff: uint8, dexBase: uint8, dexEff: uint8, intBase: uint8, intEff: uint8, strLock: uint8, dexLock: uint8, intLock: uint8, hits: uint16, maxHits: uint16, stam: uint16, maxStam: uint16, mana: uint16, maxMana: uint16, weight: uint16, maxWeight: uint16, title: string }`
+  - `0x0185 SkillCooldownPacket`: `{ skillId: uint8, remainingMs: uint16 }`
 - **Коды ошибок (`ERR_*`)**:
-  - `ERR_INVALID_SKILL_ID`, `ERR_SKILL_NOT_USABLE`, `ERR_SKILL_COOLDOWN`, `ERR_SKILL_INTERRUPTED`, `ERR_SKILL_CAP_REACHED`, `ERR_INVALID_LOCK_TARGET`, `ERR_INVALID_LOCK_STATE`, `ERR_OVERWEIGHT`, `ERR_EXHAUSTED`, `ERR_STAMINA_REQUIRED_FOR_PUSH`, `ERR_TARGET_INVALID`, `ERR_TARGET_TIMEOUT`, `ERR_OUT_OF_RANGE`, `ERR_NO_LOS`, `ERR_CAP_EXCEEDED`, `ERR_RATE_LIMITED`.
+  - `ERR_INVALID_SKILL_ID`, `ERR_SKILL_NOT_USABLE`, `ERR_SKILL_COOLDOWN`, `ERR_SKILL_INTERRUPTED`, `ERR_SKILL_CAP_REACHED`, `ERR_INVALID_LOCK_TARGET`, `ERR_INVALID_LOCK_STATE`, `ERR_TARGET_INVALID`, `ERR_TARGET_TIMEOUT`, `ERR_OUT_OF_RANGE`, `ERR_NO_LOS`, `ERR_CAP_EXCEEDED`, `ERR_RATE_LIMITED`.
 
 ---
 
@@ -241,7 +241,7 @@ sequenceDiagram
    - Включить чистые модули расчёта статов, виталов, регенерации, проверки и прироста навыков.
 3. **Интеграция на сервере и клиенте (`@uo3/protocol`, `apps/game-server`, `apps/client`)**:
    - Подключить тиковый обработчик регенерации и шаговый расход выносливости к движению из P12 и весу из P13.
-   - Зарегистрировать обработчики намерений `0x1510..0x1512` и клиентские Zustand-сторы `useStatsStore` / `useSkillsStore`.
+   - Зарегистрировать обработчики намерений `0x0190..0x0192` и клиентские Zustand-сторы `useStatsStore` / `useSkillsStore`.
 
 ## Open Questions
 

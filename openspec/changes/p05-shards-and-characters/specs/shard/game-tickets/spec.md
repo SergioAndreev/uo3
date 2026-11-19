@@ -7,10 +7,10 @@
 ## ADDED Requirements
 
 ### Requirement: Выдача пакета одноразовых тикетов входа в мир
-Система SHALL предоставлять эндпоинт `POST /v1/shards/:shardId/tickets`, который после проверки аутентификации аккаунта, статуса шарда, совместимости протокола и прав владения персонажем выдаёт пакет тикетов (`bundleId`, `expiresAt`) с двумя независимыми одноразовыми токенами и резервами мест: для целевой комнаты партиции мира и комнаты общешардового хаба.
+Система SHALL предоставлять эндпоинт `POST /api/v1/shards/:shardId/tickets`, который после проверки аутентификации аккаунта, статуса шарда, совместимости протокола и прав владения персонажем выдаёт пакет тикетов (`bundleId`, `expiresAt`) с двумя независимыми одноразовыми токенами и резервами мест: для целевой комнаты партиции мира и комнаты общешардового хаба.
 
 #### Scenario: Успешная выдача пакета тикетов для активного персонажа
-- **WHEN** аутентифицированный игрок отправляет `POST /v1/shards/britannia-eu/tickets` с `characterId` своего активного персонажа и совместимым `clientProtocolVersion`
+- **WHEN** аутентифицированный игрок отправляет `POST /api/v1/shards/britannia-eu/tickets` с `characterId` своего активного персонажа и совместимым `clientProtocolVersion`
 - **THEN** система возвращает HTTP `201` с `bundleId`, `expiresAt`, объектом `worldReservation` (`ticket`, `roomId`, `sessionId`, `wsUrl`, `facet`, `partitionId`) и объектом `hubReservation` (`ticket`, `roomId`, `sessionId`, `wsUrl`)
 
 #### Scenario: Отклонение выдачи тикета для чужого персонажа
@@ -89,7 +89,7 @@
 - **THEN** предыдущий пакет аннулируется, его резервы освобождаются, старые токены при проверке возвращают `TICKET_INVALID_OR_EXPIRED`, а новый пакет возвращается с HTTP `201`
 
 #### Scenario: Превышение лимита частоты выдачи тикетов
-- **WHEN** аккаунт отправляет 11-й запрос `POST /v1/shards/:shardId/tickets` за 60-секундное окно
+- **WHEN** аккаунт отправляет 11-й запрос `POST /api/v1/shards/:shardId/tickets` за 60-секундное окно
 - **THEN** система отклоняет запрос с HTTP `429`, кодом `TICKET_RATE_LIMITED` и заголовком `Retry-After`
 
 ### Requirement: Проверка статуса персонажа и единой активной сессии на шарде
@@ -138,10 +138,10 @@
 - **THEN** все непогашенные тикеты уровня `Player` на этом шарде аннулируются и их резервы мест освобождаются
 
 ### Requirement: Разделение назначения тикетов для будущего межкомнатного handoff
-Схема тикета MUST содержать поле `ticketPurpose` со значениями `initial_login`, `partition_handoff`, `facet_transfer`. Публичный REST-эндпоинт `POST /v1/shards/:shardId/tickets` MUST выпускать исключительно тикеты `initial_login` и отклонять попытки запросить внутренние типы handoff; типы `partition_handoff` и `facet_transfer` SHALL резервироваться только для внутреннего межсерверного выпуска.
+Схема тикета MUST содержать поле `ticketPurpose` со значениями `initial_login`, `partition_handoff`, `facet_transfer`. Публичный REST-эндпоинт `POST /api/v1/shards/:shardId/tickets` MUST выпускать исключительно тикеты `initial_login` и отклонять попытки запросить внутренние типы handoff; типы `partition_handoff` и `facet_transfer` SHALL резервироваться только для внутреннего межсерверного выпуска.
 
 #### Scenario: Выдача публичного тикета с назначением initial_login
-- **WHEN** клиент вызывает публичный эндпоинт `POST /v1/shards/:shardId/tickets`
+- **WHEN** клиент вызывает публичный эндпоинт `POST /api/v1/shards/:shardId/tickets`
 - **THEN** сохранённая серверная запись тикета всегда получает `ticketPurpose: "initial_login"`
 
 #### Scenario: Отклонение попытки подменить назначение тикета через REST

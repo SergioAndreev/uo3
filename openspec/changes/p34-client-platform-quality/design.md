@@ -62,7 +62,7 @@
 - **Отвергнутые альтернативы:** Локальная перезагрузка одной вкладки без учёта соседних (новый SW контроллер меняет активы под работающей игровой вкладкой).
 
 ### Decision 7: Таблица `client_release_policies` и двухконтурная валидация версий (REST + WS)
-- **Выбор:** В `@uo3/db` добавляется таблица `client_release_policies` (кэшируемая в Valkey с TTL 15 с и мгновенной инвалидацией при обновлении админкой), хранящая `latest_client_version`, `min_supported_client_version`, `supported_protocol_versions`, `sw_kill_switch`, `sw_min_safe_revision`, `changelog_url`. `apps/api` публикует некэшируемый `GET /api/v1/client/version` (`Cache-Control: no-store`), а `apps/game-server` проверяет совместимость при `onAuth` и рукопожатии `0x0340`, отклоняя несовместимые клиенты кодом закрытия WS `4015` и сообщением `0x0341` (`ERR_CLIENT_VERSION_UNSUPPORTED`).
+- **Выбор:** В `@uo3/db` добавляется таблица `client_release_policies` (кэшируемая в Valkey с TTL 15 с и мгновенной инвалидацией при обновлении админкой), хранящая `latest_client_version`, `min_supported_client_version`, `supported_protocol_versions`, `sw_kill_switch`, `sw_min_safe_revision`, `changelog_url`. `apps/api` публикует некэшируемый `GET /api/v1/client/version` (`Cache-Control: no-store`), а `apps/game-server` проверяет совместимость при `onAuth` и рукопожатии `0x03D0`, отклоняя несовместимые клиенты кодом закрытия WS `4120` и сообщением `0x03D1` (`ERR_CLIENT_VERSION_UNSUPPORTED`).
 - **Обоснование:** Позволяет за секунды переключить минимальную версию клиента или активировать аварийный `swKillSwitch` без пересборки и рестарта сервисов.
 - **Отвергнутые альтернативы:** Жёсткое хранение версий только в env-переменных (требует рестарта подов для аварийного отключения дефектного SW).
 
@@ -81,8 +81,8 @@
   - `version-compat.ts`: парсер и компаратор SemVer, чистая функция `evaluateVersionCompatibility(clientMeta, policy)` -> `COMPATIBLE | SOFT_UPDATE_AVAILABLE | HARD_UPDATE_REQUIRED`.
   - `cliloc-format.ts`: парсер и безопасный подстановщик `~N_label~`, 3-слойный резолвер с экранированием.
 - `packages/protocol/src/platform/`:
-  - Опкоды `0x0340..0x0345` и TypeBox-схемы сообщений.
-  - WS-код закрытия `WS_CLOSE_CLIENT_VERSION_UNSUPPORTED = 4015`.
+  - Опкоды `0x03D0`, `0x03D1`, `0x03D5` (`0x03D2..0x03D4` — резерв) и расширения схем P30 `0x0380`/`0x0384`/`0x0385` (опциональные поля, обратно совместимо).
+  - WS-код закрытия `WS_CLOSE_CLIENT_UPDATE_REQUIRED = 4120` (нормативно — `docs/PROTOCOL_REGISTRY.md`, реконнект «нет»).
   - TypeBox-схемы REST `ClientVersionPolicyResponseSchema`, `ClientSettingsV2PatchSchema`, `ClientPlatformTelemetryBatchSchema`.
   - Коды ошибок `ERR_TOUCH_CONTEXT_LOST`, `ERR_KEYBIND_CONFLICT`, `ERR_A11Y_SETTING_OUT_OF_RANGE`, `ERR_LOCALE_UNSUPPORTED`, `ERR_CLIENT_VERSION_UNSUPPORTED`, `ERR_UPDATE_LOOP_DETECTED`, `ERR_OFFLINE_UNAVAILABLE`, `ERR_STORAGE_QUOTA_EXCEEDED`, `ERR_SW_INTEGRITY_MISMATCH`.
 - `packages/db/src/schema/client-release-policies.ts`: таблица PG17 `client_release_policies` и миграция Drizzle.
@@ -96,8 +96,8 @@
   - Расширение `GET/PATCH /api/v1/account/client-settings` для `ClientSettingsV2` с валидацией диапазонов (`ERR_A11Y_SETTING_OUT_OF_RANGE`, `ERR_LOCALE_UNSUPPORTED`).
   - `POST /api/v1/telemetry/client-platform` (rate-limited приёмник агрегированных метрик в Prometheus/OTel).
 - `apps/game-server/src/modules/client-platform/`:
-  - Хук `onAuth` + обработчики `0x0340` (`C2S_CLIENT_CAPABILITIES_HELLO`), `0x0342` (`C2S_CLIENT_LOCALE_UPDATE`), `0x0345` (`C2S_CLIENT_PLATFORM_TELEMETRY`).
-  - Хранение активной локали и режима терминов на `ClientSessionContext`, отправка `0x0341`, `0x0343`, `0x0344`.
+  - Хук `onAuth` + обработчики `0x03D0` (`C2S_CLIENT_CAPABILITIES_HELLO`), `0x0384` (`ClientLocaleSwitchIntent`, P30), `0x03D5` (`C2S_CLIENT_PLATFORM_TELEMETRY`).
+  - Хранение активной локали и режима терминов на `ClientSessionContext`, отправка `0x03D1`, `0x0385`, `0x0380` (опкоды P30 с расширенными P34 полями).
 - `apps/client/src/`:
   - `input/touch/`: `InputProfileDetector`, `PointerSessionManager`, `ViewportGestureRecognizer`, `TouchDragController`, `MobileRenderBudgetController`, `GumpHitboxExpander`.
   - `a11y/`: `AccessibilityProvider`, `SystemPreferenceSync`, `KeybindRegistry` (на `KeyboardEvent.code` + sticky modifiers), `WorldKeyboardPicker` (цикл AOI), `VisualSoundAggregator`.
@@ -126,17 +126,17 @@ CREATE TABLE client_release_policies (
 - `localization`: `{ locale: 'ru'|'en', classicGameTerms: boolean, preferByocCliloc: boolean }`
 - `updates`: `{ autoCheckIntervalSec: 300, notifySoftUpdates: boolean }`
 
-### Протокол `@uo3/protocol` (`0x0340..0x0345` + REST)
+### Протокол `@uo3/protocol` (`0x03D0`, `0x03D1`, `0x03D5`, расширения опкодов P30 + REST)
 
 | Опкод / Маршрут | Направление | Поля TypeBox | Назначение |
 |---|---|---|---|
-| `0x0340` `C2S_CLIENT_CAPABILITIES_HELLO` | C -> S | `clientVersion`, `protocolVersion`, `rulesetHash`, `assetFormatVersion`, `locale`, `classicTerms`, `inputProfile`, `platformClass` | Рукопожатие версии, локали и класса клиента |
-| `0x0341` `S2C_VERSION_COMPATIBILITY_NOTICE` | S -> C | `status` (`COMPATIBLE`\|`SOFT_UPDATE_AVAILABLE`\|`HARD_UPDATE_REQUIRED`), `latestClientVersion`, `minSupportedClientVersion`, `changelogUrl?`, `errorCode?` | Вердикт совместимости версий |
-| `0x0342` `C2S_CLIENT_LOCALE_UPDATE` | C -> S | `locale` (`ru`\|`en`), `classicTerms` (boolean) | Горячее переключение локали в сессии |
-| `0x0343` `S2C_CLIENT_LOCALE_ACK` | S -> C | `accepted` (boolean), `activeLocale`, `errorCode?` | Подтверждение или `ERR_LOCALE_UNSUPPORTED` |
-| `0x0344` `S2C_LOCALIZED_SYSTEM_MESSAGE` | S -> C | `source` (`cliloc`\|`i18n`), `clilocId?`, `i18nKey?`, `args: string[]`, `severity`, `a11yPriority` (`polite`\|`assertive`), `soundCategory?` | Единое локализуемое и доступное уведомление |
-| `0x0345` `C2S_CLIENT_PLATFORM_TELEMETRY` | C -> S | `events: Array<{ kind, count, p50Ms?, code? }>` (≤20 записей/мин) | Обезличенные метрики обновлений и контекста |
-| WS Close `4015` | S -> C | Reason JSON `{ code: "ERR_CLIENT_VERSION_UNSUPPORTED", minVersion }` | Жёсткое отклонение несовместимого клиента |
+| `0x03D0` `C2S_CLIENT_CAPABILITIES_HELLO` | C -> S | `clientVersion`, `protocolVersion`, `rulesetHash`, `assetFormatVersion`, `locale`, `classicTerms`, `inputProfile`, `platformClass` | Рукопожатие версии, локали и класса клиента |
+| `0x03D1` `S2C_VERSION_COMPATIBILITY_NOTICE` | S -> C | `status` (`COMPATIBLE`\|`SOFT_UPDATE_AVAILABLE`\|`HARD_UPDATE_REQUIRED`), `latestClientVersion`, `minSupportedClientVersion`, `changelogUrl?`, `errorCode?` | Вердикт совместимости версий |
+| `0x0384` `ClientLocaleSwitchIntent` (P30, расширение) | C -> S | поля P30 + опциональный `classicTerms` (boolean) | Горячее переключение локали в сессии; P34 только расширяет схему P30 (minor-версия протокола) |
+| `0x0385` `ClientLocaleSwitchAck` (P30, расширение) | S -> C | поля P30 + `accepted` (boolean), `errorCode?` | Подтверждение или `ERR_LOCALE_UNSUPPORTED` |
+| `0x0380` `LocalizedSystemMessage` (P30, расширение) | S -> C | поля P30 + опциональные: `source` (`cliloc`\|`i18n`), `clilocId?`, `i18nKey?`, `args: string[]`, `severity`, `a11yPriority` (`polite`\|`assertive`), `soundCategory?` | Единое локализуемое и доступное уведомление |
+| `0x03D5` `C2S_CLIENT_PLATFORM_TELEMETRY` | C -> S | `events: Array<{ kind, count, p50Ms?, code? }>` (≤20 записей/мин) | Обезличенные метрики обновлений и контекста |
+| WS Close `4120` (`WS_CLOSE_CLIENT_UPDATE_REQUIRED`) | S -> C | Reason JSON `{ code: "ERR_CLIENT_VERSION_UNSUPPORTED", minVersion }` | Жёсткое отклонение несовместимого клиента |
 | `GET /api/v1/client/version` | C -> API | Заголовки `X-UO3-Client-Version`, `X-UO3-Protocol-Version`; `Cache-Control: no-store` | Политика версий, `swKillSwitch`, `swMinSafeRevision` |
 
 ### Ключевые алгоритмы и математика
@@ -222,14 +222,14 @@ sequenceDiagram
     C->>A: GET /api/v1/client/version (X-UO3-Client-Version, no-store)
     A-->>C: 200 { status: SOFT_UPDATE_AVAILABLE, swKillSwitch: false }
     C->>C: Показать баннер мягкого обновления (вход разрешён)
-    C->>G: WS Connect + 0x0340 ClientCapabilitiesHello (ver, proto, locale=ru)
-    G-->>C: 0x0341 VersionCompatibilityNotice (SOFT_UPDATE_AVAILABLE)
+    C->>G: WS Connect + 0x03D0 ClientCapabilitiesHello (ver, proto, locale=ru)
+    G-->>C: 0x03D1 VersionCompatibilityNotice (SOFT_UPDATE_AVAILABLE)
     Note over C,G: Игрок переключает язык на лету (ru -> en)
     C->>C: Загрузить/применить словари en (<=250 мс), обновить lang & ARIA
     C->>A: PATCH /api/v1/account/client-settings { localization: { locale: en } }
-    C->>G: 0x0342 ClientLocaleUpdate (locale=en, classicTerms=false)
-    G-->>C: 0x0343 ClientLocaleAck (accepted=true, activeLocale=en)
-    G-->>C: 0x0344 LocalizedSystemMessage (clilocId, args, a11yPriority=polite)
+    C->>G: 0x0384 ClientLocaleSwitchIntent (locale=en, classicTerms=false)
+    G-->>C: 0x0385 ClientLocaleSwitchAck (accepted=true, locale=en)
+    G-->>C: 0x0380 LocalizedSystemMessage (clilocId, args, a11yPriority=polite)
 ```
 
 ## Risks / Trade-offs
@@ -246,7 +246,7 @@ sequenceDiagram
 ## Migration Plan
 
 1. **БД и конфигурация:** применить Drizzle-миграцию для создания `client_release_policies` и засеять запись по умолчанию (ID=1) с текущими версиями из `@uo3/config`. Существующие JSONB-записи `account_client_profiles.settings` (`schemaVersion: 1`) лениво мигрируются функцией `migrateClientSettingsV1ToV2` при чтении/записи без простоя БД.
-2. **Бэкенд (`apps/api`, `apps/game-server`):** выкатить обратную совместимость первыми — принять клиентов без `0x0340` в переходный период (дефолтный статус `COMPATIBLE`), включить `GET /api/v1/client/version` и обработку `0x0340..0x0345`.
+2. **Бэкенд (`apps/api`, `apps/game-server`):** выкатить обратную совместимость первыми — принять клиентов без `0x03D0` в переходный период (дефолтный статус `COMPATIBLE`), включить `GET /api/v1/client/version` и обработку `0x03D0..0x03D5`.
 3. **Клиент (`apps/client`, `@uo3/ui-kit`):** выкатить клиент с локализацией, доступностью, сенсорным управлением и Service Worker (включив `swKillSwitch: false` после канареечной проверки на тестовом стенде).
 4. **План отката:** при проблемах с Service Worker немедленно включить `sw_kill_switch = true` в `client_release_policies` (действует за ≤15 с TTL Valkey без редеплоя); при проблемах с клиентским релизом откатить статические артефакты и обновить `sw_min_safe_revision`.
 

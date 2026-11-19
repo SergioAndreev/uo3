@@ -20,7 +20,7 @@
 - **THEN** сервер отклоняет пакет с кодом `ERR_INVALID_SPELL_ID` без обращения к состоянию персонажа
 
 ### Requirement: Формула прямого магического урона и модификатор Evaluating Intelligence
-Прямые боевые заклинания (`Magic Arrow`, `Harm`, `Fireball`, `Lightning`, `Mind Blast`, `Energy Bolt`, `Explosion`, `Flame Strike`) SHALL наносить урон по кубикам круга с множителем `Evaluating Intelligence` `1 + (evalIntTenths * 0.0005)`. Урон `Harm` MUST масштабироваться по дистанции (`100%` на 1 тайле, `50%` на 2, `25%` на `>= 3`), а урон `Mind Blast` равен `clamp(floor((casterInt - targetInt) / 2), 1, 45)`.
+Прямые боевые заклинания (`Magic Arrow`, `Harm`, `Fireball`, `Lightning`, `Mind Blast`, `Energy Bolt`, `Explosion`, `Flame Strike`) SHALL наносить урон по кубикам круга с множителем `skillFactorBp` по разнице `Evaluating Intelligence` кастера и `Resisting Spells` цели (design.md). Урон `Harm` MUST масштабироваться по дистанции (`100%` на 1 тайле, `50%` на 2, `25%` на `>= 3`), а урон `Mind Blast` равен `clamp(floor((casterInt - targetInt) / 2), 1, 45)`.
 
 #### Scenario: Расчёт урона Energy Bolt с учётом Evaluating Intelligence
 - **WHEN** маг с `Magery = 1000` и `Evaluating Intelligence = 1000` поражает цель с `Resisting Spells = 0` заклинанием `Energy Bolt` (`spellId 42`)
@@ -72,7 +72,7 @@
 - **THEN** `bodyId` персонажа меняется на выбранную форму, персонаж получает статус `Criminal` (серый) на всё время действия эффекта, а при смерти исходный `bodyId` восстанавливается
 
 ### Requirement: Отравление Poison, паралич Paralyze и истощение Mana Drain / Vampire
-`Poison` (`spellId 20`) SHALL накладывать яд уровня `1..4` (`Deadly` при `Magery + Poisoning >= 2000` на дистанции `<= 2` тайлов). `Paralyze` (`spellId 38`) MUST замораживать движение цели на `floor(mageryTenths * 3 / 100)` с до получения любого урона `>= 1`, а `Mana Drain` (`spellId 31`) и `Mana Vampire` (`spellId 53`) SHALL сжигать или перекачивать до `casterMagery - targetResist` маны при провале сопротивления.
+`Poison` (`spellId 20`) SHALL накладывать яд уровня `1..4` (`Deadly` при `Magery + Poisoning >= 2000` на дистанции `<= 2` тайлов). `Paralyze` (`spellId 38`) MUST замораживать движение цели на `floor(mageryTenths * 3 / 100)` с до получения любого урона `>= 1`, а `Mana Drain` (`spellId 31`) и `Mana Vampire` (`spellId 53`) SHALL сжигать или перекачивать до `floor((mageryTenths - resistTenths) / 10)` маны при провале сопротивления.
 
 #### Scenario: Наложение Deadly Poison магом-отравителем на ближней дистанции
 - **WHEN** персонаж с `Magery = 1000` и `Poisoning = 1000` применяет `Poison` (`spellId 20`) на противника с расстояния `2` тайла
@@ -98,7 +98,7 @@
 - **THEN** ловушка взрывается, нанося открывшему `1..5` единиц урона и сбрасывая флаг `isMagicTrapped = false`
 
 ### Requirement: Пространственная телепортация Teleport, Mark, Recall и Gate Travel
-`Teleport` (`spellId 22`) SHALL переносить заклинателя на проходимый тайл в радиусе `<= 11` тайлов с LOS, запрещая прыжки внутрь домов и заблокированных зон (`ERR_TELEPORT_BLOCKED`). `Mark` (`spellId 45`), `Recall` (`spellId 32`) и `Gate Travel` (`spellId 52`) MUST проверять флаги региона исходного и целевого тайлов, отклоняя запись руны или телепортацию в запрещённые зоны и чужие дома с `ERR_TRAVEL_RESTRICTED`.
+`Teleport` (`spellId 22`) SHALL переносить заклинателя на проходимый тайл в радиусе `<= 11` тайлов с LOS, запрещая прыжки внутрь домов и заблокированных зон (`ERR_TELEPORT_BLOCKED`). `Mark` (`spellId 45`), `Recall` (`spellId 32`) и `Gate Travel` (`spellId 52`) MUST проверять флаги региона исходного и целевого тайлов, отклоняя запись руны или телепортацию в запрещённые зоны и дома (по порту `IRegionSpellPolicy`) с `ERR_TRAVEL_RESTRICTED`.
 
 #### Scenario: Успешный прыжок Teleport на свободный тайл в пределах видимости
 - **WHEN** персонаж применяет `Teleport` (`spellId 22`) на свободный проходимый тайл на расстоянии `9` тайлов с прямой 3D LOS

@@ -31,7 +31,7 @@
 ## Decisions
 
 ### D1. Гибридная модель событий: серверные события + локальный визуально-синхронизированный слой P11
-- **Выбор:** Авторитарные игровые события (удар, парирование, промах, заклинания, двери/сундуки, крафт, гром, серверные музыкальные директивы) рассылаются сервером через протокол `0x02F0..0x02F7`. Частые клиентские события (шаги видимых мобилов `stepFootfall`, UI-клики, перетаскивание в рюкзаке, брызги частиц при получении числа урона) генерируются локально на клиенте.
+- **Выбор:** Авторитарные игровые события (удар, парирование, промах, заклинания, двери/сундуки, крафт, гром, серверные музыкальные директивы) рассылаются сервером через протокол `0x0340..0x0347`. Частые клиентские события (шаги видимых мобилов `stepFootfall`, UI-клики, перетаскивание в рюкзаке, брызги частиц при получении числа урона) генерируются локально на клиенте.
 - **Обоснование:** Экономит до 70% исходящего трафика при толпе бегущих игроков, гарантирует идеальную синхронизацию звука шага с конкретным кадром анимации P11 и при этом полностью исключает утечку стелса, так как скрытые сущности отсутствуют в `StateView` наблюдателя.
 - **Отвергнутые альтернативы:** Отправка `PlaySound` с сервера на каждый шаг — недопустимо нагружает сеть и рассинхронизируется с кадром анимации при сетевом джиттере.
 
@@ -67,7 +67,7 @@
 
 ### D8. Безопасная абстракция портов для `bot-client` и серверной симуляции
 - **Выбор:** Разделение доменных контрактов в `@uo3/domain` и `@uo3/protocol`, адаптеров браузера в `apps/client` и лёгкого `NoopAudioEffectsSink` в `apps/bot-client` и `@uo3/test-kit`.
-- **Обоснование:** Headless нагрузочные боты и серверные интеграционные тесты проверяют приход и корректность пакетов `0x02F0..0x02F7` без зависимости от браузерного `AudioContext` и WebGL2.
+- **Обоснование:** Headless нагрузочные боты и серверные интеграционные тесты проверяют приход и корректность пакетов `0x0340..0x0347` без зависимости от браузерного `AudioContext` и WebGL2.
 - **Отвергнутые альтернативы:** Условные `typeof window` проверки внутри самой бизнес-логики — ухудшает тестируемость и связывает модули с глобальным окружением.
 
 ## Архитектура модулей и поток данных
@@ -76,7 +76,7 @@
 flowchart TD
     S_SRC["Игровые системы сервера (P16 Бой / P18 Магия / P19 NPC / P20 Крафт / P25 Погода)"] --> DISP["AudioEffectsDispatcher (apps/game-server)"]
     DISP --> AOI["Фильтр AOI (22/24 тайла) + Stealth (P07/P22) + Квота 64/48 за тик"]
-    AOI --> PROTO["Протокол @uo3/protocol (0x02F0..0x02F7 TypeBox)"]
+    AOI --> PROTO["Протокол @uo3/protocol (0x0340..0x0347 TypeBox)"]
     PROTO --> NET["Colyseus Room Broadcast (20 Гц)"]
     NET --> C_ROUTER["Client AudioEffectsRouter (apps/client)"]
     P11["P11 События анимации (stepFootfall / attackImpact / castRelease)"] --> C_ROUTER
@@ -101,7 +101,7 @@ flowchart TD
   - `content/audio/music.yaml` + `content/audio/region-music.yaml` + JSON Schema: каталог треков (0..49+) и привязка к регионам P25 (`dayTracks`, `nightTracks`, `interiorTracks`, `defaultWilderness`, `combat`, `death`, `sailing`, `login`).
   - `content/effects/effects.yaml` + `particles.yaml` + JSON Schema: спецификации канонических UO-эффектов (ID `art`, кадры, `renderMode`, `lightRadius`, `lightColor`, `particlePreset`, CC0 fallback shape).
 - **`packages/protocol`**:
-  - Опкоды `0x02F0..0x02F7` и TypeBox-схемы сообщений; расширение `ClientSettingsV1Schema` полями аудио и эффектов.
+  - Опкоды `0x0340..0x0347` и TypeBox-схемы сообщений; расширение `ClientSettingsV1Schema` полями аудио и эффектов.
 - **`apps/api`**:
   - Валидация новых полей `ClientSettingsV1` при `PUT/PATCH /api/v1/profile/settings` с возвратом `ERR_AUDIO_SETTINGS_OUT_OF_RANGE` при нарушении диапазонов.
 - **`apps/game-server`**:
@@ -109,7 +109,7 @@ flowchart TD
 - **`apps/client`**:
   - `SoundAssetLoader` (OPFS + `Sound.def` + CC0-синтез + 64 MiB LRU `AudioBufferCache`), `SpatialAudioEngine` (пул `8..64` голосов, коалесцирование 40 мс, `GainNode`+`StereoPannerNode`, привязка к `stepFootfall`), `MusicController` (контекстная FSM, кроссфейд, стрим декодера `<= 16 MiB`, `pending_unlock`, blacklisting), `GraphicalEffectsRenderer` + `ParticlePool` (SoA, `InstancedMesh`, `hues.mul` LUT, `DynamicLightRegistry`, бюджеты `low/medium/high`, `reduceFlashes`), интеграция с UI-настройками и debug HUD.
 - **`apps/bot-client`**:
-  - Регистрация декодеров `0x02F0..0x02F7` и `NoopAudioEffectsSink` со счётчиками телеметрии.
+  - Регистрация декодеров `0x0340..0x0347` и `NoopAudioEffectsSink` со счётчиками телеметрии.
 
 ## Модели данных и сетевой протокол
 
@@ -142,18 +142,18 @@ export const AudioAndEffectsSettingsSchema = Type.Object({
 });
 ```
 
-### Сообщения протокола (`@uo3/protocol`, uint16 `0x02F0..0x02F7`)
+### Сообщения протокола (`@uo3/protocol`, uint16 `0x0340..0x0347`)
 
 | Опкод | Имя | Направление | Поля TypeBox и ограничения |
 | --- | --- | --- | --- |
-| `0x02F0` | `S2C_PLAY_SOUND` | Server → Client | `soundId` (0..4095), `x` (int32), `y` (int32), `z` (int16), `facetId` (uint8), `sourceEntityId?` (uint32), `category` (`sfx\|ambient\|ui\|footsteps`), `priority` (1..4), `volumeBp` (0..10000), `nonPositional` (bool) |
-| `0x02F1` | `S2C_PLAY_MUSIC` | Server → Client | `trackId` (0..255), `mode` (`region\|override\|stinger\|stop`), `fadeMs` (0..5000), `ttlSec?` (1..300), `resetDebounce` (bool) |
-| `0x02F2` | `S2C_GRAPHICAL_EFFECT` | Server → Client | `effectInstanceId?` (uint32), `kind` (`0..4`), `graphicId` (0..65535), `fromX/Y/Z`, `toX/Y/Z`, `sourceEntityId?`, `targetEntityId?`, `speed` (1..255), `durationMs` (50..15000), `fixedDirection` (bool), `explodeOnImpact` (bool), `hue` (0..3000), `partialHue` (bool), `renderMode` (`0\|2\|3\|4\|5`), `scale` (0.25..4.0), `lightRadius` (0..12), `lightColor` (uint32), `particlePreset?` (string), `particleCount` (0..64) |
-| `0x02F3` | `S2C_EFFECT_BATCH` | Server → Client | `effects`: массив до 48 компактных записей `S2C_GRAPHICAL_EFFECT` за один тик |
-| `0x02F4` | `S2C_WEATHER_THUNDER` | Server → Client | `strikeX` (int32), `strikeY` (int32), `strikeZ` (int16), `thunderSoundId` (0..4095), `flashIntensityBp` (0..10000) |
-| `0x02F5` | `S2C_SCREEN_FLASH` | Server → Client | `colorRgb` (uint32), `alphaBp` (0..6000), `durationMs` (50..500) |
-| `0x02F6` | `S2C_STOP_ATTACHED_EFFECT` | Server → Client | `effectInstanceId` (uint32), `fadeMs` (0..1000) |
-| `0x02F7` | `S2C_AMBIENT_EMITTER_SYNC` | Server → Client | `emitterId` (uint32), `action` (`upsert\|remove`), `soundId` (0..4095), `x/y/z`, `radius` (1..24), `volumeBp` (0..10000) |
+| `0x0340` | `S2C_PLAY_SOUND` | Server → Client | `soundId` (0..4095), `x` (int32), `y` (int32), `z` (int16), `facetId` (uint8), `sourceEntityId?` (uint32), `category` (`sfx\|ambient\|ui\|footsteps`), `priority` (1..4), `volumeBp` (0..10000), `nonPositional` (bool) |
+| `0x0341` | `S2C_PLAY_MUSIC` | Server → Client | `trackId` (0..255), `mode` (`region\|override\|stinger\|stop`), `fadeMs` (0..5000), `ttlSec?` (1..300), `resetDebounce` (bool). Смена региональной музыки при обычном пересечении границы приходит пакетом P25 `MusicTriggerPacket (0x02E1)`; музыкальный контроллер P28 заменяет базовый `MusicCrossfadeController` P25 и обрабатывает оба пакета, а `mode = region` используется только для ресинхронизации при логине и телепорте |
+| `0x0342` | `S2C_GRAPHICAL_EFFECT` | Server → Client | `effectInstanceId?` (uint32), `kind` (`0..4`), `graphicId` (0..65535), `fromX/Y/Z`, `toX/Y/Z`, `sourceEntityId?`, `targetEntityId?`, `speed` (1..255), `durationMs` (50..15000), `fixedDirection` (bool), `explodeOnImpact` (bool), `hue` (0..3000), `partialHue` (bool), `renderMode` (`0\|2\|3\|4\|5`), `scale` (0.25..4.0), `lightRadius` (0..12), `lightColor` (uint32), `particlePreset?` (string), `particleCount` (0..64) |
+| `0x0343` | `S2C_EFFECT_BATCH` | Server → Client | `effects`: массив до 48 компактных записей `S2C_GRAPHICAL_EFFECT` за один тик |
+| `0x0344` | `S2C_WEATHER_THUNDER` | Server → Client | `strikeX` (int32), `strikeY` (int32), `strikeZ` (int16), `thunderSoundId` (0..4095), `flashIntensityBp` (0..10000) |
+| `0x0345` | `S2C_SCREEN_FLASH` | Server → Client | `colorRgb` (uint32), `alphaBp` (0..6000), `durationMs` (50..500) |
+| `0x0346` | `S2C_STOP_ATTACHED_EFFECT` | Server → Client | `effectInstanceId` (uint32), `fadeMs` (0..1000) |
+| `0x0347` | `S2C_AMBIENT_EMITTER_SYNC` | Server → Client | `emitterId` (uint32), `action` (`upsert\|remove`), `soundId` (0..4095), `x/y/z`, `radius` (1..24), `volumeBp` (0..10000) |
 
 ### Коды ошибок (`ERR_*`)
 - `ERR_AUDIO_INVALID_SOUND_ID`: `soundId` вне `0..4095`.
@@ -217,7 +217,7 @@ stateDiagram-v2
 ```mermaid
 sequenceDiagram
     participant GS as "WorldPartitionRoom (GameServer)"
-    participant NET as "Protocol 0x02F2 / 0x02F0"
+    participant NET as "Protocol 0x0342 / 0x0340"
     participant GFX as "GraphicalEffectsEngine (Client)"
     participant LGT as "DynamicLightRegistry (P10)"
     participant AUD as "SpatialAudioEngine (Client)"
@@ -252,7 +252,7 @@ sequenceDiagram
 ## Migration Plan
 
 1. **Обратно-совместимое расширение настроек:** Добавить поля `AudioAndEffectsSettingsSchema` в `ClientSettingsV1` с полным набором дефолтов; старые JSONB-записи `account_client_profiles` в PostgreSQL 17 автоматически гидрируются дефолтами без downtime-миграции таблиц.
-2. **Поэтапное подключение опкодов `0x02F0..0x02F7`:** Сначала публикуются типы и схемы в `@uo3/domain`, `@uo3/content`, `@uo3/protocol`; `bot-client` и `apps/client` подключают декодеры до включения рассылки в `apps/game-server`.
+2. **Поэтапное подключение опкодов `0x0340..0x0347`:** Сначала публикуются типы и схемы в `@uo3/domain`, `@uo3/content`, `@uo3/protocol`; `bot-client` и `apps/client` подключают декодеры до включения рассылки в `apps/game-server`.
 3. **Фиче-флаг и откат (Rollback):** На сервере в `@uo3/config` предусмотрены флаги `AUDIO_EFFECTS_DISPATCH_ENABLED=true` и капы `MAX_SOUNDS_PER_TICK=64`, `MAX_EFFECTS_PER_TICK=48`; при необходимости деградации нагрузку можно снизить или отключить серверную рассылку на лету без рестарта БД.
 4. **Проверка чистоты репозитория:** CI-гейт запрета проприетарных ассетов UO проверяет, что в `packages/content` и `apps/client` добавлены исключительно текстовые конфиги/YAML и процедурные/CC0-генераторы.
 

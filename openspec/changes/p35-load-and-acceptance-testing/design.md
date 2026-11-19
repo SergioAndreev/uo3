@@ -13,7 +13,7 @@
 - Построить в `apps/bot-client` масштабируемый headless-флот (1..5000+ ботов) поверх реального `@uo3/protocol` SDK и `/api/v1/*` без обхода серверной авторитарности и с бюджетом ≤ 2.5 МБ RAM на активного бота.
 - Обеспечить 100% детерминизм поведенческих сценариев от `(runSeed, botIndex)` и полное отсутствие проприетарных ассетов UO (ADR-002: только синтетические фасеты 200..254 и CC0-заглушки).
 - Формализовать декларативные профили нагрузки (`ci-smoke`, `baseline`, `crowded-town`, `mass-pvp`, `partition-border`, `economy-burst`, `soak`, `stress`, `chaos-load`), машинопроверяемые SLO, статистический контроль регрессий относительно эталона и обязательный пост-нагрузочный аудит `item_ledger`.
-- Реализовать сквозной приёмочный конвейер вех (`ALPHA`, `BETA`, `RC`), охватывающий игровые E2E-петли UO:R, браузерную проверку `apps/client`, аудит безопасности/античита/правовой чистоты ассетов, проверку DR-учений, управляемый механизм `Waiver` и генерацию подписанного `Release Evidence Bundle`.
+- Реализовать сквозной приёмочный конвейер вех ROADMAP M0–M5 и релизных стадий (`ALPHA` ⊇ M0–M2, `BETA` ⊇ M0–M4, `RC` ⊇ M0–M5), охватывающий игровые E2E-петли UO:R, браузерную проверку `apps/client`, аудит безопасности/античита/правовой чистоты ассетов, проверку DR-учений, управляемый механизм `Waiver` и генерацию подписанного `Release Evidence Bundle`.
 - Встроить быстрый контур `ci-smoke` (≤ 5 минут) в PR-пайплайн и расширенные `nightly-baseline` / `release-soak` в регулярные прогоны.
 
 ### Non-Goals
@@ -45,7 +45,7 @@
 
 ### Decision 4: Нулевые изменения игровых опкодов и кардинально ограниченная корреляция `runId`
 
-- **Выбор:** Запретить добавление специальных игровых опкодов для ботов. Все игровые намерения используют штатные опкоды `@uo3/protocol` (`0x0101..0x0315`). Для сквозной корреляции метрик клиента и сервера разрешить передачу опционального строкового поля `qaRunId` в `joinOptions` комнаты и HTTP-заголовке `X-UO3-Run-Id`, принимаемого сервером **только** при `QA_TELEMETRY_LABELS_ENABLED=true`, с валидацией `^[a-z0-9-]{8,48}$` и LRU-ограничением активных меток (≤ 16 одновременных `runId`) для защиты от взрыва кардинальности Prometheus.
+- **Выбор:** Запретить добавление специальных игровых опкодов для ботов. Все игровые намерения используют штатные опкоды `@uo3/protocol` из блоков фаз P12–P32 (`docs/PROTOCOL_REGISTRY.md`). Для сквозной корреляции метрик клиента и сервера разрешить передачу опционального строкового поля `qaRunId` в `joinOptions` комнаты и HTTP-заголовке `X-UO3-Run-Id`, принимаемого сервером **только** при `QA_TELEMETRY_LABELS_ENABLED=true`, с валидацией `^[a-z0-9-]{8,48}$` и LRU-ограничением активных меток (≤ 16 одновременных `runId`) для защиты от взрыва кардинальности Prometheus.
 - **Обоснование:** Гарантирует честность тестирования — игровой сервер обрабатывает пакеты ботов ровно тем же кодом, что и реальных игроков. Ограничение кардинальности защищает Prometheus (P33) от OOM.
 - **Отвергнутые альтернативы:** Безусловное прокидывание произвольного `runId` в Prometheus labels (риск взрыва кардинальности), отдельный «тестовый режим» игровой комнаты (искажает профиль нагрузки).
 
@@ -109,7 +109,7 @@ apps/bot-client/
 │   │   ├── ChaosRunner.ts        # Оркестрация fault-инъекций (partition kill, NATS/Valkey pause, netem)
 │   │   └── ReportGenerator.ts    # Генерация summary.json, timeseries.ndjson, report.md
 │   └── acceptance/
-│       ├── MilestoneMatrix.ts    # Матрицы ALPHA / BETA / RC с трассировкой к OpenSpec P00..P35
+│       ├── MilestoneMatrix.ts    # Вехи M0..M5 и стадии ALPHA / BETA / RC с трассировкой к OpenSpec P00..P36
 │       ├── E2ESuiteRunner.ts     # Сквозные игровые сценарии (onboarding, PvP, magic/craft/econ, houses/ships/events)
 │       ├── BrowserAcceptance.ts  # Интеграция с Playwright-проверкой apps/client и apps/admin (WebGL2, 24 света, RU/EN)
 │       ├── SecurityAssetAudit.ts # Сканер проприетарных ассетов, fuzzing-отчёт, CSP/SRI, staff_audit_log hash-chain
@@ -206,7 +206,8 @@ stateDiagram-v2
     AUTH --> BACKOFF: "ERR_SHARD_FULL / ERR_TICKET_EXPIRED"
     BACKOFF --> AUTH: "Exp backoff + jitter"
     CONNECTING --> ACTIVE: "WS open + Snapshot + ClockSync"
-    CONNECTING --> BACKOFF: "WS close 4000..4014 (retryable)"
+    CONNECTING --> BACKOFF: "WS close с реконнектом «да» по PROTOCOL_REGISTRY (4101, 4106, 4108, 4112, 4113, 4115, 4117..4119, 4128..4131)"
+    CONNECTING --> AUTH: "WS close 4114/4116 (перенаправление по выданному тикету)"
     ACTIVE --> HANDOFF: "PartitionHandoffTicket"
     HANDOFF --> ACTIVE: "New partition synced"
     HANDOFF --> RECOVERING: "Handoff timeout"
@@ -272,7 +273,7 @@ stateDiagram-v2
 ### 2. Протокольные, REST и TypeBox-контракты
 
 - **Игровой WebSocket-протокол (`@uo3/protocol`):**
-  - Ни одного нового игрового опкода не добавляется — боты используют канонические клиентские опкоды: движение `0x0101..0x0106`, UI/гампы/речь `0x0260..0x026F`, экономика/торговля `0x0270..0x0284`, магия `0x0280..0x0289`, PvP/ноториети `0x0290..0x0297`, NPC/питомцы `0x02B0..0x02BA`, утилитарные навыки `0x02C0..0x02CD`, корабли `0x02D0..0x02DC`, админ (только в негативных ACL-тестах и admin-acceptance) `0x02E0..0x02EF`, контент `0x0300..0x0305`, безопасность `0x0310..0x0315`.
+  - Ни одного нового игрового опкода не добавляется — боты используют канонические клиентские опкоды из блоков фаз-владельцев по `docs/PROTOCOL_REGISTRY.md`: движение P12 `0x0100..0x011F` (`0x0101` `WalkRequest`, `0x0105` `PartitionHandoffTicket`, `0x0106` `ClientGeometryReady`), предметы P13 `0x0120..0x014F`, гампы/таргетинг/речь P14 `0x0150..0x017F`, навыки P15 `0x0180..0x019F`, бой P16 `0x01A0..0x01CF`, PvP/ноториети P17 `0x01D0..0x01EF`, магия P18 `0x01F0..0x021F`, NPC/питомцы P19 `0x0220..0x023F`, сбор/крафт P20 `0x0240..0x025F`, экономика/торговля P21 `0x0260..0x028F`, утилитарные навыки P22 `0x0290..0x02AF`, дома P23 `0x02B0..0x02CF`, корабли P24 `0x02D0..0x02DF`, регионы/мунгейты P25 `0x02E0..0x02EF`, социальные системы P26 `0x02F0..0x031F`, персонал (только в негативных ACL-тестах и admin-acceptance) P29 `0x0360..0x037F`, контент P30 `0x0380..0x038F`, безопасность P31 `0x0390..0x039F`, handoff P32 `0x03A0..0x03BF`.
   - Схемы Colyseus `@colyseus/schema v3` (`WorldPartitionState`, `MobileSchema`, `ItemSchema`, `MultiSchema`, `StateView`) потребляются ботами строго в режиме чтения через существующий клиентский SDK (P07).
   - Опциональное поле корреляции в `WorldPartitionJoinOptionsSchema` (TypeBox):
     ```ts
@@ -303,6 +304,7 @@ stateDiagram-v2
 | `ERR_PROPRIETARY_ASSET_FORBIDDEN` | `quality/bot-clients` | Попытка загрузки/указания проприетарных ассетов UO в конфигурации бота |
 | `ERR_PROVISIONING_DISABLED` | `quality/bot-clients` | Запрос к `/api/v1/internal/qa/bots/*` при продакшн-конфигурации или отключённом флаге |
 | `ERR_INVALID_LOAD_PROFILE` | `quality/load-testing` | Нарушение схемы профиля нагрузки (например, `Σ weightBp ≠ 10000`, отрицательные фазы, невалидный фасет) |
+| `ERR_SLO_CAPACITY_NOT_MET` | `quality/load-testing` | Не подтверждены ≥ 500 CCU на партицию / ≥ 2000 CCU на шард или p99 серверной обработки команды > 30 мс (ADR, `docs/ARCHITECTURE.md`) |
 | `ERR_SLO_BUS_LAG_EXCEEDED` | `quality/load-testing` | Отставание консьюмеров NATS JetStream > 1000 сообщений дольше 15 с |
 | `ERR_SOAK_PERFORMANCE_DRIFT` | `quality/load-testing` | Рост p95 тика между первым и последним часом soak-прогона > 20% или дрейф памяти > 2%/ч |
 | `ERR_PERF_REGRESSION` | `quality/load-testing` | Статистически значимая регрессия (`p < 0.05`) относительно эталона (> +15% задержка/память или < -10% ёмкость) |
@@ -393,7 +395,7 @@ $$\Delta_M = \frac{M_{\text{curr}} - M_{\text{base}}}{M_{\text{base}}} > \theta_
 3. **Поэтапное введение гейтов в CI:**
    - Этап A: добавить `ci-smoke` (30 ботов, ≤ 5 минут) в PR-пайплайн в режиме advisory на 3 прогона для калибровки порогов CI-раннера, затем перевести в обязательный гейт `ci-required`.
    - Этап B: запустить `nightly-baseline`, `crowded-town`, `mass-pvp`, `partition-border`, `economy-burst`, `chaos-load` и зафиксировать первичный эталон (`is_baseline = true`) на выделенном `perf-lab`.
-   - Этап C: провести 24-часовой `release-soak` и полный прогон `run-acceptance --milestone RC`, сформировать первый `Release Evidence Bundle` для вехи M6.
+   - Этап C: провести 24-часовой `release-soak` и полный прогон `run-acceptance --milestone RC`, сформировать первый `Release Evidence Bundle` стадии `RC` (вехи M0–M5); финальный прогон гейта с критериями P36 выполняется в P36.
 4. **Откат:** удаление схемы `qa` и отключение `apps/bot-client` job в CI не затрагивает ни один игровой сервис и выполняется за 1 шаг без простоя.
 
 ## Open Questions
@@ -401,4 +403,4 @@ $$\Delta_M = \frac{M_{\text{curr}} - M_{\text{base}}}{M_{\text{base}}} > \theta_
 - Требуется ли публикация итоговых `Release Evidence Bundle` во внешнее WORM-хранилище (S3 Object Lock) помимо артефактов CI и БД `qa.qa_acceptance_runs` (можно добавить адаптер хранилища в пост-релизной итерации без смены формата `manifest.json`).
 - Какой конкретный аппаратный профиль выделенного `perf-lab` (число vCPU/RAM на партицию) будет утверждён для финальной номинальной цели CCU на одну партицию перед GA — фиксируется в `LoadProfileV1` для `perf-lab` без изменения кода SLO-движка.
 - Нужно ли подписывать `manifest.json` аппаратным ключом (KMS/Cosign) в дополнение к локальной Ed25519/SHA-256 верификации в закрытом контуре CI.
-- Планируется ли публикация обезличенных графиков нагрузочных бенчмарков в публичную документацию проекта после релиза M6.
+- Планируется ли публикация обезличенных графиков нагрузочных бенчмарков в публичную документацию проекта после релиза (стадия `RC`, веха M5).

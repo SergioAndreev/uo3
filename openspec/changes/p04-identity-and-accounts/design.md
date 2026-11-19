@@ -374,7 +374,7 @@ flowchart LR
 - `identity.account.banned`: `{ accountId, banId, publicReason, isPermanent, expiresAt, issuedBy }`
 - `identity.account.unbanned`: `{ accountId, banId, liftedBy }`
 - `identity.account.sessions_revoked`: `{ accountId, sessionIds: string[] | "all", tokenVersion, reason }`
-- `identity.account.access_level_changed`: `{ accountId, previousLevel, newLevel, effectiveGameLevel, tokenVersion, changedBy }`
+- `identity.account.access_level_changed`: `{ accountId, previousLevel, newLevel, effectiveGameLevel, tokenVersion, changedBy, changedAt }`
 - `identity.account.effective_level_changed`: `{ accountId, maxAccessLevel, effectiveGameLevel }`
 
 ### Диаграммы потоков и состояний

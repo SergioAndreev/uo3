@@ -19,7 +19,7 @@
 - Обеспечить серверную верификацию жалоб (`ChatReport`) по кольцевому буферу реальных сообщений, исключив возможность подделки логов модифицированным клиентом.
 
 ### Non-Goals
-- Реализация четырёх глобальных PvP-фракций UO:R (Minax, True Britannians, Council of Mages, Shadowlords), фракционных сигилов и контроля городов — относится к фазе **P25**.
+- Реализация четырёх глобальных PvP-фракций (Minax, True Britannians, Council of Mages, Shadowlords), фракционных сигилов и контроля городов — механика появилась после эпохи UO:R и не входит в скоуп фаз P00–P36.
 - Разработка фронтенда веб-консоли администратора `apps/admin` для разбора тикетов — относится к фазе **P29** (в P26 создаются таблицы, доменный сервис и REST-эндпоинты `/api/v1/admin/moderation/*`).
 - Голосовой чат (WebRTC) и внешние интеграции с Discord/Telegram.
 
@@ -86,7 +86,7 @@ flowchart TD
     end
 
     subgraph Protocol["@uo3/protocol & @uo3/rules & @uo3/domain"]
-        OP["Opcodes 0x02C0..0x02DF (TypeBox)"]
+        OP["Opcodes 0x02F0..0x030F (TypeBox)"]
         RL["@uo3/rules/social (Fealty, GhostSpeech, Sanitizer, TokenBucket)"]
         DM["@uo3/domain/social (GuildRank, PartyState, MuteScope)"]
     end
@@ -138,7 +138,7 @@ flowchart TD
   - `evaluateGuildFealtyElection(members: ReadonlyArray<GuildMemberVoteRecord>, currentMasterId: CharacterId): FealtyElectionResult`.
   - `resolveGuildNotorietyRelation(guildA: GuildSnapshot | null, guildB: GuildSnapshot | null, sameParty: boolean): NotorietyRelation`.
 - **`@uo3/protocol`** (`packages/protocol/src/social/*`):
-  - Опкоды `0x02C0..0x02DF` (см. таблицу протокола ниже) со строгими TypeBox-схемами.
+  - Опкоды `0x02F0..0x030F` (см. таблицу протокола ниже) со строгими TypeBox-схемами.
   - Расширения `MobileSchema` (`@colyseus/schema` v3): `guildTag: string` (до 4 симв., пустая строка если нет гильдии), `guildType: uint8` (`0=None/Standard, 1=Order, 2=Chaos`).
 - **`@uo3/db`** (`packages/db/src/schema/social.ts`):
   - Таблицы Drizzle ORM для гильдий, дипломатии, друзей, игнора, мутов, жалоб и журнала аудита модерации.
@@ -255,34 +255,34 @@ erDiagram
 5. **`social_moderation_audit_log`**:
    - Append-only таблица `(id, timestamp, actor_account_id, target_account_id, action_type, report_id, payload_jsonb)` для неизменяемого аудита всех действий модерации.
 
-## Протокол и опкоды (`@uo3/protocol` `0x02C0..0x02DF`)
+## Протокол и опкоды (`@uo3/protocol` `0x02F0..0x030F`)
 
 | Опкод | Направление | Имя сообщения | Ключевые поля TypeBox |
 | :--- | :--- | :--- | :--- |
-| `0x02C0` | C -> S | `SpatialSpeechIntent` | `speechType: uint8 (0=Whisper, 1=Regular, 2=Yell, 3=Emote)`, `hue: uint16`, `text: string (1..128)` |
-| `0x02C1` | S -> C | `SpatialSpeechBroadcast` | `speakerSerial: uint32`, `speakerName: string`, `speechType: uint8`, `hue: uint16`, `font: uint8`, `isGhost: boolean`, `messageId: string`, `text: string` |
-| `0x02C2` | C -> S | `ChatChannelMessageIntent` | `channelId: ChatChannelId`, `text: string (1..128)` |
-| `0x02C3` | S -> C | `ChatChannelMessageEvent` | `channelId: ChatChannelId`, `senderCharacterId: uint32`, `senderName: string`, `guildTag?: string`, `messageId: string`, `timestampMs: uint64`, `text: string` |
-| `0x02C4` | C -> S | `ChatChannelSubscriptionIntent` | `channelId: ChatChannelId`, `subscribed: boolean` |
-| `0x02C5` | C -> S | `DirectTellIntent` | `targetCharacterId?: uint32`, `targetName?: string`, `text: string (1..128)` |
-| `0x02C6` | S -> C | `DirectTellEvent` | `direction: 'Incoming' \| 'OutgoingAck'`, `peerCharacterId: uint32`, `peerName: string`, `messageId: string`, `timestampMs: uint64`, `text: string` |
-| `0x02C7` | C -> S | `SocialPrivacySettingsIntent` | `doNotDisturb: boolean`, `hideOnlineStatus: boolean`, `profanityFilterEnabled: boolean` |
-| `0x02C8` | C -> S | `PartyActionIntent` | `action: 'Invite' \| 'Accept' \| 'Decline' \| 'Leave' \| 'Kick' \| 'TransferLeader' \| 'SetCanLootMe' \| 'SetGoldShareMode'`, `targetCharacterId?: uint32`, `boolValue?: boolean`, `goldShareMode?: 'Manual' \| 'EqualSplit'` |
-| `0x02C9` | S -> C | `PartyStateSnapshotEvent` | `partyId: string`, `leaderCharacterId: uint32`, `goldShareMode: string`, `canLootMe: boolean`, `members: Array<{ slot: uint8, characterId: uint32, name: string, isOnline: boolean }>` |
-| `0x02CA` | S -> C | `PartyInvitePromptEvent` | `partyId: string`, `inviterCharacterId: uint32`, `inviterName: string`, `expiresInMs: uint32` |
-| `0x02CB` | C -> S | `PartyChatIntent` | `targetSlot?: uint8 (1..10, omit for all)`, `text: string (1..128)` |
-| `0x02CC` | S -> C | `PartyVitalsSyncEvent` | `updates: Array<{ characterId: uint32, hits: uint16, maxHits: uint16, mana: uint16, maxMana: uint16, stam: uint16, maxStam: uint16, facetId: uint8, x: uint16, y: uint16 }>` |
-| `0x02CD` | C -> S | `GuildFoundIntent` | `deedSerial: uint32`, `name: string (3..40)`, `tag: string (1..4)` |
-| `0x02CE` | C -> S | `GuildManageMemberIntent` | `action: 'Recruit' \| 'ApproveRecruit' \| 'Kick' \| 'Resign' \| 'SetRank' \| 'SetTitle' \| 'SetFealty' \| 'ToggleTag'`, `targetCharacterId?: uint32`, `newRank?: uint8`, `title?: string`, `showTag?: boolean` |
-| `0x02CF` | C -> S | `GuildDiplomacyIntent` | `action: 'DeclareWar' \| 'AcceptWar' \| 'RejectOrCancelWar' \| 'SurrenderWar' \| 'InviteAlliance' \| 'AcceptAlliance' \| 'LeaveAlliance' \| 'SetGuildType' \| 'PackGuildstone'`, `targetGuildId?: string`, `maxKills?: uint16`, `durationMinutes?: uint32`, `guildType?: GuildType` |
-| `0x02D0` | S -> C | `GuildRosterAndDiplomacyEvent` | `guildId: string`, `name: string`, `tag: string`, `guildType: GuildType`, `typeChangeAvailableAtMs: uint64`, `leaderId: uint32`, `members: Array<GuildMemberDto>`, `relations: Array<GuildRelationDto>` |
-| `0x02D1` | C -> S | `FriendActionIntent` | `action: 'Request' \| 'Accept' \| 'Decline' \| 'Remove'`, `targetCharacterId: uint32` |
-| `0x02D2` | S -> C | `FriendsAndIgnoreSnapshotEvent` | `friends: Array<{ characterId: uint32, name: string, status: 'PendingIn' \| 'PendingOut' \| 'Confirmed', isOnline: boolean }>`, `ignores: Array<{ characterId: uint32, name: string }>` |
-| `0x02D3` | S -> C | `FriendPresenceChangedEvent` | `characterId: uint32`, `name: string`, `isOnline: boolean` |
-| `0x02D4` | C -> S | `IgnoreActionIntent` | `action: 'Add' \| 'Remove'`, `targetCharacterId: uint32`, `ignoreEntireAccount?: boolean` |
-| `0x02D5` | C -> S | `SubmitChatReportIntent` | `suspectCharacterId: uint32`, `category: ChatReportCategory`, `targetMessageId?: string`, `comment?: string (0..256)` |
-| `0x02D6` | S -> C | `ChatReportAckEvent` | `reportId: string`, `aggregatedCount: uint16` |
-| `0x02D7` | S -> C | `SocialActionNoticeEvent` | `code: string`, `severity: 'Info' \| 'Warning' \| 'Error'`, `retryAfterMs?: uint32`, `remainingSeconds?: uint32`, `message: string` |
+| `0x02F0` | C -> S | `SpatialSpeechIntent` | `speechType: uint8 (0=Whisper, 1=Regular, 2=Yell, 3=Emote)`, `hue: uint16`, `text: string (1..128)` |
+| `0x02F1` | S -> C | `SpatialSpeechBroadcast` | `speakerSerial: uint32`, `speakerName: string`, `speechType: uint8`, `hue: uint16`, `font: uint8`, `isGhost: boolean`, `messageId: string`, `text: string` |
+| `0x02F2` | C -> S | `ChatChannelMessageIntent` | `channelId: ChatChannelId`, `text: string (1..128)` |
+| `0x02F3` | S -> C | `ChatChannelMessageEvent` | `channelId: ChatChannelId`, `senderCharacterId: uint32`, `senderName: string`, `guildTag?: string`, `messageId: string`, `timestampMs: uint64`, `text: string` |
+| `0x02F4` | C -> S | `ChatChannelSubscriptionIntent` | `channelId: ChatChannelId`, `subscribed: boolean` |
+| `0x02F5` | C -> S | `DirectTellIntent` | `targetCharacterId?: uint32`, `targetName?: string`, `text: string (1..128)` |
+| `0x02F6` | S -> C | `DirectTellEvent` | `direction: 'Incoming' \| 'OutgoingAck'`, `peerCharacterId: uint32`, `peerName: string`, `messageId: string`, `timestampMs: uint64`, `text: string` |
+| `0x02F7` | C -> S | `SocialPrivacySettingsIntent` | `doNotDisturb: boolean`, `hideOnlineStatus: boolean`, `profanityFilterEnabled: boolean` |
+| `0x02F8` | C -> S | `PartyActionIntent` | `action: 'Invite' \| 'Accept' \| 'Decline' \| 'Leave' \| 'Kick' \| 'TransferLeader' \| 'SetCanLootMe' \| 'SetGoldShareMode'`, `targetCharacterId?: uint32`, `boolValue?: boolean`, `goldShareMode?: 'Manual' \| 'EqualSplit'` |
+| `0x02F9` | S -> C | `PartyStateSnapshotEvent` | `partyId: string`, `leaderCharacterId: uint32`, `goldShareMode: string`, `canLootMe: boolean`, `members: Array<{ slot: uint8, characterId: uint32, name: string, isOnline: boolean }>` |
+| `0x02FA` | S -> C | `PartyInvitePromptEvent` | `partyId: string`, `inviterCharacterId: uint32`, `inviterName: string`, `expiresInMs: uint32` |
+| `0x02FB` | C -> S | `PartyChatIntent` | `targetSlot?: uint8 (1..10, omit for all)`, `text: string (1..128)` |
+| `0x02FC` | S -> C | `PartyVitalsSyncEvent` | `updates: Array<{ characterId: uint32, hits: uint16, maxHits: uint16, mana: uint16, maxMana: uint16, stam: uint16, maxStam: uint16, facetId: uint8, x: uint16, y: uint16 }>` |
+| `0x02FD` | C -> S | `GuildFoundIntent` | `deedSerial: uint32`, `name: string (3..40)`, `tag: string (1..4)` |
+| `0x02FE` | C -> S | `GuildManageMemberIntent` | `action: 'Recruit' \| 'ApproveRecruit' \| 'Kick' \| 'Resign' \| 'SetRank' \| 'SetTitle' \| 'SetFealty' \| 'ToggleTag'`, `targetCharacterId?: uint32`, `newRank?: uint8`, `title?: string`, `showTag?: boolean` |
+| `0x02FF` | C -> S | `GuildDiplomacyIntent` | `action: 'DeclareWar' \| 'AcceptWar' \| 'RejectOrCancelWar' \| 'SurrenderWar' \| 'InviteAlliance' \| 'AcceptAlliance' \| 'LeaveAlliance' \| 'SetGuildType' \| 'PackGuildstone'`, `targetGuildId?: string`, `maxKills?: uint16`, `durationMinutes?: uint32`, `guildType?: GuildType` |
+| `0x0300` | S -> C | `GuildRosterAndDiplomacyEvent` | `guildId: string`, `name: string`, `tag: string`, `guildType: GuildType`, `typeChangeAvailableAtMs: uint64`, `leaderId: uint32`, `members: Array<GuildMemberDto>`, `relations: Array<GuildRelationDto>` |
+| `0x0301` | C -> S | `FriendActionIntent` | `action: 'Request' \| 'Accept' \| 'Decline' \| 'Remove'`, `targetCharacterId: uint32` |
+| `0x0302` | S -> C | `FriendsAndIgnoreSnapshotEvent` | `friends: Array<{ characterId: uint32, name: string, status: 'PendingIn' \| 'PendingOut' \| 'Confirmed', isOnline: boolean }>`, `ignores: Array<{ characterId: uint32, name: string }>` |
+| `0x0303` | S -> C | `FriendPresenceChangedEvent` | `characterId: uint32`, `name: string`, `isOnline: boolean` |
+| `0x0304` | C -> S | `IgnoreActionIntent` | `action: 'Add' \| 'Remove'`, `targetCharacterId: uint32`, `ignoreEntireAccount?: boolean` |
+| `0x0305` | C -> S | `SubmitChatReportIntent` | `suspectCharacterId: uint32`, `category: ChatReportCategory`, `targetMessageId?: string`, `comment?: string (0..256)` |
+| `0x0306` | S -> C | `ChatReportAckEvent` | `reportId: string`, `aggregatedCount: uint16` |
+| `0x0307` | S -> C | `SocialActionNoticeEvent` | `code: string`, `severity: 'Info' \| 'Warning' \| 'Error'`, `retryAfterMs?: uint32`, `remainingSeconds?: uint32`, `message: string` |
 
 ### Канонические коды ошибок (`ERR_*`)
 - **Речь и чат**: `ERR_CHAT_MESSAGE_EMPTY`, `ERR_CHAT_MESSAGE_LENGTH_INVALID`, `ERR_CHAT_RATE_LIMITED`, `ERR_CHAT_CHANNEL_NOT_JOINED`, `ERR_CHAT_RECIPIENT_OFFLINE`, `ERR_CHAT_RECIPIENT_DND`, `ERR_CHAT_TARGET_IGNORED_BY_YOU`.

@@ -52,7 +52,7 @@
 - **THEN** сервер отклоняет установку с кодом `ERR_HOUSE_FOOTPRINT_OCCUPIED`
 
 ### Requirement: Region Road and Guard Zone Placement Restrictions
-Система SHALL запрещать установку домов на тайлах дорог (по списку дорожных `landTileId` и `staticTileId`), внутри охраняемых городов (Guard Zones), подземелий (Dungeons), зон спавна чемпионов, в радиусе 16 тайлов от лунных врат (Moongates) и входов в шахты/данжи, возвращая ошибку `ERR_HOUSE_RESTRICTED_REGION`.
+Система SHALL запрещать установку домов на тайлах дорог (по списку дорожных `landTileId` и `staticTileId`) и в запретных зонах порта `IHousingRegionPolicy` (охраняемые города, подземелья, `NoHousing`, 16 тайлов от лунных врат и входов в данжи), возвращая `ERR_HOUSE_RESTRICTED_REGION`. Реализация порта по умолчанию MUST использовать охраняемые зоны P17 и статический список запретных прямоугольников контента; P25 заменяет её региональной.
 
 #### Scenario: Attempting placement on a paved or dirt road
 - **WHEN** футпринт дома или его 1-тайловый контур касается тайла дороги

@@ -31,7 +31,7 @@
 
 - **Затрагиваемые приложения и пакеты:**
   - `apps/game-server` — основная точка реализации: NestJS-модули хоста, инфраструктуры (Valkey, NATS JetStream, PostgreSQL/Drizzle, сериальный аллокатор, ruleset), Colyseus-комнаты `WorldPartitionRoom` и `ShardHubRoom`, HTTP-сервер health/metrics и интеграционный тестовый хост.
-  - `packages/domain` — доменные типы и коды ошибок среды выполнения (`RuntimeErrorCode`, коды закрытия WebSocket `4000..4019`, дескрипторы партиций, состояния хоста/сессии/присутствия, типы объявлений, `TimerHandle`).
+  - `packages/domain` — доменные типы и коды ошибок среды выполнения (`RuntimeErrorCode`, коды закрытия WebSocket `4100..4199` (по реестру `docs/PROTOCOL_REGISTRY.md`), дескрипторы партиций, состояния хоста/сессии/присутствия, типы объявлений, `TimerHandle`).
   - `packages/rules` — чистое безэффектное ядро симуляции (`src/simulation/*`): иерархическое колесо таймеров, планировщик тиков 20 Гц, пространственный индекс секторов `16×16`, адаптер `SectorDynamicTileProvider`, ядро партиции мира, конечный автомат сессий и ядро общешардового хаба.
   - `packages/protocol` — TypeBox-схемы сообщений хаба и сессий (`hub:motd`, `hub:announcement`, `hub:presence_summary`, `session:logout_request`, `session:kicked`, `world:ready`), NATS-событий (`presence.updated`, `hub.announce`, `session.evict`), контрактов Valkey и кодов закрытия WebSocket.
   - `packages/config` — расширение `GameServerEnvSchema` (роль узла, параметры партиций, тайминги heartbeat/shutdown/reconnect/logout/idle, бюджеты тика, лимиты вместимости и объявлений; согласование проверки тикетов с P05).

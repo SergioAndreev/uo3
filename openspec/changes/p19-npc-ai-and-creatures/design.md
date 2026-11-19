@@ -19,7 +19,7 @@
 - Ввести секторную гибернацию (`Hibernating`), двухчастотное расписание тиков ИИ (`4 Гц` в бою, `1 Гц` в покое) и квотирование 3D A* поиска пути для гарантии времени тика `< 50 мс`.
 - Реализовать канонические для UO:Renaissance механики спавнеров (`SpawnerNode`, `GroupSpawn`, `WaveSpawn`, суточные окна), генерации лута и магических аффиксов (`Ruin..Vanquishing`, `Accurate..Supremely Accurate`, `Defense..Invulnerability`, `Durable..Indestructible`), разделки трупов (`Carving`) и прав мародёрства (`LootRight`).
 - Реализовать полный цикл `Animal Taming`, `Animal Lore` и `Veterinary`: 12-секундное приручение, 5 слотов контроля, шкалу лояльности `0..100`, голосовые команды, передачу питомцев и сервис стойл (`Animal Trainer`).
-- Реализовать городские и странствующие сервисы NPC: банкир (сейф `0x1D`, баланс, банковские чеки `5000..1000000` с RPO=0), целители (`Lawful`/`Evil`), учителя навыков (до `30.0%`), эскорт-миссии и мгновенное возмездие городской стражи (`GuardedRegion`).
+- Реализовать городские и странствующие сервисы NPC: банкир (открытие сейфа `0x1D`; баланс и чеки — порт `IBankingService`, реализуемый в P21), целители (`Lawful`/`Evil`), учителя навыков (до `30.0%`), эскорт-миссии и ИИ стражника, исполняющий приказы `pvp/guard-zones` (P17).
 
 ### Non-Goals
 - Торговля с NPC-вендорами (`buy`/`sell` витрины, инфляция/запасы) и вендоры игроков на домах — относятся к фазе **P21**.
@@ -56,7 +56,7 @@
 ### Decision 4: Персистентность спавнеров, диких NPC и питомцев (Dirty-Flush 60с vs RPO=0)
 - **Выбор**:
   - Конфигурация и рантайм-состояние спавнеров (`world_spawners`) и живых неприрученных NPC с изменённым состоянием сохраняются в рамках стандартного 60-секундного инкрементального `dirty-flush` партиции (P08).
-  - Сдача питомца в стойло (`stable`), получение из стойла (`claim`), передача питомца другому игроку (`Transfer`), а также операции банкира с чеками (`check <amount>`, обналичивание `BankCheck`) и платное обучение навыкам проходят через `CriticalTxCoordinator` (RPO=0) или атомарную транзакцию БД с защитой от дублирования при крэше партиции.
+  - Сдача питомца в стойло (`stable`), получение из стойла (`claim`), передача питомца другому игроку (`Transfer`)и платное обучение навыкам проходят через `CriticalTxCoordinator` (RPO=0) или атомарную транзакцию БД с защитой от дублирования при крэше партиции.
 - **Обоснование**: Потеря 30 секунд блуждания дикого орка при аварийном перезапуске партиции незаметна для игроков, тогда как дюп дракона при `Transfer`/`Stable` или дюп банковского чека на 1 000 000 золотых критичен для экономики шарда (ADR-008).
 - **Отвергнутые альтернативы**:
   - *Синхронная запись в БД каждого спавна и каждой смерти дикого монстра* — создаёт избыточную нагрузку IOPS на PostgreSQL при интенсивном фарме подземелий.
@@ -71,16 +71,16 @@
   - *Случайный пул произвольных AoS-модификаторов (Hit Leech, Faster Cast Recovery, Elemental Resists)* — нарушает баланс и спецификацию эпохи UO:Renaissance.
 
 ### Decision 6: Двуязычный детерминированный парсер речи NPC и дублирование через Context Menu
-- **Выбор**: `NpcSpeechParser` в `@uo3/rules/npc` нормализует входящую строку речи (нижний регистр, удаление пунктуации) и сопоставляет её с каноническими английскими (`"bank"`, `"balance"`, `"check 50000"`, `"stable"`, `"claim"`, `"train"`, `"guards"`, `"all kill"`, `"destination"`, `"i will take thee"`) и русскими (`"банк"`, `"баланс"`, `"чек 50000"`, `"стойло"`, `"забрать"`, `"обучи"`, `"стража"`, `"все фас"`, `"куда"`, `"провожу"`) паттернами. Все сервисные функции одновременно доступны через пакет контекстного меню (`0x02B0`/`0x02B1`).
+- **Выбор**: `NpcSpeechParser` в `@uo3/rules/npc` нормализует входящую строку речи (нижний регистр, удаление пунктуации) и сопоставляет её с каноническими английскими (`"bank"`, `"balance"`, `"check 50000"`, `"stable"`, `"claim"`, `"train"`, `"guards"`, `"all kill"`, `"destination"`, `"i will take thee"`) и русскими (`"банк"`, `"баланс"`, `"чек 50000"`, `"стойло"`, `"забрать"`, `"обучи"`, `"стража"`, `"все фас"`, `"куда"`, `"провожу"`) паттернами. Все сервисные функции одновременно доступны через пакет контекстного меню (`0x0220`/`0x0221`).
 - **Обоснование**: Сохраняет классическую атмосферу голосового управления UO:R для ветеранов и одновременно даёт удобный UI-доступ через контекстное меню для современных игроков.
 - **Отвергнутые альтернативы**:
   - *Использование LLM или нечёткого NLP на сервере для диалогов NPC* — недетерминированно, дорого по латентности и нарушает предсказуемость команд в бою.
 
-### Decision 7: Банковские чеки как `blessed`-предметы с обналичиванием строго внутри `BankBox`
-- **Выбор**: Предмет `BankCheck` создаётся с флагом `blessed=true` (не выпадает в труп при смерти персонажа), весом `1.0 камень` и полем `worthGold` (`5000..1000000`). Обналичивание чека двойным кликом разрешено только тогда, когда родительским контейнером чека является открытый `BankBox` (`0x1D`) самого игрока.
-- **Обоснование**: Предотвращает потерю крупных сумм при убийстве у банка, исключает эксплойт мгновенной генерации тяжёлых куч золота в поле или подземелье и упрощает будущую покупку домов/дорогих товаров (P21/P23).
+### Decision 7: Банкир P19 открывает сейф, финансовые операции — через порт `IBankingService`
+- **Выбор**: P19 реализует только распознавание `"bank"` и выдачу/отзыв доступа к `BankBox` (`0x1D`). Команды `"balance"`, `"withdraw"`, `"check"` и обналичивание `BankCheck` маршрутизируются в порт `IBankingService`, реализация которого поставляется capability `economy/currency-and-banking` (P21); реализация по умолчанию отвечает `ERR_SERVICE_UNAVAILABLE`.
+- **Обоснование**: Реестр capability закрепляет золото, банк и чеки за P21; дублирование правил чеков в P19 приводило к расхождениям (учёт чеков в балансе, коды `ERR_BANK_BOX_FULL` vs `ERR_BANK_CAPACITY_EXCEEDED`).
 - **Отвергнутые альтернативы**:
-  - *Обналичивание чека в рюкзаке игрока в любой точке мира* — позволяет обходить физику веса золота и перегружать рюкзак с выпадением стаков на землю.
+  - *Полная реализация чеков в P19* — нарушает принцип «одна capability — одна фаза» и создаёт два источника правды.
 
 ## Архитектура модулей и распределение ответственности
 
@@ -109,8 +109,8 @@ flowchart TD
 
     subgraph Persistence["@uo3/db (PostgreSQL 17)"]
         DB_SP["world_spawners & world_npcs (60s Dirty-Flush)"]
-        DB_ST["character_stabled_pets & BankCheck (CriticalTx RPO=0)"]
-        DB_LD["item_ledger (LOOT_DROP, BANK_CHECK_ISSUE/CASH)"]
+        DB_ST["character_stabled_pets (CriticalTx RPO=0)"]
+        DB_LD["item_ledger (LOOT_DROP, PET_TRANSFER)"]
     end
 
     CT --> BT
@@ -204,21 +204,21 @@ stateDiagram-v2
   - `followersCurrent: uint8` (`0..5`).
   - `followersMax: uint8` (по умолчанию `5`).
 
-### Опкоды сообщений `@uo3/protocol` (диапазон `0x02B0..0x02BF`)
+### Опкоды сообщений `@uo3/protocol` (диапазон `0x0220..0x023F`)
 
 | Опкод | Имя сообщения | Направление | Поля TypeBox-схемы | Назначение |
 |---|---|---|---|---|
-| `0x02B0` | `ContextMenuRequest` | C -> S | `{ targetSerial: uint32 }` | Запрос контекстного меню при клике на NPC или себя |
-| `0x02B1` | `ContextMenuResponse` | S -> C | `{ targetSerial: uint32, entries: Array<{ entryId: uint16, clilocOrLabelId: string, enabled: boolean }> }` | Список доступных пунктов контекстного меню |
-| `0x02B2` | `ContextMenuSelect` | C -> S | `{ targetSerial: uint32, entryId: uint16 }` | Выбор пункта контекстного меню игроком |
-| `0x02B3` | `PetCommandIntent` | C -> S | `{ petSerial: uint32, command: 'follow' \| 'kill' \| 'guard' \| 'stay' \| 'stop' \| 'drop' \| 'friend' \| 'transfer' \| 'release', targetSerial?: uint32 }` | Прямая команда одному или всем питомцам (`petSerial=0` для `All`) |
-| `0x02B4` | `PetRenameIntent` | C -> S | `{ petSerial: uint32, newName: string (1..16 ASCII/Cyrillic) }` | Переименование собственного питомца в карточке статуса |
-| `0x02B5` | `PetStatusNotification` | S -> C | `{ petSerial: uint32, loyalty: uint8, loyaltyLabel: string, controlSlots: uint8, currentOrder: string }` | Обновление статуса лояльности и приказа питомца |
-| `0x02B6` | `PetTransferConfirmGump` | S <-> C | `{ transferId: string, petSerial: uint32, petName: string, templateId: string, fromSerial: uint32, accepted?: boolean }` | Двустороннее подтверждение передачи питомца (`Transfer`) |
-| `0x02B7` | `StableClaimListGump` | S <-> C | `{ trainerSerial: uint32, pets: Array<{ stabledPetId: string, name: string, templateId: string, controlSlots: uint8 }>, selectedPetId?: string }` | Выбор питомца при команде `"claim"` без точного имени |
-| `0x02B8` | `SkillTrainQuoteEvent` | S -> C | `{ trainerSerial: uint32, trainableSkills: Array<{ skillId: uint8, maxTeachTenths: uint16, currentTenths: uint16, costGoldMax: uint16 }> }` | Информация о доступном обучении навыкам у NPC |
-| `0x02B9` | `SpawnerAdminCommand` | C -> S | `{ spawnerId: string, action: 'pause' \| 'resume' \| 'respawn_now' \| 'despawn_all' \| 'update_config', configPatch?: object }` | Административное управление спавнером (`AccessLevel >= 2`) |
-| `0x02BA` | `NpcServiceErrorEvent` | S -> C | `{ npcSerial: uint32, errorCode: string, messageKey: string }` | Стандартизированный отказ сервиса NPC (`ERR_*`) |
+| `0x0220` | `ContextMenuRequest` | C -> S | `{ targetSerial: uint32 }` | Запрос контекстного меню при клике на NPC или себя |
+| `0x0221` | `ContextMenuResponse` | S -> C | `{ targetSerial: uint32, entries: Array<{ entryId: uint16, clilocOrLabelId: string, enabled: boolean }> }` | Список доступных пунктов контекстного меню |
+| `0x0222` | `ContextMenuSelect` | C -> S | `{ targetSerial: uint32, entryId: uint16 }` | Выбор пункта контекстного меню игроком |
+| `0x0223` | `PetCommandIntent` | C -> S | `{ petSerial: uint32, command: 'follow' \| 'kill' \| 'guard' \| 'stay' \| 'stop' \| 'drop' \| 'friend' \| 'transfer' \| 'release', targetSerial?: uint32 }` | Прямая команда одному или всем питомцам (`petSerial=0` для `All`) |
+| `0x0224` | `PetRenameIntent` | C -> S | `{ petSerial: uint32, newName: string (1..16 ASCII/Cyrillic) }` | Переименование собственного питомца в карточке статуса |
+| `0x0225` | `PetStatusNotification` | S -> C | `{ petSerial: uint32, loyalty: uint8, loyaltyLabel: string, controlSlots: uint8, currentOrder: string }` | Обновление статуса лояльности и приказа питомца |
+| `0x0226` | `PetTransferConfirmGump` | S <-> C | `{ transferId: string, petSerial: uint32, petName: string, templateId: string, fromSerial: uint32, accepted?: boolean }` | Двустороннее подтверждение передачи питомца (`Transfer`) |
+| `0x0227` | `StableClaimListGump` | S <-> C | `{ trainerSerial: uint32, pets: Array<{ stabledPetId: string, name: string, templateId: string, controlSlots: uint8 }>, selectedPetId?: string }` | Выбор питомца при команде `"claim"` без точного имени |
+| `0x0228` | `SkillTrainQuoteEvent` | S -> C | `{ trainerSerial: uint32, trainableSkills: Array<{ skillId: uint8, maxTeachTenths: uint16, currentTenths: uint16, costGoldMax: uint16 }> }` | Информация о доступном обучении навыкам у NPC |
+| `0x0229` | `SpawnerAdminCommand` | C -> S | `{ spawnerId: string, action: 'pause' \| 'resume' \| 'respawn_now' \| 'despawn_all' \| 'update_config', configPatch?: object }` | Административное управление спавнером (`AccessLevel >= 2`) |
+| `0x022A` | `NpcServiceErrorEvent` | S -> C | `{ npcSerial: uint32, errorCode: string, messageKey: string }` | Стандартизированный отказ сервиса NPC (`ERR_*`) |
 
 ### Коды ошибок фазы P19
 - `ERR_CREATURE_TEMPLATE_INVALID` — ошибка валидации YAML-шаблона существа.
@@ -229,9 +229,7 @@ stateDiagram-v2
 - `ERR_FOLLOWER_SLOTS_EXCEEDED` — недостаточно свободных слотов контроля (`followersCurrent + controlSlots > 5`).
 - `ERR_PET_CONTAINER_NOT_EMPTY` — попытка сдать в стойло вьючное животное с предметами в сумке.
 - `ERR_STABLE_CAPACITY_FULL` / `ERR_STABLE_LIMIT_REACHED` — превышен лимит стойла (`2..5` мест) или слотов контроля при получении.
-- `ERR_BANK_CHECK_INVALID_AMOUNT` — сумма чека вне диапазона `5000..1000000` или не хватает золота в банке.
-- `ERR_BANK_CHECK_MUST_BE_IN_BANK` — попытка обналичить чек вне открытого `BankBox`.
-- `ERR_BANK_BOX_FULL` — в `BankBox` недостаточно свободных слотов для создания стаков золота по `60000`.
+- `ERR_SERVICE_UNAVAILABLE` — финансовая команда банкира при порте `IBankingService` по умолчанию (до P21).
 - `ERR_HEALER_REFUSED_KARMA` — отказ законопослушного целителя воскрешать преступника или убийцу.
 - `ERR_ESCORT_COOLDOWN_OR_BUSY` — у игрока уже есть активный эскорт или не истёк 5-минутный кулдаун.
 - `ERR_TARGET_INVULNERABLE` — попытка атаковать или обокрасть неуязвимого сервисного NPC (`invulnerable=true`).
@@ -288,7 +286,6 @@ $$\text{TamerSkillSumTenths} = \text{TamingTenths} + \text{AnimalLoreTenths} + \
 
 - **[Риск: Всплеск времени тика при одновременном пробуждении большого сектора подземелья]** → **Митигация**: При выходе сектора из `Hibernating` новые NPC распределяются по 20 бакетам (`serial % 20`) равномерно, поэтому их первый тик ИИ и запросы A* размазываются по всему 250–1000 мс окну, а глобальный лимит `32 A* запроса на тик` гарантирует отсутствие фриза симуляции.
 - **[Риск: Дюп питомца при одновременном вызове `stable` и `Transfer` или при падении партиции]** → **Митигация**: Любой переход питомца между активным миром и таблицей `character_stabled_pets` выполняется под in-memory mutex по `npc_serial` и фиксируется через `CriticalTxCoordinator` (RPO=0) до подтверждения операции клиенту.
-- **[Риск: Дюп золота через банковские чеки при нехватке слотов в `BankBox`]** → **Митигация**: Перед обналичиванием чека сервер вычисляет точное число требуемых новых стаков $\lceil \text{worthGold} / 60000 \rceil$ и проверяет `currentItemsCount + neededStacks - 1 <= 125` внутри одной транзакции RPO=0 с записью в `item_ledger`.
 - **[Риск: Эксплойт бесконечной прокачки `Animal Taming` через приручение и отпускание одного животного]** → **Митигация**: Список `previousOwnerIds` сохраняется в состоянии экземпляра NPC; если `characterId` уже присутствует в `previousOwnerIds`, проверка прироста навыка блокируется, а для других игроков порог `minTamingSkill` растёт на `+4.8` за каждого владельца.
 - **[Риск: Бесконечный фарм одежды и оружия со спавнов городских NPC и стражников]** → **Митигация**: Вся базовая униформа и оружие гуманоидных NPC в шаблонах помечается `movable=false` и гарантированно уничтожается до генерации контейнера трупа `0x2006`.
 - **[Риск: Застревание монстров за динамическими препятствиями или дверями при преследовании]** → **Митигация**: Таймер отсутствия прогресса сближения (`3000 мс`) переключает NPC на ближайшую достижимую цель или переводит его в состояние `ReturnHome` с возвратом к спавнеру.
@@ -298,7 +295,7 @@ $$\text{TamerSkillSumTenths} = \text{TamingTenths} + \text{AnimalLoreTenths} + \
 
 1. **Этап 1 (Домен и Контент)**: Добавление типов в `@uo3/domain` и YAML-каталогов существ, таблиц `LootPack` и спавнеров синтетического мира в `@uo3/content` с JSON Schema валидацией в CI.
 2. **Этап 2 (Чистые правила `@uo3/rules`)**: Реализация генератора NPC, деревьев поведения ИИ, генератора лута и магических аффиксов UO:R, формул приручения/ветеринарии и парсера речи с покрытием детерминированными unit-тестами на `@uo3/test-kit`.
-3. **Этап 3 (БД и Протокол)**: Добавление Drizzle-миграции (`world_spawners`, `world_npcs`, `character_stabled_pets`), обновление `MobileSchema`/`PlayerPrivateStateSchema` и регистрация опкодов `0x02B0..0x02BA` в `@uo3/protocol`.
+3. **Этап 3 (БД и Протокол)**: Добавление Drizzle-миграции (`world_spawners`, `world_npcs`, `character_stabled_pets`), обновление `MobileSchema`/`PlayerPrivateStateSchema` и регистрация опкодов `0x0220..0x022A` в `@uo3/protocol`.
 4. **Этап 4 (Игровой сервер)**: Внедрение `NpcAiSchedulerService`, `SpawnerRuntimeService`, `LootAndCorpseService`, `PetControlService` и `NpcServiceRouter` в `WorldPartitionRoom`.
 5. **Этап 5 (Клиент и UI)**: Подключение контекстного меню NPC/питомцев, отображения `Followers X/5`, гампа выбора питомца из стойла, квоты обучения навыкам и тултипов магических аффиксов UO:R в `apps/client`.
 

@@ -14,13 +14,13 @@
 
 ### Goals
 - Реализовать детерминированные пространственные банки ресурсов (`8×8` для руды и рыбы, `4×4` для леса, таймеры для овец/ульев/трупов) с ленивым выделением памяти только под активные истощаемые узлы.
-- Реализовать полный цикл добычи и первичной переработки: 9 видов руды UO:R -> слитки на горне; брёвна -> доски; рыба и глубоководные трофеи (`SOS`, карты) -> стейки; хлопок/шерсть -> прялка -> ткацкий станок -> рулоны ткани -> бинты; шкуры с трупов -> кожа.
+- Реализовать полный цикл добычи и первичной переработки: 9 видов руды UO:R -> слитки на горне; брёвна -> доски; рыба и глубоководные трофеи (`SOS`, карты) -> стейки; хлопок/шерсть -> прялка -> ткацкий станок -> рулоны ткани -> бинты; шкуры (из разделки трупов P19) -> кожа.
 - Построить универсальный движок ремесленных сессий (`CraftSessionService`) с проверкой рабочих станций, расчётом `successBp`, `exceptionalBp`, частичной потерей сырья при провале, клеймом мастера (`Maker's Mark`) и историей `Make Last`.
 - Описать в `@uo3/content` и реализовать в `@uo3/rules` + `apps/game-server` каталог рецептов и спец-операций для `Blacksmithy` (включая `Smelt Item`), `Tailoring` (со сдачей ярдов ткани), `Carpentry` (с генерацией замков/ключей и `Add-on Deeds`), `Tinkering` (`Potion Keg`, ловушки на сундуки), `Bowcraft & Fletching` (пакетная сборка стрел/болтов), `Alchemy` (розлив в бутылки и кеги), `Inscription` (проверка `Spellbook` и списание маны), `Cooking` и `Cartography`.
 - Внедрить полную модель прочности (`hitPoints`, `maxHitPoints`, `initialMaxHitPoints`), боевой износ в P16, ремонт на станциях со штрафом `-1 maxHitPoints`, контракты `Repair Service Deeds`, укрепление `Powder of Fortifying` и оценку через `Arms Lore`.
 
 ### Non-Goals
-- Торговля ресурсами и изделиями с NPC-вендорами и система заказов `Bulk Order Deeds` (делегировано в P21 и P22).
+- Торговля ресурсами и изделиями с NPC-вендорами (делегировано в P21); заказы `Bulk Order Deeds` — механика после эпохи UO:R, вне скоупа ROADMAP.
 - Установка дидов крупных станций и мебели (`Add-on Deeds`) в домах игроков (делегировано в P23).
 - Рыбалка с борта корабля в движении и подъём затонувших сундуков по координатам `SOS` (делегировано в P24).
 
@@ -113,7 +113,7 @@ flowchart TD
     end
 
     subgraph Protocol["packages/protocol"]
-        OP["Опкоды 0x0340..0x034F (TypeBox Schemas)"]
+        OP["Опкоды 0x0240..0x025F (TypeBox Schemas)"]
     end
 
     subgraph GameServer["apps/game-server"]
@@ -125,7 +125,7 @@ flowchart TD
     end
 
     subgraph CorePackages["packages/domain, rules, content, db"]
-        CNT["@uo3/content (recipes/*.yaml, materials.yaml, carving.yaml)"]
+        CNT["@uo3/content (recipes/*.yaml, materials.yaml, foraging.yaml)"]
         RLS["@uo3/rules (Формулы банков, successBp, Exceptional, Износ)"]
         DOM["@uo3/domain (Типы ресурсов, качества, ошибки ERR_*)"]
         DB["@uo3/db (world_items craft/durability columns + item_ledger)"]
@@ -160,8 +160,8 @@ sequenceDiagram
 
     C->>GS: UseRequest (Double-click Smith's Hammer)
     GS->>GS: Validate tool usesRemaining >= 1
-    GS-->>C: CraftMenuOpenNotify (0x0341: categories, selectedMaterial, history)
-    C->>GS: CraftExecuteRequest (0x0342: recipeId="katana", material="VALORITE", count=1)
+    GS-->>C: CraftMenuOpenNotify (0x0241: categories, selectedMaterial, history)
+    C->>GS: CraftExecuteRequest (0x0242: recipeId="katana", material="VALORITE", count=1)
     GS->>GS: Check ActiveActionSlot, Tool, Station (Anvil+Forge <= 2 tiles + LOS)
     GS->>Inv: Pre-validate 8 Valorite Ingots in Backpack
     GS->>GS: Start Craft Timer (1500 ms = 30 ticks)
@@ -171,7 +171,7 @@ sequenceDiagram
     R-->>GS: Outcome { success: true, quality: EXCEPTIONAL, promptMakersMark: false }
     GS->>P15: processSkillGain(Blacksmithy, difficultyBp)
     GS->>Inv: Atomic Commit: -8 Valorite Ingots, -1 Tool Use, +1 Exceptional Valorite Katana
-    GS-->>C: CraftResultNotify (0x0345: SUCCESS, itemSerial, quality=EXCEPTIONAL)
+    GS-->>C: CraftResultNotify (0x0245: SUCCESS, itemSerial, quality=EXCEPTIONAL)
 ```
 
 ## Модели данных и сетевой протокол
@@ -193,20 +193,20 @@ sequenceDiagram
   - для `Repair Service Deed`: `{ "craftSkillId": 7, "skillTenths": 1000, "authorName": "Waylan" }`;
   - для карт `Cartography`: `{ "facetId": 0, "centerX": 1420, "centerY": 1690, "radius": 256 }`.
 
-### 2. Опкоды и схемы `@uo3/protocol` (`0x0340..0x034F`)
-- `0x0340 GatherResourceStartNotify` (S->C): `{ actionKind: 'MINING' | 'LUMBER' | 'FISHING' | 'SPINNING', targetX: uint16, targetY: uint16, durationMs: uint16 }`
-- `0x0341 CraftMenuOpenNotify` (S->C): `{ sessionId: uint32, toolSerial: uint32, skillId: uint8, usesRemaining: uint16, selectedMaterialId: string, makersMarkMode: 'ALWAYS' | 'NEVER' | 'PROMPT', recentRecipeIds: string[], categories: CraftCategoryView[] }`
-- `0x0342 CraftExecuteRequest` (C->S): `{ sessionId: uint32, recipeId: string, batchCount: uint8 (1..100), makeLast: boolean }`
-- `0x0343 CraftConfigUpdateRequest` (C->S): `{ sessionId: uint32, selectedMaterialId?: string, makersMarkMode?: 'ALWAYS' | 'NEVER' | 'PROMPT' }`
-- `0x0344 CraftSpecialActionRequest` (C->S): `{ sessionId: uint32, action: 'SMELT_ITEM' | 'REPAIR_ITEM' | 'CREATE_REPAIR_DEED', targetItemSerial?: uint32 }`
-- `0x0345 CraftResultNotify` (S->C): `{ sessionId: uint32, status: 'SUCCESS' | 'FAILURE' | 'ABORTED', errorCode?: string, createdItemSerial?: uint32, quality?: 'LOW' | 'REGULAR' | 'EXCEPTIONAL', usesRemaining: uint16 }`
-- `0x0346 MakersMarkPromptNotify` (S->C): `{ promptId: uint32, itemSerial: uint32, itemName: string, timeoutMs: 30000 }`
-- `0x0347 MakersMarkPromptResponse` (C->S): `{ promptId: uint32, applyMark: boolean }`
-- `0x0348 ItemDurabilityWarningNotify` (S->C): `{ itemSerial: uint32, equipLayer: uint8, hitPoints: uint8, maxHitPoints: uint8, destroyed: boolean }`
-- `0x0349 ArmsLoreInspectionNotify` (S->C): `{ itemSerial: uint32, conditionGrade: uint8 (0..9), hitPoints?: uint8, maxHitPoints?: uint8, materialId?: string, ratingValue: uint16, poisonLevel?: uint8, poisonCharges?: uint8 }`
+### 2. Опкоды и схемы `@uo3/protocol` (`0x0240..0x025F`)
+- `0x0240 GatherResourceStartNotify` (S->C): `{ actionKind: 'MINING' | 'LUMBER' | 'FISHING' | 'SPINNING', targetX: uint16, targetY: uint16, durationMs: uint16 }`
+- `0x0241 CraftMenuOpenNotify` (S->C): `{ sessionId: uint32, toolSerial: uint32, skillId: uint8, usesRemaining: uint16, selectedMaterialId: string, makersMarkMode: 'ALWAYS' | 'NEVER' | 'PROMPT', recentRecipeIds: string[], categories: CraftCategoryView[] }`
+- `0x0242 CraftExecuteRequest` (C->S): `{ sessionId: uint32, recipeId: string, batchCount: uint8 (1..100), makeLast: boolean }`
+- `0x0243 CraftConfigUpdateRequest` (C->S): `{ sessionId: uint32, selectedMaterialId?: string, makersMarkMode?: 'ALWAYS' | 'NEVER' | 'PROMPT' }`
+- `0x0244 CraftSpecialActionRequest` (C->S): `{ sessionId: uint32, action: 'SMELT_ITEM' | 'REPAIR_ITEM' | 'CREATE_REPAIR_DEED', targetItemSerial?: uint32 }`
+- `0x0245 CraftResultNotify` (S->C): `{ sessionId: uint32, status: 'SUCCESS' | 'FAILURE' | 'ABORTED', errorCode?: string, createdItemSerial?: uint32, quality?: 'LOW' | 'REGULAR' | 'EXCEPTIONAL', usesRemaining: uint16 }`
+- `0x0246 MakersMarkPromptNotify` (S->C): `{ promptId: uint32, itemSerial: uint32, itemName: string, timeoutMs: 30000 }`
+- `0x0247 MakersMarkPromptResponse` (C->S): `{ promptId: uint32, applyMark: boolean }`
+- `0x0248 ItemDurabilityWarningNotify` (S->C): `{ itemSerial: uint32, equipLayer: uint8, hitPoints: uint8, maxHitPoints: uint8, destroyed: boolean }`
+- `0x0249 ArmsLoreInspectionNotify` (S->C): `{ itemSerial: uint32, conditionGrade: uint8 (0..9), hitPoints?: uint8, maxHitPoints?: uint8, materialId?: string, ratingValue: uint16, poisonLevel?: uint8, poisonCharges?: uint8 }`
 
 ### 3. Канонические коды ошибок (`packages/domain`)
-- Добыча: `ERR_RESOURCE_DEPLETED`, `ERR_INVALID_GATHER_TARGET`, `ERR_GATHER_OUT_OF_RANGE`, `ERR_GATHER_NO_LOS`, `ERR_GATHER_TOOL_REQUIRED`, `ERR_GATHER_INTERRUPTED`, `ERR_SMELT_FAILED`, `ERR_CORPSE_ALREADY_CARVED`, `ERR_SHEEP_NOT_READY`.
+- Добыча: `ERR_RESOURCE_DEPLETED`, `ERR_INVALID_GATHER_TARGET`, `ERR_GATHER_OUT_OF_RANGE`, `ERR_GATHER_NO_LOS`, `ERR_GATHER_TOOL_REQUIRED`, `ERR_GATHER_INTERRUPTED`, `ERR_SMELT_FAILED`, `ERR_SHEEP_NOT_READY`.
 - Крафт: `ERR_CRAFT_BUSY`, `ERR_TOOL_WORN_OUT`, `ERR_STATION_REQUIRED`, `ERR_SKILL_TOO_LOW`, `ERR_MATERIAL_SKILL_TOO_LOW`, `ERR_INSUFFICIENT_MATERIALS`, `ERR_INSUFFICIENT_MANA`, `ERR_SPELL_NOT_IN_SPELLBOOK`, `ERR_KEG_MISMATCH_OR_FULL`, `ERR_CONTAINER_ALREADY_TRAPPED`.
 - Ремонт и прочность: `ERR_REPAIR_NOT_NEEDED`, `ERR_REPAIR_WRONG_SKILL`, `ERR_ITEM_NOT_REPAIRABLE`, `ERR_ITEM_DESTROYED_ON_REPAIR`, `ERR_FORTIFY_AT_CAP`, `ERR_INVALID_SMELT_TARGET`.
 
@@ -223,12 +223,12 @@ sequenceDiagram
 
 1. Добавить в `@uo3/domain` перечисления материалов, качества, типов банков ресурсов, станций и кодов ошибок `ERR_*`.
 2. Реализовать в `@uo3/rules` детерминированный хеш банков ресурсов, формулы добычи, выплавки, шанса крафта `successBp`, качества `Exceptional`, переплавки `Smelt Item`, ремонта и боевого износа с 100% покрытием unit-тестами.
-3. Создать и провалидировать JSON Schema и YAML-каталоги в `@uo3/content`: `materials.yaml`, `carving.yaml` и `recipes/*.yaml` для всех 8 ремесленных направлений.
-4. Расширить схемы `@uo3/protocol` опкодами `0x0340..0x0349` и миграцию Drizzle в `@uo3/db` для атрибутов крафта и прочности в `world_items`.
+3. Создать и провалидировать JSON Schema и YAML-каталоги в `@uo3/content`: `materials.yaml`, `foraging.yaml` и `recipes/*.yaml` для всех 8 ремесленных направлений.
+4. Расширить схемы `@uo3/protocol` опкодами `0x0240..0x0249` и миграцию Drizzle в `@uo3/db` для атрибутов крафта и прочности в `world_items`.
 5. Реализовать в `apps/game-server` сервисы `ResourceBankService`, `GatheringActionService`, `CraftSessionService`, `RepairAndDurabilityService` и подключить хук боевого износа к `CombatResolutionService` (P16).
 6. Реализовать в `@uo3/ui-kit` и `apps/client` гамп `CraftMenuGump`, диалог клейма мастера, отображение качества/автора/прочности в тултипах и отчёт `Arms Lore`.
 
 ## Open Questions
 
 - *Балансировка весов редких пород дерева (цветная древесина сверх базового `Oak`/`Pine`):* в базовом каноне UO:R вся древесина едина (`Logs` / `Boards`), но схема `WoodMaterialId` в `@uo3/domain` и `materials.yaml` закладывается расширяемой, чтобы при необходимости включить цветные породы (`Ash`, `Yew`, `Heartwood`) через конфиг без изменения кода.
-- *Точные пороги специальных заказов `Bulk Order Deeds` (BOD):* структура рецептов в `@uo3/content` уже содержит флаг `bodEligible: boolean`, сами генераторы заказов будут подключены в фазе P22.
+- *Точные пороги специальных заказов `Bulk Order Deeds` (BOD):* структура рецептов в `@uo3/content` уже содержит флаг `bodEligible: boolean`, генераторы заказов не входят ни в одну фазу ROADMAP (механика после UO:R) и могут быть добавлены флагом эпохи.

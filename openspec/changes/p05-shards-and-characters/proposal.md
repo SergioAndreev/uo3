@@ -38,7 +38,7 @@
   - NATS JetStream (публикация административных и lifecycle-событий: блокировка/принудительное переименование персонажа, переход шарда в `maintenance`/`draining`, для подписки `apps/game-server` в P06).
 - **Входные зависимости:**
   - **P00 (`p00-monorepo-foundation`)** — структура монорепозитория, конфигурация, Docker-окружение (PostgreSQL, Valkey, NATS).
-  - **P01 (`p01-shared-domain-model`)** — диапазоны `Serial`, `Point3D`, фасеты `Felucca`/`Trammel`, перечисления `Body`/`Hue`/`Layer`/`AccessLevel`/`Gender`, `EraProfile`, инъецируемые часы.
+  - **P01 (`p01-shared-domain-model`)** — диапазоны `Serial`, `Point3D`, фасеты `Felucca`/`Trammel`, перечисления `Body`/`Hue`/`Layer`/`AccessLevel`/`Gender`, `RulesetProfile`, инъецируемые часы.
   - **P04 (`p04-identity-and-accounts`)** — таблица аккаунтов, Access JWT (EdDSA), guard проверки статуса блокировки аккаунта и ролевой модели `AccessLevel`.
 - **Что разблокируется:**
   - **P06 (`p06-game-server-runtime`)** — получает готовый контракт верификации тикетов в `onAuth` комнат `WorldPartitionRoom` и `ShardHubRoom`, формат публикации heartbeat и схему чтения записей персонажей при входе в мир.

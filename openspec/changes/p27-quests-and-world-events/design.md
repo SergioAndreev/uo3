@@ -7,7 +7,7 @@
 Фаза P27 объединяет четыре взаимосвязанных контура поверх этих блоков:
 1. **Карты сокровищ (`events/treasure-maps`)** — связывают лут монстров P19, Cartography и Lockpicking/Remove Trap (P22), Mining/инструменты (P20), проверку коллизий домов (P23), политику преступлений Felucca/Trammel (P17) и глубоководные SOS-сундуки (P24).
 2. **Квесты сопровождения (`events/escort-quests`)** — реализуют поведение сервиса `Escortable` (P19) поверх поиска пути (P12), регионов назначения (P25), телепортации Gate Travel (P18) и распределения репутации в пати (P26).
-3. **Инструменты событий персонала (`events/gm-events`)** — предоставляют Seer/GM/Admin (P01/P04) управляемые инстансы мировых событий с тегированием сущностей, волнами/боссами, трекером вклада, временными оверрайдами правил зон (P17/P18/P25), суточными квотами и гарантированным cleanup.
+3. **Инструменты событий персонала (`events/gm-events`)** — предоставляют GameMaster/Seer/Administrator (P01/P04) управляемые инстансы мировых событий с тегированием сущностей, волнами/боссами, трекером вклада, временными оверрайдами правил зон (P17/P18/P25), суточными квотами и гарантированным cleanup.
 4. **Сезонный календарь (`events/seasonal-events`)** — автоматизирует годовые/периодические праздники через декларативные YAML-расписания (`@uo3/content`), 3-сторонний идемпотентный сидер мира (P25), RPO=0 выдачу подарков и обмен токенов (`CriticalTxCoordinator` P08) и анти-абузный сезонный дроп.
 
 Ключевой архитектурный вызов P27 — сохранение **детерминизма и авторитетности сервера** (ADR-001..005), **защиты тика симуляции 20 Гц** при массовых ивентах и спавне стражей, **отсутствия дюпа** на сезонных подарках/обмене токенов и **100% очищаемости мира** от временных объектов ивентов и сундуков.
@@ -41,7 +41,7 @@
 
 ### 3. Унифицированный конвейер сундуков сокровищ для Treasure Maps и глубоководных SOS (P24)
 - **Выбор**: Извлечение лута, установка замка/ловушки, спавн стражей, контроль доступа (`ContainerAccessGrantPort`) и TTL-распад вынесены в единый сервис `TreasureChestLifecycleService`, параметризуемый источником (`TREASURE_MAP` | `SOS_BOTTLE`).
-- **Обоснование**: Сундуки по картам сокровищ и SOS-сундуки имеют 90% общей механики (тиры 2–4, замок/ловушка, лут-таблицы, волны стражей, TTL 1800/180 с, аудит `FAUCET_TREASURE_CHEST`). Различаются только способ появления (10-секундная копка на земле vs выуживание с палубы корабля P24) и пул стражей (сухопутные vs `Sea Serpent`/`Water Elemental`).
+- **Обоснование**: Сундуки по картам сокровищ и SOS-сундуки имеют 90% общей механики (уровни SOS 1–4 из P24, замок/ловушка, лут-таблицы, волны стражей, TTL 1800/180 с, аудит `FAUCET_TREASURE_CHEST`). Различаются только способ появления (10-секундная копка на земле vs выуживание с палубы корабля P24) и пул стражей (сухопутные vs `Sea Serpent`/`Water Elemental`).
 - **Отвергнутые альтернативы**: Два независимых класса сундуков и таблиц лута — привело бы к дублированию проверок доступа Felucca/Trammel и экономического аудита.
 
 ### 4. Авторитетная машина состояний эскорта и правило Gate Travel vs Recall
@@ -75,28 +75,28 @@
 
 - **`packages/domain/src/events/`** (0 внешних зависимостей):
   - Перечисления: `TreasureTier` (`1..5`), `TreasureMapStatus` (`UNDECODED | DECODED | CONSUMED`), `TreasureSource` (`TREASURE_MAP | SOS_BOTTLE`), `EscortStatus` (`IDLE | ESCORTING | COMPLETED | FAILED | ABANDONED`), `GmEventStatus` (`DRAFT | SCHEDULED | ACTIVE | PAUSED | COMPLETED | ABORTED | CLEANED_UP`), `GmEventZonePolicy` (`NONE | PVE_COOP_NO_PK | FREE_TOURNAMENT | NO_RECALL_NO_GATE`), `SeasonStatus` (`UPCOMING | ACTIVE | GRACE_EXCHANGE | ENDED`), `SeasonClaimScope` (`ACCOUNT | CHARACTER`).
-  - Константы и коды ошибок: `ERR_CARTOGRAPHY_TOO_LOW`, `ERR_TREASURE_NOT_DECODER`, `ERR_DIG_TOO_FAR`, `ERR_DIG_BLOCKED`, `ERR_DIG_BLOCKED_BY_HOUSE`, `ERR_DIG_NO_TREASURE_HERE`, `ERR_DIG_ALREADY_ACTIVE`, `ERR_DIG_INTERRUPTED`, `ERR_SPOT_NOT_BLOCKED`, `ERR_WRONG_FACET`, `ERR_CHEST_ACCESS_DENIED`, `ERR_ESCORT_COOLDOWN`, `ERR_ESCORT_LIMIT_REACHED`, `ERR_ESCORT_ALREADY_TAKEN`, `ERR_INSUFFICIENT_ACCESS_LEVEL`, `ERR_EVENT_ENTITY_LIMIT_EXCEEDED`, `ERR_EVENT_ENTRY_DENIED`, `ERR_GM_QUOTA_EXCEEDED`, `ERR_SEASON_GIFT_ALREADY_CLAIMED`, `ERR_SEASON_ELIGIBILITY_FAILED`, `ERR_SEASON_PURCHASE_LIMIT_REACHED`, `ERR_INSUFFICIENT_SEASON_TOKENS`.
+  - Константы и коды ошибок: `ERR_CARTOGRAPHY_TOO_LOW`, `ERR_TREASURE_NOT_DECODER`, `ERR_DIG_TOO_FAR`, `ERR_DIG_BLOCKED`, `ERR_DIG_BLOCKED_BY_HOUSE`, `ERR_DIG_NO_TREASURE_HERE`, `ERR_DIG_ALREADY_ACTIVE`, `ERR_DIG_INTERRUPTED`, `ERR_SPOT_NOT_BLOCKED`, `ERR_WRONG_FACET`, `ERR_CHEST_ACCESS_DENIED`, `ERR_ESCORT_COOLDOWN_OR_BUSY` (код P19), `ERR_ESCORT_ALREADY_TAKEN`, `ERR_INSUFFICIENT_ACCESS_LEVEL`, `ERR_EVENT_ENTITY_LIMIT_EXCEEDED`, `ERR_EVENT_ENTRY_DENIED`, `ERR_GM_QUOTA_EXCEEDED`, `ERR_SEASON_GIFT_ALREADY_CLAIMED`, `ERR_SEASON_ELIGIBILITY_FAILED`, `ERR_SEASON_PURCHASE_LIMIT_REACHED`, `ERR_INSUFFICIENT_SEASON_TOKENS`.
 
 - **`packages/rules/src/events/`** (изоморфные детерминированные функции):
   - `treasureRules.ts`: таблица сложности Cartography, формула вероятности расшифровки, радиус Mining, таблица требований Lockpicking, пулы стражей по тирам, генератор лута (на входе `xoshiro128++`).
   - `escortRules.ts`: таблица маршрутов и наград по классам NPC (`goldRange`, `fameRange`, `karmaRange`), проверка допустимой дистанции (`≤ 30`), расчёт деления Fame/Karma на участников пати в радиусе `18` тайлов.
-  - `gmEventRules.ts`: матрица прав по `AccessLevel` (Seer=2, GM=3, Admin=5), расчёт вклада (`damage + 0.5 * heal`), порог участия, проверка квот и лимита `500` ивентовых мобов на фасет.
+  - `gmEventRules.ts`: матрица прав по `AccessLevel` (GameMaster=2, Seer=3, Administrator=4), расчёт вклада (`damage + 0.5 * heal`), порог участия, проверка квот и лимита `500` ивентовых мобов на фасет.
   - `seasonalRules.ts`: вычисление фазы сезона по UTC-времени и override-флагам, расчёт масштабируемого дропа по `Fame` (0 при `Fame < 50` или `isSummoned`), проверка возраста аккаунта/персонажа для подарков.
 
 - **`packages/protocol/src/events/`** (TypeBox + uint16 опкоды):
-  - `0x0300` `C2S_TREASURE_DECODE` `{ mapItemSerial: uint32 }`
-  - `0x0301` `C2S_TREASURE_DIG` `{ mapItemSerial: uint32, targetX: uint16, targetY: uint16 }`
-  - `0x0302` `C2S_TREASURE_REROLL_BLOCKED_SPOT` `{ mapItemSerial: uint32 }`
-  - `0x0303` `S2C_TREASURE_MAP_STATE` `{ mapItemSerial: uint32, tier: uint8, status: uint8, facetId: uint8, markerX?: uint16, markerY?: uint16, digProgressMs?: uint16, spotBlockedByHouse?: boolean }`
-  - `0x0304` `C2S_ESCORT_ACCEPT` `{ npcSerial: uint32 }`
-  - `0x0305` `C2S_ESCORT_ABANDON` `{ npcSerial: uint32 }`
-  - `0x0306` `S2C_ESCORT_STATUS` `{ npcSerial: uint32, status: uint8, destinationRegionId: string, destinationName: string, remainingSeconds: uint16, cooldownUntilUnixMs: uint64 }`
-  - `0x0307` `C2S_GM_EVENT_COMMAND` `{ eventId?: string, action: string, payloadJson: string }`
-  - `0x0308` `S2C_GM_EVENT_STATE` `{ eventId: string, title: string, status: uint8, currentWave: uint16, remainingEntities: uint16, playerContribution: uint32, thresholdMet: boolean }`
-  - `0x0309` `S2C_SEASON_CALENDAR_SYNC` `{ serverUtcMs: uint64, seasons: SeasonSummaryDto[] }`
-  - `0x030A` `C2S_SEASON_CLAIM_GIFT` `{ seasonId: string }`
-  - `0x030B` `C2S_SEASON_EXCHANGE_REWARD` `{ seasonId: string, vendorSerial: uint32, catalogEntryId: string, quantity: uint16 }`
-  - `0x030C` `S2C_SEASON_CLAIM_RESULT` `{ seasonId: string, success: boolean, errorCode?: string, rewardItemName?: string }`
+  - `0x0320` `C2S_TREASURE_DECODE` `{ mapItemSerial: uint32 }`
+  - `0x0321` `C2S_TREASURE_DIG` `{ mapItemSerial: uint32, targetX: uint16, targetY: uint16 }`
+  - `0x0322` `C2S_TREASURE_REROLL_BLOCKED_SPOT` `{ mapItemSerial: uint32 }`
+  - `0x0323` `S2C_TREASURE_MAP_STATE` `{ mapItemSerial: uint32, tier: uint8, status: uint8, facetId: uint8, markerX?: uint16, markerY?: uint16, digProgressMs?: uint16, spotBlockedByHouse?: boolean }`
+  - `0x0324` `C2S_ESCORT_ACCEPT` `{ npcSerial: uint32 }`
+  - `0x0325` `C2S_ESCORT_ABANDON` `{ npcSerial: uint32 }`
+  - `0x0326` `S2C_ESCORT_STATUS` `{ npcSerial: uint32, status: uint8, destinationRegionId: string, destinationName: string, remainingSeconds: uint16, cooldownUntilUnixMs: uint64 }`
+  - `0x0327` `C2S_GM_EVENT_COMMAND` `{ eventId?: string, action: string, payloadJson: string }`
+  - `0x0328` `S2C_GM_EVENT_STATE` `{ eventId: string, title: string, status: uint8, currentWave: uint16, remainingEntities: uint16, playerContribution: uint32, thresholdMet: boolean }`
+  - `0x0329` `S2C_SEASON_CALENDAR_SYNC` `{ serverUtcMs: uint64, seasons: SeasonSummaryDto[] }`
+  - `0x032A` `C2S_SEASON_CLAIM_GIFT` `{ seasonId: string }`
+  - `0x032B` `C2S_SEASON_EXCHANGE_REWARD` `{ seasonId: string, vendorSerial: uint32, catalogEntryId: string, quantity: uint16 }`
+  - `0x032C` `S2C_SEASON_CLAIM_RESULT` `{ seasonId: string, success: boolean, errorCode?: string, rewardItemName?: string }`
 
 - **`packages/content/schemas/` и `packages/content/data/`**:
   - `treasure-spots.schema.json` + `treasure-spots.yaml` (включая споты для dev-фасета `200`).
@@ -116,23 +116,23 @@ sequenceDiagram
     participant World as "Мир/Дома/AI (P19/P23)"
 
     Player->>Client: Использовать карту (Cartography)
-    Client->>Server: "0x0300 C2S_TREASURE_DECODE (mapSerial)"
+    Client->>Server: "0x0320 C2S_TREASURE_DECODE (mapSerial)"
     Server->>Rules: evaluateTreasureDecode(cartographyTenths, tier)
     alt Навык ниже минимального окна
         Server-->>Client: ERR_CARTOGRAPHY_TOO_LOW
     else Успешная расшифровка
         Server->>World: Проверка спота на отсутствие домов
-        Server-->>Client: "0x0303 S2C_TREASURE_MAP_STATE (DECODED, X, Y)"
+        Server-->>Client: "0x0323 S2C_TREASURE_MAP_STATE (DECODED, X, Y)"
     end
 
     Player->>Client: Копать лопатой в точке (tx, ty)
-    Client->>Server: "0x0301 C2S_TREASURE_DIG (mapSerial, tx, ty)"
+    Client->>Server: "0x0321 C2S_TREASURE_DIG (mapSerial, tx, ty)"
     Server->>Rules: validateDigPosition(miningTenths, chestX, chestY, tx, ty)
     alt Перекрыто домом (P23)
         Server-->>Client: ERR_DIG_BLOCKED_BY_HOUSE
         Player->>Client: Запрос Re-roll спота
-        Client->>Server: "0x0302 C2S_TREASURE_REROLL_BLOCKED_SPOT"
-        Server-->>Client: "0x0303 S2C_TREASURE_MAP_STATE (new X, Y)"
+        Client->>Server: "0x0322 C2S_TREASURE_REROLL_BLOCKED_SPOT"
+        Server-->>Client: "0x0323 S2C_TREASURE_MAP_STATE (new X, Y)"
     else Свободно и в радиусе Mining
         loop "5 циклов x 2000 мс (10 с)"
             Server->>Server: Проверка отсутствия шага, каста и урона
@@ -277,7 +277,7 @@ erDiagram
 - **Допустимая погрешность раскопки по Mining**:
   $$\text{maxChebyshevDist} = \begin{cases} 1 & \text{при } \text{Mining} < 510 \\ 2 & \text{при } 510 \le \text{Mining} < 810 \\ 3 & \text{при } 810 \le \text{Mining} < 1000 \\ 4 & \text{при } \text{Mining} = 1000 \end{cases}$$
 - **Поэтапная копка**: 5 итераций таймера по `2000` мс (итого `10000` мс). На шагах 2, 3, 4 и 5 клиент получает прогресс, а сундук на сервере резервируется после шага 5. Шаг игрока, начало атаки, чтение заклинания или `FinalDamage >= 1` мгновенно сбрасывают таймер с `ERR_DIG_INTERRUPTED`.
-- **SOS-сундуки (P24)**: При рыбалке с корабля в расстоянии `Chebyshev <= 3` от расшифрованного SOS-сообщения вызывается `TreasureChestLifecycleService.spawnFromSos(...)` для тиров `2..4` с морскими стражами (`Sea Serpent`, `Deep Sea Serpent`, `Water Elemental`) на соседних водных тайлах (`2..5` тайлов от борта).
+- **SOS-сундуки (P24)**: Когда ролл подъёма P24 (рыбалка с корабля при `Chebyshev <= 4` от координат SOS-сообщения) выбирает главный сундук, вызывается `TreasureChestLifecycleService.spawnFromSos(...)` для уровней SOS `1..4` (уровень 4 — с флагом `Ancient`) с морскими стражами (`Sea Serpent`, `Deep Sea Serpent`, `Water Elemental`) на соседних водных тайлах (`2..5` тайлов от борта).
 
 ### 2. Квесты сопровождения (`escortRules.ts`)
 - **Параметры цикла**: `ESCORT_COOLDOWN_SEC = 300`, `ESCORT_TIMEOUT_SEC = 900`, `ESCORT_MAX_DISTANCE = 30`, `ESCORT_ARRIVAL_RADIUS = 5`, `ESCORT_PARTY_SHARE_RADIUS = 18`, `ESCORT_DEATH_GRACE_SEC = 120`, `ESCORT_DESPAWN_DELAY_SEC = 30`, `ESCORT_GATE_FOLLOW_RADIUS = 2`.
@@ -290,7 +290,7 @@ erDiagram
 ### 3. Вклад и квоты GM-событий (`gmEventRules.ts`)
 - **Счётчик вклада**: `contributionScore = damageDealtToEventMobs + floor(healingDoneInZone * 0.5)`.
 - **Порог наград**: `threshold = max(configuredMinScore ?? 500, floor(primaryBossMaxHp * 0.01))`.
-- **Квотирование GM**: по умолчанию суточный лимит `GM_DAILY_GOLD_QUOTA = 100000` GP и `GM_DAILY_ITEM_GRANTS = 50` (переопределяемо `Admin AccessLevel ≥ 5`). Лимит активных ивентовых существ на фасет `MAX_ACTIVE_EVENT_MOBS_PER_FACET = 500`.
+- **Квотирование GM**: по умолчанию суточный лимит `GM_DAILY_GOLD_QUOTA = 100000` GP и `GM_DAILY_ITEM_GRANTS = 50` (переопределяемо `Administrator AccessLevel ≥ 4`). Лимит активных ивентовых существ на фасет `MAX_ACTIVE_EVENT_MOBS_PER_FACET = 500`.
 
 ### 4. Скейлинг сезонного дропа и календарь (`seasonalRules.ts`)
 - **Вероятность дропа**: для монстра с флагом `isSummoned = false` и `fame >= 50`:
@@ -314,7 +314,7 @@ erDiagram
 
 1. **Миграция БД (`@uo3/db`)**: Добавление 8 таблиц в рамках одной обратимой Drizzle-миграции (`world_treasure_maps`, `world_treasure_chests`, `character_escort_states`, `gm_events`, `gm_event_audit_logs`, `seasonal_event_overrides`, `season_gift_claims`, `season_exchange_claims`) без изменения существующих таблиц P00–P26 (кроме добавления enum-значений причин в `item_ledger`, если строго типизировано).
 2. **Контент и фича-флаги (`@uo3/content`, `@uo3/config`)**: Поставка базовых YAML-файлов с отключёнными по умолчанию будущими праздниками и активным тестовым сезоном только на dev-фасете `200`; включение расписания на prod управляется датами UTC или админ-API.
-3. **Развёртывание и обратная совместимость**: Новые опкоды `0x0300..0x030C` обратно совместимы со старыми клиентами (неиспользуемые каналы не мешают подключению); при необходимости отката достаточно отключить активные GM-события командой `EmergencyAbortAll`, перевести сезоны в `FORCE_END` (что автоматически очистит временные декорации) и откатить миграцию.
+3. **Развёртывание и обратная совместимость**: Новые опкоды `0x0320..0x032C` обратно совместимы со старыми клиентами (неиспользуемые каналы не мешают подключению); при необходимости отката достаточно отключить активные GM-события командой `EmergencyAbortAll`, перевести сезоны в `FORCE_END` (что автоматически очистит временные декорации) и откатить миграцию.
 
 ## Open Questions
 

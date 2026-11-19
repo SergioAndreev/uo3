@@ -37,7 +37,7 @@
   - *ООП-классы-обёртки (`class Serial`, `class Hue`):* лишние аллокации в горячем пути 20 Гц, невозможность использовать напрямую как ключи `Map`/`Set` по значению, проблемы совместимости с `@colyseus/schema` примитивами.
 
 ### D2. Партиционно-безопасная блочная аренда серийников (`SerialAllocator` + `SerialLeaseProvider`) без переиспользования
-- **Выбор:** Аллокация ведётся раздельно для мобайлов (`0x00000001..0x3FFFFFFF`) и предметов (`0x40000000..0x7FFFFFFF`). `SerialAllocator` работает через локальные арендованные блоки размером по умолчанию `4 096` (настраиваемо `256..65 536`), получаемые из абстрактного порта `SerialLeaseProvider`. При остатке `<= 20%` (`<= Math.floor(leaseSize * 0.2)`) аллокатор асинхронно предвыбирает следующий блок (`nextLease`). Освобождённые серийники и неиспользованные хвосты блоков после рестарта никогда не возвращаются в пул.
+- **Выбор:** Аллокация ведётся раздельно для мобайлов (`0x00000001..0x3FFFFFFF`) и предметов (`0x40000000..0x7FFFFFFF`). Пул каждого аллокатора задаётся параметрами `poolMin`/`poolMax` внутри диапазона своего типа (по умолчанию весь диапазон); P05 резервирует `0x00000001..0x1FFFFFFF` под персонажей игроков (выдача в PostgreSQL), поэтому игровой сервер выделяет мобайлы NPC из пула `0x20000000..0x3FFFFFFF`. `SerialAllocator` работает через локальные арендованные блоки размером по умолчанию `4 096` (настраиваемо `256..65 536`), получаемые из абстрактного порта `SerialLeaseProvider`. При остатке `<= 20%` (`<= Math.floor(leaseSize * 0.2)`) аллокатор асинхронно предвыбирает следующий блок (`nextLease`). Освобождённые серийники и неиспользованные хвосты блоков после рестарта никогда не возвращаются в пул.
 - **Обоснование:** Диапазон в `1 073 741 824` серийников на тип при средней скорости 50 новых предметов/сек и размере блока 4 096 обеспечивает запас свыше **680 лет непрерывной работы** даже с учётом потерь хвостов блоков при перезапусках. Отказ от переиспользования полностью устраняет класс уязвимостей ABA / висячих ссылок в `item_ledger` (P08), отложенных таймерах (P06) и аудите персонала (P29). Блочная аренда позволяет в P06 использовать in-memory провайдер, в P08 — атомарный `UPDATE ... RETURNING` в PostgreSQL, а в P32 — десятки параллельных партиций без межпроцессных блокировок на горячем пути.
 - **Отвергнутые альтернативы:**
   - *UUIDv4 / ULID / Snowflake 64-bit:* противоречат ADR-006 и канону UO (32-битные серийники), увеличивают объём трафика репликации AOI в 2–4 раза.
@@ -106,7 +106,7 @@ flowchart LR
     DOM["packages/domain (Serial, Coords, Enums, Clock/RNG)"]
     RUL["packages/rules (RulesetProfile, Constants, Formulas)"]
     TK["packages/test-kit (FakeClock, SeededRng, Fixtures)"]
-    CFG_RUL["packages/config (Ruleset YAML loader)"]
+    CFG_RUL["packages/config (env + чтение shard-ruleset.yaml)"]
   end
 
   subgraph Consumers["Потребители следующих фаз"]
@@ -120,7 +120,7 @@ flowchart LR
   DOM --> RUL
   DOM --> TK
   RUL --> TK
-  RUL --> CFG_RUL
+  CFG_RUL -. "сырой override" .-> RUL
   CFG_TS --> DOM
   CFG_TS --> RUL
 
@@ -190,9 +190,9 @@ flowchart LR
 - `src/fixtures/domain-fixtures.ts` — фабрики `createTestSerialAllocator()`, `createTestRulesetProfile()`, `createSyntheticFacet()` (`256×256`), генераторы координат и `TileData` для тестов P02–P36.
 
 #### 4. Точки интеграции с другими модулями (контракты для будущих фаз)
-- `packages/config` (обновляется в P01): схема загрузки `SHARD_RULESET_PRESET` и пути к YAML-файлу `shard-ruleset.yaml` (переопределения шарда) + валидация при старте.
+- `packages/config` (обновляется в P01): переменные `SHARD_RULESET_PRESET` / `SHARD_RULESET_FILE` и чтение YAML-файла `shard-ruleset.yaml` в нетипизированный объект; `@uo3/config` не импортирует `@uo3/rules` (матрица зависимостей P00), валидация и слияние выполняются `resolveRulesetFromConfig()` в `packages/rules` при старте приложения.
 - `apps/game-server` (интегрируется в P06, P08, P32): NestJS DI-токены `GAME_CLOCK`, `RULESET_PROFILE`, `SERIAL_ALLOCATOR`, `ROOT_RNG`; Colyseus комнаты получают `ResolvedRulesetProfile` и `GameClock` через DI.
-- `apps/api` (интегрируется в P04–P05): использует `AccessLevel` для RBAC и `ClientRulesetSnapshot` + `profileDigest` в ответе каталога шардов (`GET /shards`).
+- `apps/api` (интегрируется в P04–P05): использует `AccessLevel` для RBAC и `ClientRulesetSnapshot` + `profileDigest` в ответе каталога шардов (`GET /api/v1/shards`, P05).
 - `apps/client` (интегрируется в P09–P14): хранит `ClientRulesetSnapshot` в Zustand-сторе при подключении к шарду и сверяет `schemaVersion` / `profileDigest`.
 
 ### Модели данных и wire-форматы

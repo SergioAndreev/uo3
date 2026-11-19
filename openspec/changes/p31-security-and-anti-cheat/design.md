@@ -4,7 +4,7 @@
 
 Платформа UO3 построена на монорепозитории TypeScript 5 strict ESM (Node 22, pnpm + Turborepo) и включает клиентское веб-приложение (`apps/client` на React 19, Vite 6, Three.js + Web Worker + OPFS), консоль персонала (`apps/admin`), REST API (`apps/api` на NestJS 11 `/api/v1/*`), игровой сервер реального времени (`apps/game-server` на NestJS + Colyseus 0.16 + uWebSockets.js + `@colyseus/schema` v3), общие пакеты (`@uo3/domain`, `@uo3/rules`, `@uo3/protocol`, `@uo3/db`, `@uo3/config`, `@uo3/test-kit`) и инфраструктуру PostgreSQL 17, Valkey 8, NATS JetStream, OTel/Prometheus/Loki/Tempo/Sentry.
 
-К фазе P31 базовые механизмы уже распределены по подсистемам: аутентификация и `AccessLevel 0..6` (P04), игровые тикеты (P05), 20-герцовый тик и WS-коды `4000..4014` (P06), опкоды `uint16`/TypeBox/`StateView`/`IntentHandlerRegistry` (P07), транзакционный координатор `CriticalTxCoordinator` RPO=0 и `item_ledger` с `partition_epoch` (P08), клиентские `WebLocks` + `BroadcastChannel` (P09), трекер времени шагов `TimeCreditTracker` (P12), дерево контейнеров с `HeldItem` 30 с (P13), очередь макросов ≥ 600 мс (P14), анти-макро `8×8` (P15), боевая легальность и `AggressorRecord` (P16–P17), телеметрия `FAUCET_*`/`SINK_*` (P21) и скрытность/воровство (P22).
+К фазе P31 базовые механизмы уже распределены по подсистемам: аутентификация и `AccessLevel 0..6` (P04), игровые тикеты (P05), 20-герцовый тик и коды закрытия WS `4100..4199` (P06/P07, нормативно — `docs/PROTOCOL_REGISTRY.md`), опкоды `uint16`/TypeBox/`StateView`/`IntentHandlerRegistry` (P07), транзакционный координатор `CriticalTxCoordinator` RPO=0 и `item_ledger` с `partition_epoch` (P08), клиентские `WebLocks` + `BroadcastChannel` (P09), трекер времени шагов `TimeCreditTracker` (P12), дерево контейнеров с `HeldItem` 30 с (P13), очередь макросов ≥ 600 мс (P14), анти-макро `8×8` (P15), боевая легальность и `AggressorRecord` (P16–P17), телеметрия `FAUCET_*`/`SINK_*` (P21) и скрытность/воровство (P22).
 
 Задача P31 — замкнуть все эти контракты в единую эшелонированную систему безопасности: исключить доверие к клиенту на уровне протокола и симуляции, защитить 50-мс тик и REST API от флуда, гарантировать неразрушимую экономику без дюпа с автоматическим карантином, отсекать нечеловеческую автоматизацию без вреда для легальных макросов UO:R и укрепить браузерный периметр клиента и админки.
 
@@ -14,12 +14,12 @@
 - Обеспечить нулевое доверие к клиентским данным на всех этапах декодирования кадров (`16384` байт макс., глубина ≤ `8`, `additionalProperties: false`) и проверки инвариантов симуляции.
 - Интегрировать детерминированный property-based fuzzing протокола и 20-герцовой симуляции на синтетическом мире (фасет ID 200) в регулярный тестовый прогон.
 - Защитить `apps/game-server` и `apps/api` от флуда, Slowloris и тяжёлых запросов без деградации бюджета тика `50` мс.
-- Гарантировать отсутствие дюпа предметов и золота (`0x40000000..0x7FFFFFFF`, чеки `0x14F0`, стаки `1..60000`, escrow вендоров, переходы партиций) с потоковым детектором, 300-секундной/суточной сверкой `item_ledger` и автоматическим торговым карантином (`0x0315`).
+- Гарантировать отсутствие дюпа предметов и золота (`0x40000000..0x7FFFFFFF`, чеки `0x14F0`, стаки `1..60000`, escrow вендоров, переходы партиций) с потоковым детектором, 300-секундной/суточной сверкой `item_ledger` и автоматическим торговым карантином (`0x0395`).
 - Выявлять ботов по энтропии таймингов, зацикливанию `8×8`, сверхчеловеческим реакциям (< 80 мс) и мультибоксу при полном сохранении легальных встроенных макросов (≥ 600 мс).
 - Устранить риски XSS, CSRF, clickjacking и утечки токенов в `apps/client` и `apps/admin` за счёт строгого CSP, SRI, `HttpOnly` refresh cookies, токена доступа в памяти и псевдонимизации ПДн.
 
 ### Non-Goals
-- Реализация полного интерфейса расследований в админ-панели (покрывается P29; P31 поставляет таблицы, API-эндпоинты, события и очередь инцидентов).
+- Реализация полного интерфейса расследований в админ-панели (базовая консоль — P29, реализуемая раньше P31; P31 поставляет таблицы, API-эндпоинты, события и очередь инцидентов).
 - Межшардовые переезды и балансировка партиций (P32) или инфраструктурные бэкапы WAL/PITR (P33).
 - Аппаратные kernel-level античиты (запрещено и невозможно в веб-клиенте) или инвазивный браузерный fingerprinting, нарушающий приватность.
 - Блокировка легитимных встроенных клиентских макросов UO:R (`Dress`/`Undress` ≥ 600 мс, `TargetLast`, `UseSkill`, `Cast`).
@@ -28,7 +28,7 @@
 
 ### Decision 1: Двухступенчатый входной Security Gate перед `IntentHandlerRegistry`
 - **Выбор:** Внедрить единый middleware/guard-конвейер в `apps/game-server` перед вызовом обработчиков P07 (`IntentHandlerRegistry`): (1) Pre-decode проверка размера кадра (`≤ 16384` байт), token-bucket соединения и статуса карантина/бана; (2) Декодирование и строгая валидация TypeBox (`additionalProperties: false`, запрет `NaN`/`Infinity`, глубина `≤ 8`, проверка направления `client->server`), проверка `clientIntentId` (окно идемпотентности 60 с) и `sequence` `0..255`; (3) Постинтентная проверка правил в обработчике (LOS, дистанция, `AccessLevel 0..6` + MFA, `TimeCreditTracker`).
-- **Обоснование:** Отбрасывание невалидных и флудовых пакетов до аллокации доменных объектов и захода в цикл симуляции экономит CPU тика 20 Гц и гарантирует единую политику начисления security strikes (`0x0310`) для всех 60+ опкодов P12–P26.
+- **Обоснование:** Отбрасывание невалидных и флудовых пакетов до аллокации доменных объектов и захода в цикл симуляции экономит CPU тика 20 Гц и гарантирует единую политику начисления security strikes (`0x0390`) для всех 60+ опкодов P12–P26.
 - **Отвергнутые альтернативы:** Размазывать проверку размеров, `additionalProperties` и страйков по каждому модулю (P12..P26) — неизбежные пропуски и дублирование логики.
 
 ### Decision 2: Иерархический Token Bucket + деградирующий Outbound Backpressure
@@ -37,17 +37,17 @@
 - **Отвергнутые альтернативы:** Единый глобальный лимит на всё без приоритетов (игроки теряли бы контроль движения при открытии меню) или блокирующее ожидание записи в сокет uWebSockets.js.
 
 ### Decision 3: Распределённый Valkey Rate-Limiter с Fail-Closed политикой и NATS-отзывом
-- **Выбор:** Хранить счётчики API `/api/v1/*` и межшардовых cooldown в Valkey 8 (атомарные Lua-скрипты sliding window). При сбое Valkey > `5` с критические эндпоинты (`/auth/*`, MFA, билеты, права) переходят в жёсткий локальный fail-closed режим (`2` req/мин на IP), а некритические GET-эндпоинты — в 5-секундный локальный буфер. Отзыв сессий/бан из P04 доставляется через NATS JetStream (`IDENTITY_EVENTS` + `SECURITY_EVENTS`), обрывая WS с кодом `4010` за `≤ 5` с.
+- **Выбор:** Хранить счётчики API `/api/v1/*` и межшардовых cooldown в Valkey 8 (атомарные Lua-скрипты sliding window). При сбое Valkey > `5` с критические эндпоинты (`/auth/*`, MFA, билеты, права) переходят в жёсткий локальный fail-closed режим (`2` req/мин на IP), а некритические GET-эндпоинты — в 5-секундный локальный буфер. Отзыв сессий/бан из P04 доставляется через NATS JetStream (`IDENTITY_EVENTS` + `SECURITY_EVENTS`), обрывая WS с кодом `4123` `WS_CLOSE_SESSION_REVOKED` (отзыв сессий) или `4103` `WS_CLOSE_BANNED` (бан) за `≤ 5` с.
 - **Обоснование:** Предотвращает размножение квоты подбора пароля по числу подов API и исключает «окно безнаказанности» после смены пароля или бана.
 - **Отвергнутые альтернативы:** Локальные in-memory лимиты на каждом инстансе API (легко обходятся балансировщиком) или fail-open при деградации Valkey.
 
 ### Decision 4: Трёхконтурная защита от дюпа поверх P08 (`CriticalTxCoordinator` + `item_ledger`)
-- **Выбор:** (1) In-memory индекс уникальных серийников `0x40000000..0x7FFFFFFF` в комнате с проверкой ацикличности контейнеров (глубина ≤ 5) и `version`; (2) Все критические передачи идут через `CriticalTxCoordinator` (RPO=0) с проверкой `partition_epoch`, ключа идемпотентности и записью в append-only `item_ledger` в одной транзакции PG17; (3) Асинхронный потоковый детектор аномалий + фоновый сверщик (`300` с инкрементально, `24` ч полно) + автоматический торговый карантин (`0x0315`) и генератор пакета отката.
+- **Выбор:** (1) In-memory индекс уникальных серийников `0x40000000..0x7FFFFFFF` в комнате с проверкой ацикличности контейнеров (глубина ≤ 5) и `version`; (2) Все критические передачи идут через `CriticalTxCoordinator` (RPO=0) с проверкой `partition_epoch`, ключа идемпотентности и записью в append-only `item_ledger` в одной транзакции PG17; (3) Асинхронный потоковый детектор аномалий + фоновый сверщик (`300` с инкрементально, `24` ч полно) + автоматический торговый карантин (`0x0395`) и генератор пакета отката.
 - **Обоснование:** Даже если логическая ошибка или гонка между партициями создаст несогласованность, её обнаружит потоковый детектор за секунды или сверщик за ≤ 5 минут, мгновенно заморозив вывод ценностей и подготовив точечный граф отката без отката всего шарда.
 - **Отвергнутые альтернативы:** Только периодические ручные аудиты по логам или отказ от транзакционной сверки ради отложенной записи.
 
 ### Decision 5: Поведенческий антибот с защитой легальных макросов UO:R
-- **Выбор:** Разделять встроенную очередь клиентских макросов (Dress/Undress ≥ `600` мс, Cast/TargetLast, разрешено правилами) и внешнюю автоматизацию через композитный `botScore ∈ [0..100]`: энтропия интервалов `σ < 12` мс по `50` событиям, пространственная зацикленность по блокам `8×8`/`16×16` > `2700` с, реакции `< 80` мс (≥ 10 за 300 с) и синхронный input broadcasting (`≤ 50` мс на ≥ 3 аккаунтах). При `botScore ≥ 70` и отсутствии активного боя (`AggressorRecord` пуст, HP ≥ 90%) отправляется внебоевой вызов `0x0311`/`0x0312`; при провале или `botScore ≥ 85` включается мягкое экономическое троттление без мгновенного раскрытия порогов и формируется кейс для персонала.
+- **Выбор:** Разделять встроенную очередь клиентских макросов (Dress/Undress ≥ `600` мс, Cast/TargetLast, разрешено правилами) и внешнюю автоматизацию через композитный `botScore ∈ [0..100]`: энтропия интервалов `σ < 12` мс по `50` событиям, пространственная зацикленность по блокам `8×8`/`16×16` > `2700` с, реакции `< 80` мс (≥ 10 за 300 с) и синхронный input broadcasting (`≤ 50` мс на ≥ 3 аккаунтах). При `botScore ≥ 70` и отсутствии активного боя (`AggressorRecord` пуст, HP ≥ 90%) отправляется внебоевой вызов `0x0391`/`0x0392`; при провале или `botScore ≥ 85` включается мягкое экономическое троттление без мгновенного раскрытия порогов и формируется кейс для персонала.
 - **Обоснование:** Классическая культура UO:R допускает встроенные макросы и второе окно. Жёсткий автобан по одной эвристике недопустим из-за риска ложных банов; градированный внебоевой вызов отсекает бездушных ботов и не мешает честному PvP.
 - **Отвергнутые альтернативы:** Блокировка любых макросов или отправка капчи в разгар боя (ломает PvP и вызывает массовый негатив).
 
@@ -73,35 +73,37 @@
 | `@uo3/config` | `SecurityConfigSchema` (TypeBox) | Пороги rate-limit, strike-веса, лимиты `16384`/`256 Кбайт`, пороги `botScore`, CSP origins, соль HMAC (секрет env), режимы `shadow`/`enforce`. |
 | `@uo3/domain` | `SecurityStrikePolicy`, `QuarantineState`, `MacroPolicy`, `BotEvidenceSummary` | Типы категорий нарушений, санкций, вердиктов (`dismiss`/`warn`/`restrict`/`ban`), кодов аномалий дюпа (`DUPE_*`). |
 | `@uo3/rules` | `StackConservation`, `ContainerAcyclicCheck`, `CadenceStats`, `MovementAuthorityRules` | Чистые изоморфные проверки сохранения суммы стаков (`1..60000`), ацикличности контейнеров (`≤ 5`), дисперсии `σ` и верификации инвариантов. |
-| `@uo3/protocol` | Опкоды `0x0310..0x0315`, `StrictFrameValidator`, `SecurityErrorCodes`, `FuzzCorpusGenerator` | Строгие TypeBox-схемы (`additionalProperties: false`), проверка глубины JSON/объектов `≤ 8`, защита от `NaN`/`Infinity`, генерация fuzz-нагрузки. |
+| `@uo3/protocol` | Опкоды `0x0390..0x0395`, `StrictFrameValidator`, `SecurityErrorCodes`, `FuzzCorpusGenerator` | Строгие TypeBox-схемы (`additionalProperties: false`), проверка глубины JSON/объектов `≤ 8`, защита от `NaN`/`Infinity`, генерация fuzz-нагрузки. |
 | `@uo3/db` | Таблицы `security_strikes`, `security_quarantines`, `bot_incidents`, `ledger_reconciliation_runs`, `security_audit_logs` | Drizzle ORM схемы, миграции, append-only политики/триггеры для `item_ledger` и `security_audit_logs`, индексы сверки. |
-| `apps/game-server` | `SecurityGateMiddleware`, `WsRateLimiter`, `StrikeTracker`, `DupeAnomalyDetector`, `BotBehaviorAnalyzer`, `ChallengeScheduler`, `OutboundBackpressure` | Фильтрация каждого WS-кадра, token buckets, защита тика 20 Гц, AOI/StateView изоляция, вызовы `0x0311`, мгновенный карантин `0x0315`. |
+| `apps/game-server` | `SecurityGateMiddleware`, `WsRateLimiter`, `StrikeTracker`, `DupeAnomalyDetector`, `BotBehaviorAnalyzer`, `ChallengeScheduler`, `OutboundBackpressure` | Фильтрация каждого WS-кадра, token buckets, защита тика 20 Гц, AOI/StateView изоляция, вызовы `0x0391`, мгновенный карантин `0x0395`. |
 | `apps/api` | `DistributedRateLimitGuard`, `SecurityHeadersMiddleware`, `CsrfOriginGuard`, `LedgerReconciliationService`, `QuarantineService`, `SessionHygieneController`, `CspReportController` | Valkey sliding-window лимиты `/api/v1/*`, CSP/SRI/COOP/CSRF, 300с/24ч сверка `item_ledger`, API расследований/отката и управления сессиями. |
-| `apps/client` | `BotChallengeModal`, `QuarantineBanner`, `MemoryTokenStore`, `SafeGameText`, `CspViolationReporter` | Внебоевой UI вызова `0x0311`/`0x0312`, хранение access-токена только в памяти, безопасный текстовый рендеринг без HTML, SRI-сборка Vite. |
+| `apps/client` | `BotChallengeModal`, `QuarantineBanner`, `MemoryTokenStore`, `SafeGameText`, `CspViolationReporter` | Внебоевой UI вызова `0x0391`/`0x0392`, хранение access-токена только в памяти, безопасный текстовый рендеринг без HTML, SRI-сборка Vite. |
 | `apps/admin` | `BotIncidentsQueuePage`, `DupeQuarantinePage`, `LedgerAuditPage`, `RollbackPreviewDrawer` | Консоль обработки пакетов доказательств, вердикты, снятие/подтверждение карантина и отката, усиленный `SameSite=Strict` + MFA. |
 | `packages/test-kit` | `ProtocolFuzzHarness`, `AttackSimulationScenarios` | Детерминированные сценарии атак (replay, speedhack, dupe race, bot cadence, flood) для CI на синтетическом мире. |
 
 ## Протокол, схемы и хранилище данных
 
-### Новые опкоды `@uo3/protocol` (`0x0310..0x0315`)
+### Новые опкоды `@uo3/protocol` (`0x0390..0x0395`)
 
 Все схемы регистрируются в `@uo3/protocol` с `additionalProperties: false`, строгой проверкой типов (целые числа через `Type.Integer` с `minimum`/`maximum`) и максимальным размером кадра `16384` байт:
 
 | Опкод | Имя сообщения | Направление | Ключевые поля TypeBox |
 | :--- | :--- | :--- | :--- |
-| `0x0310` | `SecurityViolationNotice` | `S -> C` | `code: SecurityErrorCode`, `category: 'authority' \| 'rate' \| 'economy' \| 'macro'`, `strikePoints: int(0..100)`, `retryAfterMs: int(0..3600000)`, `frozenUntilMs?: int` |
-| `0x0311` | `BotChallengePrompt` | `S -> C` | `challengeId: string(36)`, `promptType: 'select_icon' \| 'simple_math' \| 'drag_glyph'`, `promptPayload: object(depth<=4)`, `expiresAtMs: int`, `attemptsRemaining: int(1..3)` |
-| `0x0312` | `BotChallengeResponse` | `C -> S` | `challengeId: string(36)`, `answer: string(1..64)`, `clientDurationMs: int(0..120000)` |
-| `0x0313` | `ClientIntegrityTelemetry` | `C -> S` | `rulesetHash: string(64)`, `worldDataVersion: string(1..64)`, `assetManifestHash?: string(64)`, `cspViolationCount: int(0..1000)` |
-| `0x0314` | `MacroPolicyNotice` | `S -> C` | `reasonCode: string`, `blockedOpcode: int(0..65535)`, `minIntervalMs: int(100..5000)`, `nextAllowedAtMs: int` |
-| `0x0315` | `SecurityQuarantineState` | `S -> C` | `quarantineId: string(36)`, `active: boolean`, `reasonCode: string`, `frozenSystems: string[]`, `expiresAtMs?: int` |
+| `0x0390` | `SecurityViolationNotice` | `S -> C` | `code: SecurityErrorCode`, `category: 'authority' \| 'rate' \| 'economy' \| 'macro'`, `strikePoints: int(0..100)`, `retryAfterMs: int(0..3600000)`, `frozenUntilMs?: int` |
+| `0x0391` | `BotChallengePrompt` | `S -> C` | `challengeId: string(36)`, `promptType: 'select_icon' \| 'simple_math' \| 'drag_glyph'`, `promptPayload: object(depth<=4)`, `expiresAtMs: int`, `attemptsRemaining: int(1..3)` |
+| `0x0392` | `BotChallengeResponse` | `C -> S` | `challengeId: string(36)`, `answer: string(1..64)`, `clientDurationMs: int(0..120000)` |
+| `0x0393` | `ClientIntegrityTelemetry` | `C -> S` | `rulesetHash: string(64)`, `worldDataVersion: string(1..64)`, `assetManifestHash?: string(64)`, `cspViolationCount: int(0..1000)` |
+| `0x0394` | `MacroPolicyNotice` | `S -> C` | `reasonCode: string`, `blockedOpcode: int(0..65535)`, `minIntervalMs: int(100..5000)`, `nextAllowedAtMs: int` |
+| `0x0395` | `SecurityQuarantineState` | `S -> C` | `quarantineId: string(36)`, `active: boolean`, `reasonCode: string`, `frozenSystems: string[]`, `expiresAtMs?: int` |
 
-### Коды ошибок безопасности и привязка к WS-кодам P06 (`4000..4014`)
+### Коды ошибок безопасности и привязка к кодам закрытия WS (`docs/PROTOCOL_REGISTRY.md`, `4100..4199`)
 - Коды ошибок протокола и API: `ERR_UNTRUSTED_STATE_MUTATION`, `ERR_PROTOCOL_INVALID_FRAME`, `ERR_INTENT_REPLAY`, `ERR_SEQ_OUT_OF_WINDOW`, `ERR_MOVEMENT_DENIED`, `ERR_LOS_BLOCKED`, `ERR_ENTITY_NOT_VISIBLE`, `ERR_INSUFFICIENT_ACCESS`, `ERR_RULESET_MISMATCH`, `ERR_RATE_LIMITED`, `ERR_ACTION_RATE_LIMITED`, `ERR_SPEECH_FLOOD`, `ERR_COMPUTE_BUDGET_EXCEEDED`, `ERR_DUPE_OWNERSHIP_CONFLICT`, `ERR_TX_CONFLICT`, `ERR_INVALID_STACK_AMOUNT`, `ERR_ACCOUNT_QUARANTINED`, `ERR_MACRO_COOLDOWN`, `ERR_AUTOMATION_SUSPECTED`, `ERR_CSRF_VALIDATION_FAILED`, `ERR_TICKET_INVALID`.
-- Маппинг на зарезервированный в P06 диапазон WS close codes `4000..4014`:
-  - `4008` — `RATE_LIMIT_EXCEEDED` (3 переполнения token bucket за 10 с, connection flood или медленный читатель > 5000 мс);
-  - `4009` — `SECURITY_PROTOCOL_VIOLATION` (накопление 10 strike-баллов за 600 с или критическая подмена протокола);
-  - `4010` — `SESSION_REVOKED_OR_BANNED` (принудительный отзыв по `IDENTITY_EVENTS` / бан / смена пароля).
+- Маппинг на нормативные коды закрытия WS из `docs/PROTOCOL_REGISTRY.md` (P31 новых кодов не вводит; поведение реконнекта — по колонке реестра):
+  - `4108` — `WS_CLOSE_RATE_LIMIT_EXCEEDED`, реконнект «да» (3 переполнения token bucket за 10 с, connection flood);
+  - `4130` — `WS_CLOSE_SLOW_CONSUMER`, реконнект «да» (медленный читатель: простой чтения > 5000 мс при заполненной исходящей очереди);
+  - `4110` — `WS_CLOSE_SECURITY_QUARANTINE`, реконнект «нет» (накопление 10 strike-баллов за 600 с или критическая подмена протокола; повторный вход блокируется запретом билетов на 900 с);
+  - `4123` — `WS_CLOSE_SESSION_REVOKED`, реконнект «нет» (принудительный отзыв по `IDENTITY_EVENTS`, смена пароля/MFA);
+  - `4103` — `WS_CLOSE_BANNED`, реконнект «нет» (бан аккаунта).
 
 ### `@colyseus/schema` v3 и `StateView`
 - Все сущности в `WorldPartitionRoom` фильтруются через `StateView` P07 с радиусом AOI `18` тайлов (`24` макс., мульти — `31` тайл).
@@ -127,15 +129,15 @@
 Для каждого уровня $L \in \{\text{conn}, \text{bytes}, \text{move}, \text{speech}, \text{skill}, \text{drag}, \text{gump}, \text{trade}, \text{compute}\}$ состояние описывается парой $(T_L, t_{\text{last}})$:
 $$T_L' = \min\left(B_L,\; T_L + \frac{t_{\text{now}} - t_{\text{last}}}{1000} \cdot R_L\right)$$
 где $R_{\text{conn}} = 60\,\text{кадр/с}, B_{\text{conn}} = 120$; $R_{\text{bytes}} = 65536\,\text{Б/с}, B_{\text{bytes}} = 131072$; $R_{\text{move}} = 12$, $R_{\text{speech}} = 2 (B=5)$, $R_{\text{skill}} = 5$, $R_{\text{drag}} = 4$, $R_{\text{gump}} = 5$, $R_{\text{trade}} = 2$, $R_{\text{compute}} = 2$.
-Если $T_L' < \text{cost}$, кадр отклоняется до вызова обработчика; при 3 отказах по `conn`/`bytes` в скользящем окне `10 000` мс сокет закрывается кодом `4008`.
-При отправке патчей: если `outboundBytes > 196608` (75% от `256` Кбайт) или `outboundMsgs > 150` (75% от `200`), события приоритета `LOW` (партиклы, шаги, декоративные звуки) отбрасываются; состояние `CRITICAL` (позиция игрока, урон, статус сделки, `0x0310..0x0315`) ставится в очередь до лимита `256` Кбайт, после `5000` мс застоя сокет разрывается.
+Если $T_L' < \text{cost}$, кадр отклоняется до вызова обработчика; при 3 отказах по `conn`/`bytes` в скользящем окне `10 000` мс сокет закрывается кодом `4108`.
+При отправке патчей: если `outboundBytes > 196608` (75% от `256` Кбайт) или `outboundMsgs > 150` (75% от `200`), события приоритета `LOW` (партиклы, шаги, декоративные звуки) отбрасываются; состояние `CRITICAL` (позиция игрока, урон, статус сделки, `0x0390..0x0395`) ставится в очередь до лимита `256` Кбайт, после `5000` мс застоя сокет разрывается.
 
 ### 2. Накопление Security Strikes
 В окне $W = 600\,\text{с}$ суммарный балл $S = \sum_{i \in W} w_i$:
 - $w = 1$: ошибка схемы/кадра (`ERR_PROTOCOL_INVALID_FRAME`), выход `sequence` из окна;
 - $w = 2$: подмена клиентского поля (`ERR_UNTRUSTED_STATE_MUTATION`), повтор критического ID, попытка доступа к невидимой сущности;
 - $w = 5$: попытка вызова GM-команды без `AccessLevel` (`ERR_INSUFFICIENT_ACCESS`).
-Пороги: $S \ge 3 \rightarrow$ предупреждение (`0x0310`); $S \ge 5 \rightarrow$ 5-секундная заморозка боевых/торговых намерений; $S \ge 10 \rightarrow$ закрытие WS с кодом `4009` и запрет билетов на `900` с (15 мин).
+Пороги: $S \ge 3 \rightarrow$ предупреждение (`0x0390`); $S \ge 5 \rightarrow$ 5-секундная заморозка боевых/торговых намерений; $S \ge 10 \rightarrow$ закрытие WS с кодом `4110` и запрет билетов на `900` с (15 мин).
 
 ### 3. Инварианты Anti-Dupe и сверка `item_ledger`
 Для каждой операции переноса или изменения стака над множеством предметов $I$:
@@ -154,7 +156,7 @@ $$\mu = \frac{1}{N} \sum_{i=1}^{N} \Delta t_i, \qquad \sigma = \sqrt{\frac{1}{N}
 - $S_{\text{spatial}} = 25$, если коэффициент повторения маршрута по блокам `8×8` $> 0.92$ дольше `2700` с или столкновения со стеной $> 180$ с без смены вектора;
 - $S_{\text{reaction}} = 30$, если зафиксировано $\ge 10$ боевых реакций $< 80\,\text{мс}$ или $\ge 5$ авто-лутов $< 120\,\text{мс}$ за `300` с;
 - $S_{\text{multibox}} = 35$, если $\ge 3$ аккаунта с одного IP/подсети исполняют идентичные команды с $|\Delta t| \le 50\,\text{мс}$ $\ge 8$ раз за `60` с.
-Итого: $\text{botScore} = \min(100,\; \max(0,\; S_{\text{cadence}} + S_{\text{spatial}} + S_{\text{reaction}} + S_{\text{multibox}} - \text{decay}))$, где $\text{decay} = 10\,\text{баллов/час}$ разнообразной активности; успешный вызов `0x0312` вычитает `40` и ставит `bot:immunity` на `21600` с.
+Итого: $\text{botScore} = \min(100,\; \max(0,\; S_{\text{cadence}} + S_{\text{spatial}} + S_{\text{reaction}} + S_{\text{multibox}} - \text{decay}))$, где $\text{decay} = 10\,\text{баллов/час}$ разнообразной активности; успешный вызов `0x0392` вычитает `40` и ставит `bot:immunity` на `21600` с.
 
 ## Диаграммы архитектуры
 
@@ -163,18 +165,18 @@ $$\mu = \frac{1}{N} \sum_{i=1}^{N} \Delta t_i, \qquad \sigma = \sqrt{\frac{1}{N}
 ```mermaid
 flowchart TD
     In["Входящий WS-кадр (uWebSockets.js)"] --> SizeCheck{"Размер <= 16384 Б и не в cooldown?"}
-    SizeCheck -- "Нет" --> DropRate["Отклонить (ERR_RATE_LIMITED) / WS 4008"]
+    SizeCheck -- "Нет" --> DropRate["Отклонить (ERR_RATE_LIMITED) / WS 4108"]
     SizeCheck -- "Да" --> ConnBucket{"Token Bucket (60 кадр/с, 64 КБ/с)"}
-    ConnBucket -- "3 отказа за 10 с" --> CloseFlood["Закрыть WS (код 4008)"]
+    ConnBucket -- "3 отказа за 10 с" --> CloseFlood["Закрыть WS (код 4108)"]
     ConnBucket -- "Отказ" --> DropRate
     ConnBucket -- "Ок" --> SchemaDecode["TypeBox декодер (additionalProperties=false, depth<=8, нет NaN)"]
     SchemaDecode -- "Ошибка" --> StrikeAdd["Начислить +1..2 strike (окно 600 с)"]
     StrikeAdd --> StrikeEval{"Strikes >= 10?"}
-    StrikeEval -- "Да" --> BanConn["Закрыть WS (4009) + блок 15 мин"]
-    StrikeEval -- "Нет" --> Notice["Отправить 0x0310 (ERR_PROTOCOL_INVALID_FRAME)"]
+    StrikeEval -- "Да" --> BanConn["Закрыть WS (4110) + блок 15 мин"]
+    StrikeEval -- "Нет" --> Notice["Отправить 0x0390 (ERR_PROTOCOL_INVALID_FRAME)"]
     SchemaDecode -- "Ок" --> ActionBucket{"Квота опкода (move/speech/skill/drag/trade)"}
     ActionBucket -- "Превышено" --> ActionErr["Отклонить (ERR_ACTION_RATE_LIMITED / ERR_SPEECH_FLOOD)"]
-    ActionBucket -- "Ок" --> QuarantineCheck{"Аккаунт в карантине 0x0315?"}
+    ActionBucket -- "Ок" --> QuarantineCheck{"Аккаунт в карантине 0x0395?"}
     QuarantineCheck -- "Да + запрещённый опкод" --> QuarErr["Отклонить (ERR_ACCOUNT_QUARANTINED)"]
     QuarantineCheck -- "Нет" --> IdempSeq{"Idempotency (60 с) и Sequence (0..255, окно 4)"}
     IdempSeq -- "Повтор/разброс" --> ReplayErr["Отклонить (ERR_INTENT_REPLAY / ERR_SEQ_OUT_OF_WINDOW)"]
@@ -208,7 +210,7 @@ sequenceDiagram
             GS->>Det: "Событие в потоковый детектор аномалий"
             opt "Выявлен дубликат серийника или скачок > 100000 gp"
                 Det->>PG: "INSERT security_quarantines (rollback_bundle)"
-                Det->>GS: "Активировать карантин (0x0315)"
+                Det->>GS: "Активировать карантин (0x0395)"
                 GS-->>C: "SecurityQuarantineState (торговля/выброс заморожены)"
             end
         end
@@ -223,19 +225,19 @@ stateDiagram-v2
     Clean --> Monitoring: "Накопление сигналов (cadence / 8x8 / reaction / multibox)"
     Monitoring --> Clean: "Естественное затухание (-10/ч)"
     Monitoring --> WaitingSafeWindow: "botScore >= 70"
-    WaitingSafeWindow --> ChallengeActive: "Нет боя (AggressorRecord пуст, HP >= 90%) -> 0x0311"
+    WaitingSafeWindow --> ChallengeActive: "Нет боя (AggressorRecord пуст, HP >= 90%) -> 0x0391"
     WaitingSafeWindow --> Monitoring: "Затянувшийся бой + затухание"
-    ChallengeActive --> Immunity: "Верный ответ 0x0312 (-40 баллов)"
+    ChallengeActive --> Immunity: "Верный ответ 0x0392 (-40 баллов)"
     Immunity --> Monitoring: "Истёк иммунитет 6 ч (21600 с)"
     ChallengeActive --> Throttled: "Игнор 120 с или 3 ошибки -> bot_incidents"
     Monitoring --> Throttled: "botScore >= 85 (совокупность эвристик)"
     Throttled --> Clean: "Вердикт персонала: dismiss"
-    Throttled --> RestrictedOrBanned: "Вердикт персонала: restrict / ban (WS 4010)"
+    Throttled --> RestrictedOrBanned: "Вердикт персонала: restrict / ban (WS 4103)"
 ```
 
 ## Risks / Trade-offs
 
-- **[Ложные срабатывания антибота на опытных игроков и легальные макросы]** → Явное исключение встроенной очереди макросов (`≥ 600` мс), требование высокой статистической значимости (`N = 50` событий, `≥ 10` реакций `< 80` мс), отправка вызова `0x0311` строго вне боя, запрет авто-пермабана и выдача 6-часового иммунитета после прохождения вызова.
+- **[Ложные срабатывания антибота на опытных игроков и легальные макросы]** → Явное исключение встроенной очереди макросов (`≥ 600` мс), требование высокой статистической значимости (`N = 50` событий, `≥ 10` реакций `< 80` мс), отправка вызова `0x0391` строго вне боя, запрет авто-пермабана и выдача 6-часового иммунитета после прохождения вызова.
 - **[Накладные расходы на CPU внутри 50-мс тика из-за валидации и эвристик]** → Быстрый отсев кадров по длине и token-bucket до десериализации; расчёт дисперсии `σ` инкрементально (алгоритм Велфорда $O(1)$ на событие) и вынос тяжёлой сверки `item_ledger` в фоновый воркер `apps/api`.
 - **[Блокировка честных пользователей за общим NAT/IP (университет, клуб, семья)]** → Разделение лимитов на IP (`8` WS, `20` handshake/мин) и per-account, а правило `MULTI_BOX_BROADCAST` срабатывает только при синхронности действий `≤ 50` мс по общим целям, а не по одному факту совпадения IP.
 - **[Недоступность Valkey при всплеске трафика]** → Для auth/tx вводится fail-closed локальный аварийный лимит (`2` req/мин), чтобы сбой кэша не открыл дверь для брутфорса паролей, при одновременном сохранении 5-секундного локального fallback для non-critical запросов.
@@ -246,13 +248,13 @@ stateDiagram-v2
 
 ## Migration Plan
 
-1. **Этап 1 — Схемы, контракты и Shadow Mode (`dry-run`):** Выкатить миграции `@uo3/db` (`security_strikes`, `security_quarantines`, `bot_incidents`, `ledger_reconciliation_runs`, `security_audit_logs`), опкоды `0x0310..0x0315`, и включить rate-limiter, детектор дюпа и анализатор ботов в режиме `AUDIT_ONLY` (метрики и логи без киков и карантинов) для калибровки порогов на синтетических и нагрузочных тестах.
+1. **Этап 1 — Схемы, контракты и Shadow Mode (`dry-run`):** Выкатить миграции `@uo3/db` (`security_strikes`, `security_quarantines`, `bot_incidents`, `ledger_reconciliation_runs`, `security_audit_logs`), опкоды `0x0390..0x0395`, и включить rate-limiter, детектор дюпа и анализатор ботов в режиме `AUDIT_ONLY` (метрики и логи без киков и карантинов) для калибровки порогов на синтетических и нагрузочных тестах.
 2. **Этап 2 — Включение принудительной валидации протокола и API-лимитов:** Переключить `SecurityGateMiddleware` и `DistributedRateLimitGuard` в режим `ENFORCE`, включить строгий CSP/SRI на `apps/client` и `apps/admin` (сначала `Content-Security-Policy-Report-Only` на 1 прогон, затем блокирующий `Content-Security-Policy`).
-3. **Этап 3 — Активация вызовов антибота и карантина дюпа:** Включить отправку `0x0311`/`0x0312` вне боя, автоматический торговый карантин `0x0315` при подтверждённом конфликте серийников/несохранности массы и 300-секундную/суточную сверку `item_ledger`.
+3. **Этап 3 — Активация вызовов антибота и карантина дюпа:** Включить отправку `0x0391`/`0x0392` вне боя, автоматический торговый карантин `0x0395` при подтверждённом конфликте серийников/несохранности массы и 300-секундную/суточную сверку `item_ledger`.
 4. **План отката:** Любой контур (вызовы антибота, торговый карантин, строгий режим strike-банов, CSP report-only) имеет независимый feature-флаг в `@uo3/config` и может быть переведён в `audit_only` без миграции базы данных и без перезапуска схемы мира.
 
 ## Open Questions
 
 1. **Криптографическое подписание ответов клиента на `BotChallenge`:** На первом этапе достаточно одноразового серверного nonce в `challengeId` и валидации ответа; при появлении массовых OCR-солверов возможно расширение `promptType` интерактивными игровыми мини-головоломками на канвасе (решение принимается по статистике после бета-теста).
-2. **Адаптивные пороги квот при массовых PvP-осадах и ярмарках:** Стандартный лимит `200` исходящих сообщений / `256` Кбайт и `60` входящих кадров/с достаточен для AOI 18–24 тайлов; при наличии в одной зоне > 150 активных бойцов (P34) потребуется уточнить коэффициент агрегации батчей косметики.
+2. **Адаптивные пороги квот при массовых PvP-осадах и ярмарках:** Стандартный лимит `200` исходящих сообщений / `256` Кбайт и `60` входящих кадров/с достаточен для AOI 18–24 тайлов; при наличии в одной зоне > 150 активных бойцов (профиль `mass-pvp`, P35) потребуется уточнить коэффициент агрегации батчей косметики.
 3. **Срок хранения ротируемых солей `HMAC-SHA256` для псевдонимизации IP:** Рекомендуемый цикл ротации — 30 дней с хранением секрета в KMS/Vault вне основной БД; точный срок согласуется с политикой приватности перед запуском (P34).

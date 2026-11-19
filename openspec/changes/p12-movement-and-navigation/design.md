@@ -92,7 +92,7 @@
 |---|---|---|
 | `packages/domain` | `src/movement/*` | `MovementMode`, `MovementDenyReason` (`ERR_MOVE_*`), `DoorTraversalPolicy`, `PathfindingErrorCode` (`ERR_PATH_*`), `TeleportErrorCode` (`ERR_TELEPORT_*`), `TeleporterDefinition`, `TeleportImmunityState`, `MobileMovementState`. |
 | `packages/rules` | `src/movement/*` | `checkMovement()`, `resolveStepIntervalMs()`, `calculateMaxWeight()`, `calculateStepStaminaDrain()`, `TimeCreditTracker`, `StaminaRegenTracker`, `findPathAStar()`, `AStarWorkspacePool`. |
-| `packages/protocol` | `src/messages/movement.ts` | Опкоды `0x0101..0x0106`, TypeBox-схемы `WalkRequestSchema`, `WalkAckSchema`, `WalkDenySchema`, `TeleportSyncSchema`, `PartitionHandoffTicketSchema`, `ClientGeometryReadySchema`, бинарные кодеки. |
+| `packages/protocol` | `src/messages/movement.ts` | Опкоды `0x0101..0x0107` (блок P12 `0x0100..0x011F` по `docs/PROTOCOL_REGISTRY.md`), TypeBox-схемы `MovementResyncRequestSchema`, `WalkRequestSchema`, `WalkAckSchema`, `WalkDenySchema`, `TeleportSyncSchema`, `PartitionHandoffTicketSchema`, `ClientGeometryReadySchema`, бинарные кодеки. |
 | `packages/content` | `src/schemas/teleporter.ts`, `data/teleporters/*.yaml` | JSON Schema и YAML-реестры статических телепортов (входы в подземелья, межфасетные порталы, тестовые телепорты синтетического фасета `200`), CLI-валидатор проходимости точек назначения. |
 | `apps/game-server` | `src/movement/*` | `MovementIntentHandler`, `StaminaTickSystem`, `TeleporterTriggerSystem`, `PartitionHandoffService`, интеграция с `WorldPartitionRoom` и секторным индексом `16x16`. |
 | `apps/client` | `src/features/movement/*` | `MovementInputController` (ПКМ-сектора, клавиатура, автобег), `PredictionController` (`seq 0..255`, окно 4 шага), `VisualMovementInterpolator`, `PathfindingWorkerClient` + `pathfinding.worker.ts`, `TeleportBarrierController`. |
@@ -110,6 +110,7 @@
 | `0x0104` | `TeleportSync` | Server -> Client | `teleportSeq: uint16`, `facetId: uint8`, `x: uint16`, `y: uint16`, `z: int8`, `dir: uint8 (0..7)`, `requiresBarrier: boolean` |
 | `0x0105` | `PartitionHandoffTicket` | Server -> Client | `ticketId: string (UUID)`, `targetRoomId: string`, `targetEndpoint: string`, `destFacetId: uint8`, `destX: uint16`, `destY: uint16`, `destZ: int8`, `destDir: uint8`, `expiresAtMs: uint64` |
 | `0x0106` | `ClientGeometryReady` | Client -> Server | `teleportSeq: uint16` (сигнал снятия клиентского барьера загрузки чанков после дальнего телепорта) |
+| `0x0107` | `MovementResyncRequest` | Client -> Server | без полей; запрос принудительной ресинхронизации позиции после таймаута подтверждения шага `ackTimeoutMs = 2000` мс; сервер принимает не чаще `1` раза в `1000` мс и отвечает `TeleportSync` (`requiresBarrier = false`) со сбросом `expectedSeq = 0` |
 
 ### Коды ошибок движения, навигации и телепортации (`@uo3/domain`)
 
@@ -289,7 +290,7 @@ sequenceDiagram
    - Добавить типы движения, коды ошибок и структуры телепортов в `@uo3/domain`.
    - Реализовать `checkMovement`, расчёт веса/стамины, `TimeCreditTracker` и `findPathAStar` в `@uo3/rules/src/movement/*` с полным покрытием property-based и unit-тестами на синтетических картах из `@uo3/test-kit`.
 2. **Контракты протокола и контента (`@uo3/protocol`, `@uo3/content`)**:
-   - Зарегистрировать опкоды `0x0101..0x0106` и схемы TypeBox в `@uo3/protocol`.
+   - Зарегистрировать опкоды `0x0101..0x0107` и схемы TypeBox в `@uo3/protocol`.
    - Добавить схему и YAML-реестр статических телепортов в `@uo3/content` (включая тестовые двусторонние порталы, лестницы и входы в подземелье на синтетическом фасете `200`).
 3. **Серверная интеграция (`apps/game-server`)**:
    - Подключить `MovementIntentHandler` в `IntentHandlerRegistry` комнаты `WorldPartitionRoom`.

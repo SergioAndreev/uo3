@@ -10,7 +10,7 @@
 - **P10 / P11 / P12 / P13 (`apps/client`, `apps/game-server`)**: обеспечили 3D-вьюпорт (`screenToWorld`, `PickTarget`, `DOM-guard`), рендеринг мобилов с надголовным текстом (`overheadSpeech`) и жестом вытягивания (`dragStart >= 6 px`), авторитарное движение (включая бег по зажатию правой кнопки мыши) и систему контейнеров/инвентаря с drag-and-drop экипировкой.
 
 В классической UO интерфейс делится на два класса окон:
-1. **Клиентские системные гампы** (`Paperdoll`, `Status Bar`, `Mobile Health Bar`, `Journal`, `Skills`, `Spellbook`, `Options / Macros`), которые отображают реактивное состояние из `StateView` и локальных сторов клиента, отправляя узкоспециализированные намерения (`StatLockChangeIntent`, `SkillLockChangeIntent`, `UseSkillIntent`, `CastSpellIntent`, `SpeechIntent`, `WarModeToggleIntent`).
+1. **Клиентские системные гампы** (`Paperdoll`, `Status Bar`, `Mobile Health Bar`, `Journal`, `Skills`, `Spellbook`, `Options / Macros`), которые отображают реактивное состояние из `StateView` и локальных сторов клиента, отправляя собственное намерение `SpeechIntent`, а намерения `SetStatLockIntent`, `SetSkillLockIntent`, `UseSkillIntent` (P15), `ToggleWarModeIntent` (P16) и каст (P18) — через клиентский порт `CharacterUiIntentPort`.
 2. **Серверно-декларативные гампы** (`Server Gumps`), которые сервер открывает динамически для диалогов NPC, меню ремёсел (P20), управления домами (P23), гильдийных камней (P26), контекстных меню и инструментов GM (P29). Сервер отправляет декларативную строку разметки и таблицу строк, а клиент рендерит окно и возвращает структурированный ответ (`GumpResponseIntent`).
 
 Сквозными механизмами, связывающими все окна и 3D-сцену, выступают **система целеуказания (`TargetCursor`)**, **интерпретатор макросов и горячих клавиш** и **менеджер оконной раскладки (`WindowLayoutManager`)**.
@@ -36,7 +36,7 @@
 ## Decisions
 
 ### Decision 1: Серверно-авторитарные сессии гампов со скомпилированной схемой (`CompiledGumpDescriptor`)
-- **Выбор**: При открытии серверного гампа (`GumpOpenPacket`, опкод `0x0260`) игровой сервер регистрирует в памяти `GumpSessionRegistry` запись `ActiveGumpSession`, содержащую `gumpInstanceId` (`uint32`), `gumpTypeId` (`uint16`), `contextSerial` (`uint32`), ограничения контекста (`maxDistanceTiles`, `aliveOnly`, `expiresAtTick`) и скомпилированные множества разрешённых интерактивных элементов: `allowedReplyButtons: ReadonlySet<number>`, `allowedSwitches: ReadonlySet<number>`, `radioGroups: ReadonlyMap<number, ReadonlySet<number>>`, `textEntryLimits: ReadonlyMap<number, number>`.
+- **Выбор**: При открытии серверного гампа (`GumpOpenPacket`, опкод `0x0150`) игровой сервер регистрирует в памяти `GumpSessionRegistry` запись `ActiveGumpSession`, содержащую `gumpInstanceId` (`uint32`), `gumpTypeId` (`uint16`), `contextSerial` (`uint32`), ограничения контекста (`maxDistanceTiles`, `aliveOnly`, `expiresAtTick`) и скомпилированные множества разрешённых интерактивных элементов: `allowedReplyButtons: ReadonlySet<number>`, `allowedSwitches: ReadonlySet<number>`, `radioGroups: ReadonlyMap<number, ReadonlySet<number>>`, `textEntryLimits: ReadonlyMap<number, number>`.
 - **Обоснование**: В классических эмуляторах UO уязвимости дюпа и обхода проверок часто возникали из-за того, что клиент присылал произвольный `buttonId` или `switchId`, который не присутствовал на текущей странице гампа. Хранение `CompiledGumpDescriptor` на сервере позволяет централизованно в `GumpResponseValidator` (`packages/rules`) отсекать любые поддельные кнопки, невалидные комбинации радиокнопок и строки, превышающие `maxChars`, ещё до вызова прикладного обработчика.
 - **Отвергнутые альтернативы**:
   - *Доверять `buttonId` от клиента и проверять условия вручную в каждом обработчике гампа* — отвергнуто: приводит к дублированию проверок безопасности в десятках гампов P15–P29.
@@ -59,7 +59,7 @@
   - `WHISPER` (префикс `; `): радиус `<= 1` тайл;
   - `REGULAR` и `EMOTE` (префикс `: `): радиус `<= 15` тайлов;
   - `YELL` (префикс `! `): радиус `<= 18` тайлов.
-  Пакет `ServerSpeechEvent` (`0x0264`) доставляется только подходящим получателям и на клиенте одновременно диспатчится в `overheadSpeech` (P11) и в `JournalStore`.
+  Пакет `ServerSpeechEvent` (`0x0154`) доставляется только подходящим получателям и на клиенте одновременно диспатчится в `overheadSpeech` (P11) и в `JournalStore`.
 - **Обоснование**: Исключает утечку памяти при многочасовых сессиях и предотвращает перехват шёпота (`Whisper`) модифицированным клиентом на расстоянии более 1 тайла, так как фильтрация выполняется на сервере до отправки пакета в сокет.
 - **Отвергнутые альтернативы**:
   - *Рассылка всей речи всем клиентам в AOI (18 тайлов) с фильтрацией шёпота на клиенте* — отвергнуто: нарушает правило авторитарности сервера и позволяет сторонним снифферам читать чужой шёпот.
@@ -68,7 +68,7 @@
 - **Выбор**: Когда активен `TargetCursor` (серверный `cursorId` или локальный `SetLastTarget`), менеджер ввода перехватывает событие `pointerdown (button = 0)` на уровне захвата (`capture phase`) перед стандартными обработчиками гампов и 3D-сцены:
   1. Если клик пришёлся на UI-элемент с атрибутом `data-targetable-serial` (слот предмета в контейнере P13, предмет на пейпердолле, силуэт куклы или `MobileHealthBar`), цель резолвится мгновенно по этому `serial`.
   2. Если клик пришёлся на свободную область 3D-вьюпорта (`DOM-guard` пропускает луч), вызывается `PickTarget` из P10, возвращающий либо динамическую сущность (`mobile` / `ground item`), либо статический тайл (`staticTileId`, `x, y, z`), либо геометрию ландшафта (`land`, `x, y, z`).
-  3. При включённой опции `TargetQueue` вызов `TargetSelf` / `LastTarget` без активного серверного курсора сохраняет намерение в одноэлементный буфер (`TTL = 3000 мс`), который автоматически дренируется в момент получения `TargetCursorRequest` (`0x0265`).
+  3. При включённой опции `TargetQueue` вызов `TargetSelf` / `LastTarget` без активного серверного курсора сохраняет намерение в одноэлементный буфер (`TTL = 3000 мс`), который автоматически дренируется в момент получения `TargetCursorRequest` (`0x0155`).
 - **Обоснование**: Обеспечивает классический для ветеранов UO:R соревновательный UX (мгновенный таргетинг по вытянутым полоскам здоровья и предвыбор цели во время чтения заклинания) при строгой серверной проверке `cursorId`, `targetKind`, дистанции и 3D DDA LOS.
 - **Отвергнутые альтернативы**:
   - *Раздельные режимы таргетинга для 3D-сцены и UI-окон* — отвергнуто: приводит к рассинхронизации курсора при переносе мыши между 3D-миром и открытым рюкзаком/полоской здоровья.
@@ -91,10 +91,10 @@
 |---|---|---|
 | `packages/domain` | `gump/*`, `paperdoll/*`, `speech/*`, `targeting/*`, `macros/*`, `layout/*` | Чистые типы AST разметки гампа, таблица 19 слоёв пейпердолла, режимы речи, перечисление 49 навыков и 64 заклинаний (8 кругов), типы `TargetKind`/`TargetFlags`, состояния замков `LockState`, модели шагов макроса и оконной раскладки. 0 внешних зависимостей. |
 | `packages/rules` | `ui/gump-parser.ts`, `ui/gump-validator.ts`, `ui/speech-range.ts`, `ui/target-validator.ts`, `ui/spellbook-rules.ts` | Изоморфный парсер разметки `{ cmd ... }`, компилятор `CompiledGumpDescriptor`, валидатор `validateGumpResponse`, расчёт дистанции слышимости речи (1/15/18 тайлов), проверка битовой маски `spellBitmask` (`uint64`) и калькулятор характеристик статус-бара. |
-| `packages/protocol` | `messages/gump.ts`, `messages/targeting.ts`, `messages/speech.ts`, `messages/character-ui.ts` | Опкоды `0x0260..0x026F`, TypeBox-схемы пакетов открытия/закрытия/ответа гампа, запросов/ответов `TargetCursor`, речевых пакетов, смены замков статов/навыков, активации навыков/заклинаний и переключения `WarMode`. |
+| `packages/protocol` | `messages/gump.ts`, `messages/targeting.ts`, `messages/speech.ts`, `messages/character-ui.ts` | Опкоды `0x0150..0x0159` (блок P14 `0x0150..0x017F`), TypeBox-схемы пакетов открытия/закрытия/ответа гампа, запросов/ответов `TargetCursor`, речевых пакетов и профиля персонажа; намерения замков, навыков, каста и `WarMode` — из блоков P15/P16/P18. |
 | `packages/ui-kit` | `gump-primitives/*`, `paperdoll/*`, `health-bar/*`, `journal/*`, `spellbook/*`, `cursors/*` | Визуальные примитивы `ResizePic9Slice`, `GumpSprite`, `CheckerTrans`, `HtmlGumpView`, `PaperdollCanvas`, `MobileHealthBarWidget`, `VirtualJournalList`, `SpellbookSpread`, `CursorOverlay` и CC0-заглушки всех системных гампов. |
 | `packages/db` | `schema/client-profiles.ts` | Расширение JSONB-схемы `ClientSettingsV1` в `account_client_profiles` разделами `characterLayouts` и `characterMacros` с миграцией и TypeBox-валидацией. |
-| `apps/game-server` | `ui/gump-session.registry.ts`, `ui/target-cursor.manager.ts`, `ui/speech.router.ts`, `ui/character-ui.handlers.ts` | Серверный реестр открытых гампов (с автозакрытием по дистанции и смерти), менеджер активных курсоров цели с таймаутами `30 с`, маршрутизатор речи по секторам `16×16` и обработчики замков статов/навыков и профиля. |
+| `apps/game-server` | `ui/gump-session.registry.ts`, `ui/target-cursor.manager.ts`, `ui/speech.router.ts`, `ui/character-ui.handlers.ts` | Серверный реестр открытых гампов (с автозакрытием по дистанции и смерти), менеджер активных курсоров цели с таймаутами `30 с`, маршрутизатор речи по секторам `16×16` и обработчик профиля персонажа (обработчики замков, навыков, каста и `War/Peace` — в P15/P16/P18). |
 | `apps/client` | `features/gumps/*`, `features/paperdoll/*`, `features/journal/*`, `features/skills-spells/*`, `features/macros/*`, `features/targeting/*`, `features/layout/*` | Zustand-сторы (`useGumpStore`, `useTargetStore`, `useJournalStore`, `useMacroStore`, `useLayoutStore`), интеграция с `PickTarget` и `DOM-guard` (P10), `overheadSpeech` (P11) и drag-and-drop экипировки (P13). |
 | `apps/bot-client` | `behaviors/gump-responder.ts`, `behaviors/target-responder.ts`, `behaviors/speech-driver.ts` | Headless-драйверы для автоматического прохождения серверных гампов, ответа на `TargetCursorRequest` и генерации речевого трафика в нагрузочных и интеграционных тестах. |
 
@@ -141,46 +141,42 @@
     $$\text{hasSpell}(\text{mask}, \text{spellId}) = \left(\text{mask} \ \& \ (1\text{n} \ll \text{BigInt}(\text{spellId} - 1))\right) \neq 0\text{n}$$
   - Расход маны по кругам `1..8`: `MANA_COST_BY_CIRCLE = [4, 6, 9, 11, 14, 20, 40, 50]`.
 
-### 3. Схемы пакетов `@uo3/protocol` (uint16 опкоды `0x0260..0x026F`)
+### 3. Схемы пакетов `@uo3/protocol` (uint16 опкоды `0x0150..0x0159`, блок P14 `0x0150..0x017F`)
 
 ```typescript
-// Диапазон опкодов P14: 0x0260..0x026F
+// Блок опкодов P14 по docs/PROTOCOL_REGISTRY.md: 0x0150..0x017F (используются 0x0150..0x0159)
 export const P14_OPCODES = {
-  GUMP_OPEN_PACKET:            0x0260, // Server -> Client: открытие/обновление серверного гампа
-  GUMP_RESPONSE_INTENT:        0x0261, // Client -> Server: ответ игрока на гамп (кнопка, чекбоксы, текст)
-  GUMP_CLOSE_PACKET:           0x0262, // Server -> Client: принудительное закрытие гампа с причиной
-  SPEECH_INTENT:               0x0263, // Client -> Server: отправка речи (Regular/Whisper/Yell/Emote)
-  SERVER_SPEECH_EVENT:         0x0264, // Server -> Client: реплика мобила или локализованное сообщение cliloc
-  TARGET_CURSOR_REQUEST:       0x0265, // Server -> Client: запрос активации курсора целеуказания
-  TARGET_CURSOR_RESPONSE:      0x0266, // Client -> Server: выбранная цель (serial или координаты тайла)
-  TARGET_CURSOR_CANCEL:        0x0267, // Bidirectional: отмена активного курсора целеуказания
-  STAT_LOCK_CHANGE_INTENT:     0x0268, // Client -> Server: переключение замка STR/DEX/INT (Up/Down/Locked)
-  SKILL_LOCK_CHANGE_INTENT:    0x0269, // Client -> Server: переключение замка навыка 0..48 (Up/Down/Locked)
-  USE_SKILL_INTENT:            0x026A, // Client -> Server: активация активного навыка из окна или макроса
-  CAST_SPELL_INTENT:           0x026B, // Client -> Server: запуск чтения заклинания 1..64 из книги/иконки
-  WAR_MODE_TOGGLE_INTENT:      0x026C, // Client -> Server: переключение режима War/Peace
-  CHARACTER_PROFILE_INTENT:    0x026D, // Client -> Server: запрос или обновление текста биографии профиля
-  CHARACTER_PROFILE_PACKET:    0x026E, // Server -> Client: содержимое текстового профиля персонажа
-  SPELLBOOK_CONTENT_PACKET:    0x026F, // Server -> Client: открытие/обновление книги заклинаний (uint64 маска)
+  GUMP_OPEN_PACKET:            0x0150, // Server -> Client: открытие/обновление серверного гампа
+  GUMP_RESPONSE_INTENT:        0x0151, // Client -> Server: ответ игрока на гамп (кнопка, чекбоксы, текст)
+  GUMP_CLOSE_PACKET:           0x0152, // Server -> Client: принудительное закрытие гампа с причиной
+  SPEECH_INTENT:               0x0153, // Client -> Server: отправка речи (Regular/Whisper/Yell/Emote)
+  SERVER_SPEECH_EVENT:         0x0154, // Server -> Client: реплика мобила или локализованное сообщение cliloc
+  TARGET_CURSOR_REQUEST:       0x0155, // Server -> Client: запрос активации курсора целеуказания
+  TARGET_CURSOR_RESPONSE:      0x0156, // Client -> Server: выбранная цель (serial или координаты тайла)
+  TARGET_CURSOR_CANCEL:        0x0157, // Bidirectional: отмена активного курсора целеуказания
+  CHARACTER_PROFILE_INTENT:    0x0158, // Client -> Server: запрос или обновление текста биографии профиля
+  CHARACTER_PROFILE_PACKET:    0x0159, // Server -> Client: содержимое текстового профиля персонажа
 } as const;
 ```
 
+**Намерения, принадлежащие другим фазам.** P14 НЕ определяет опкоды и серверные обработчики замков статов/навыков, активации навыков, каста и режима War/Peace: опкоды этих намерений принадлежат фазам-владельцам по `docs/PROTOCOL_REGISTRY.md`: `UseSkillIntent` `0x0190`, `SetSkillLockIntent` `0x0191`, `SetStatLockIntent` `0x0192` (P15), `ToggleWarModeIntent` `0x01A0` (P16), каст `CastSpell` и состояние книги `SpellbookContentEvent` (блок P18 `0x01F0..0x021F`). P14 реализует только клиентский порт `CharacterUiIntentPort` (`setStatLock`, `setSkillLock`, `useSkill`, `castSpell`, `toggleWarMode`) с валидацией диапазонов на клиенте и тестовым двойником сервера; привязку порта к сети выполняют фазы-владельцы (P15/P16/P18), что не создаёт зависимости P14 от более поздних фаз.
+
 Ключевые структуры сообщений (TypeBox):
-- **`GumpOpenPacket` (`0x0260`)**:
+- **`GumpOpenPacket` (`0x0150`)**:
   - `gumpInstanceId: uint32`, `gumpTypeId: uint16`, `contextSerial: uint32`, `x: int16`, `y: int16`,
   - `flags: uint8` (`bit 0 = closable`, `bit 1 = movable`, `bit 2 = disposable`, `bit 3 = modal`),
   - `layout: string` (до `16384` байт), `lines: string[]` (до `256` строк по `512` символов).
-- **`GumpResponseIntent` (`0x0261`)**:
+- **`GumpResponseIntent` (`0x0151`)**:
   - `gumpInstanceId: uint32`, `gumpTypeId: uint16`, `buttonId: uint32` (`0` = закрытие без действия),
   - `switches: uint32[]` (до `64` идентификаторов отмеченных `checkbox`/`radio`),
   - `textEntries: Array<{ entryId: uint16; text: string }>` (до `16` полей по `255` символов).
-- **`TargetCursorRequest` (`0x0265`)**:
+- **`TargetCursorRequest` (`0x0155`)**:
   - `cursorId: uint32`, `targetKind: 0 | 1` (`0 = OBJECT_ONLY`, `1 = GROUND_OR_OBJECT`),
   - `cursorFlag: 0 | 1 | 2` (`0 = NEUTRAL`, `1 = HARMFUL`, `2 = BENEFICIAL`), `timeoutMs: uint16` (`30000`).
-- **`TargetCursorResponseIntent` (`0x0266`)**:
+- **`TargetCursorResponseIntent` (`0x0156`)**:
   - `cursorId: uint32`, `targetKind: 0 | 1`, `targetSerial: uint32` (`0` для земли/статики),
   - `x: uint16`, `y: uint16`, `z: int8`, `graphicId: uint16`.
-- **`SpeechIntent` (`0x0263`) & `ServerSpeechEvent` (`0x0264`)**:
+- **`SpeechIntent` (`0x0153`) & `ServerSpeechEvent` (`0x0154`)**:
   - `mode: 'REGULAR' | 'WHISPER' | 'YELL' | 'EMOTE' | 'SYSTEM' | 'COMBAT'`,
   - `speechHue: uint16` (`2..1001`, дефолт `0x03B2`), `fontId: uint8` (`3`), `text: string` (`1..128` символов),
   - для `ServerSpeechEvent` дополнительно: `speakerSerial: uint32`, `speakerName: string`, `clilocId?: uint32`, `clilocArgs?: string[]`.
@@ -199,10 +195,9 @@ export const P14_OPCODES = {
 | `ERR_GUMP_INVALID_RESPONSE` | `ui/gump-framework` | В ответе передан `buttonId`, `switchId` или `entryId`, отсутствующий в `CompiledGumpDescriptor`, либо нарушен лимит длины текста. |
 | `ERR_GUMP_SESSION_EXPIRED` | `ui/gump-framework` | Сессия `gumpInstanceId` уже закрыта, истекла по таймауту, персонаж отошёл дальше `maxDistanceTiles` или погиб. |
 | `ERR_PAPERDOLL_READ_ONLY` | `ui/paperdoll-and-status` | Попытка снять или надеть предмет в окне чужого пейпердолла (`targetMobileSerial != selfSerial`). |
-| `ERR_INVALID_STAT_LOCK` | `ui/paperdoll-and-status` | Недопустимый идентификатор стата (вне `STR/DEX/INT`) или состояние замка (вне `0..2`). |
+| `ERR_INVALID_LOCK_TARGET` / `ERR_INVALID_LOCK_STATE` | `ui/paperdoll-and-status`, `ui/skills-and-spellbook-windows` | Коды P15: стат вне `STR/DEX/INT`, `skillId` вне `0..48` или состояние вне `0..2`; клиентский порт отсекает такие значения локально, серверную проверку выполняет P15. |
 | `ERR_SPEECH_RATE_LIMITED` | `ui/journal-and-chat` | Превышена квота отправки речевых сообщений (`> 4` пакетов за `2 с`). |
 | `ERR_SPEECH_EMPTY_OR_TOO_LONG` | `ui/journal-and-chat` | Пустая строка после удаления префикса/управляющих символов или длина `> 128` символов. |
-| `ERR_INVALID_SKILL_LOCK` | `ui/skills-and-spellbook-windows` | `skillId` вне диапазона `0..48` или состояние замка вне `0..2`. |
 | `ERR_SKILL_NOT_ACTIVE` | `ui/skills-and-spellbook-windows` | Попытка вызвать `UseSkillIntent` для пассивного навыка (`isActive = false`). |
 | `ERR_SPELL_NOT_IN_BOOK` | `ui/skills-and-spellbook-windows` | Вызов `CastSpellIntent` для `spellId`, чей бит не установлен ни в одной доступной книге заклинаний персонажа. |
 | `ERR_MACRO_TARGET_UNAVAILABLE` | `ui/macros-and-hotkeys` | Вызов `LastObject`, `LastTarget` или `NextTarget`, когда целевая сущность отсутствует в AOI/инвентаре. |
@@ -229,13 +224,13 @@ sequenceDiagram
     Val-->>GS: CompiledGumpDescriptor (allowedButtons, switches, textLimits)
     GS->>Reg: createSession(playerSerial, gumpTypeId, contextSerial, descriptor)
     Reg-->>GS: ActiveGumpSession (gumpInstanceId = 1042)
-    GS->>Cl: GumpOpenPacket (0x0260: id=1042, type=0x01A0, layout, lines)
+    GS->>Cl: GumpOpenPacket (0x0150: id=1042, type=0x01A0, layout, lines)
     Cl->>Val: parseGumpLayout(layout, lines)
     Val-->>Cl: GumpAST (Page 0 + Pages 1..N)
     Cl->>Cl: Render Window (preserve x,y if type+context already open)
 
     Note over Cl: Игрок переключает PageButton (локально), отмечает radio/checkbox и жмёт ReplyButton (id=10)
-    Cl->>GS: GumpResponseIntent (0x0261: id=1042, buttonId=10, switches=[202], textEntries)
+    Cl->>GS: GumpResponseIntent (0x0151: id=1042, buttonId=10, switches=[202], textEntries)
     GS->>Reg: consumeSession(playerSerial, gumpInstanceId=1042)
     Reg->>Val: validateGumpResponse(descriptor, response)
     alt Ответ валиден и контекст в радиусе maxDistanceTiles
@@ -243,7 +238,7 @@ sequenceDiagram
         GS->>GS: Вызов доменного обработчика гампа
     else Поддельный buttonId/switchId или выход из радиуса
         Val-->>GS: ERR_GUMP_INVALID_RESPONSE / ERR_GUMP_SESSION_EXPIRED
-        GS->>Cl: GumpClosePacket (0x0262) + SystemMessage
+        GS->>Cl: GumpClosePacket (0x0152) + SystemMessage
     end
 ```
 
@@ -255,15 +250,15 @@ stateDiagram-v2
 
     Idle --> QueuedPreTarget: Нажатие TargetSelf / LastTarget во время каста (Queue=ON)
     QueuedPreTarget --> Idle: Истёк TTL (3000 мс) или каст сбит (Disrupted)
-    QueuedPreTarget --> AutoDispatch: Пришёл TargetCursorRequest (0x0265)
-    AutoDispatch --> Idle: Мгновенная отправка TargetCursorResponse (0x0266)
+    QueuedPreTarget --> AutoDispatch: Пришёл TargetCursorRequest (0x0155)
+    AutoDispatch --> Idle: Мгновенная отправка TargetCursorResponse (0x0156)
 
-    Idle --> CursorActive: Пришёл TargetCursorRequest (0x0265: cursorId, kind, flag)
+    Idle --> CursorActive: Пришёл TargetCursorRequest (0x0155: cursorId, kind, flag)
     CursorActive --> CursorActive: Новый TargetCursorRequest (замещает старый cursorId)
-    CursorActive --> Idle: Escape / Правый клик -> TargetCursorCancel (0x0267)
+    CursorActive --> Idle: Escape / Правый клик -> TargetCursorCancel (0x0157)
     CursorActive --> Idle: Серверный таймаут (30000 мс) -> Gump/Cursor Reset
     CursorActive --> ValidatingTarget: Левый клик (3D PickTarget / Container / Paperdoll / HealthBar) или макрос TargetSelf/LastTarget
-    ValidatingTarget --> Idle: Отправка TargetCursorResponse (0x0266) + обновление lastTargetSerial
+    ValidatingTarget --> Idle: Отправка TargetCursorResponse (0x0156) + обновление lastTargetSerial
 ```
 
 ### 3. Архитектура оконного менеджера и маршрутизации ввода (`DOM-guard`)
@@ -301,7 +296,7 @@ flowchart TD
 
 ## Migration Plan
 
-1. **Этап 1 (Домен, правила и протокол)**: добавить типы и AST-модели в `packages/domain`, парсер и валидаторы гампов/речи/таргетинга в `packages/rules` и опкоды `0x0260..0x026F` в `packages/protocol`.
+1. **Этап 1 (Домен, правила и протокол)**: добавить типы и AST-модели в `packages/domain`, парсер и валидаторы гампов/речи/таргетинга в `packages/rules` и опкоды `0x0150..0x0159` в `packages/protocol`.
 2. **Этап 2 (База данных и профили)**: расширить схему `ClientSettingsV1` в `packages/db` секциями `characterLayouts` и `characterMacros` с обратной совместимостью для существующих профилей P09.
 3. **Этап 3 (Серверные менеджеры)**: внедрить `GumpSessionRegistry`, `TargetCursorManager`, `SpeechRouter` и обработчики замков статов/навыков в `apps/game-server`.
 4. **Этап 4 (Примитивы `@uo3/ui-kit` и клиентские подсистемы)**: реализовать рендерер серверных гампов, пейпердолл, статус-бар, полоски здоровья, журнал, окно навыков, книгу заклинаний, курсоры целеуказания, макросы и менеджер раскладки в `apps/client`.

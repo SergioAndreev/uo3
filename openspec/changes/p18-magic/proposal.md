@@ -30,7 +30,7 @@
   - Система призыва контролируемых существ (`Summon Creature`, `Summon Daemon`, элементали) с лимитом `5` слотов контроля (`controlSlots`) и автономных духов (`Blade Spirits`, `Energy Vortex`) с эвристикой выбора целей, а также развеивание через `Dispel`, `Dispel Field` и `Mass Dispel`.
 - **Сопротивление магии и отражение (`magic/spell-resistance`)**:
   - Формулы проверки навыка `Resisting Spells` (`skillId 26`) в зависимости от круга заклинания `1..8`, `Magery` кастера и `Resisting Spells` цели.
-  - Полная нейтрализация заклинаний контроля (`Paralyze`, `Poison`, `Mana Drain/Vampire`) и снижение входящего магического урона на `25%..50%` при резисте.
+  - Полная нейтрализация заклинаний контроля (`Paralyze`, `Poison`, `Mana Drain/Vampire`) и снижение входящего прямого магического урона на `50%` при успешном резисте.
   - Щит `Magic Reflection` (`spellId 36`) с одноразовым отражением направленного враждебного заклинания обратно в кастера, защитой от бесконечного пинг-понга (`isReflected = true`) и кулдауном `30 000` мс.
 
 ## Capabilities
@@ -50,15 +50,16 @@
   - `packages/domain`: типы `SpellId` (`1..64`), `SpellCircle` (`1..8`), `ReagentId` (8 видов), `SpellTargetType`, `CastSourceType`, `FieldType`, `SummonArchetypeId`, флаги заклинаний и коды ошибок `ERR_SPELL_*`.
   - `packages/content`: декларативный каталог `spells.yaml` (64 заклинания), рецепты реагентов, таблицы параметров полей и архетипов призываемых существ + JSON Schema валидация.
   - `packages/rules`: чистые детерминированные функции `magic/*` (конечный автомат каста, формулы `Magery`/`EvalInt`/`Resist`, геометрия полей 5×1, резолверы всех 64 заклинаний, тиковые обработчики полей и саммонов).
-  - `packages/protocol`: uint16 опкоды `0x0280..0x028F` (каст из книги/свитка/макроса, события старта каста, физзла, эффекта/снаряда, обновления `Spellbook`/`Runebook`, действия с рунбукой и переименование руны).
+  - `packages/protocol`: uint16 опкоды `0x01F0..0x021F` (каст из книги/свитка/макроса, события старта каста, физзла, эффекта/снаряда, обновления `Spellbook`/`Runebook`, действия с рунбукой и переименование руны).
   - `packages/db`: таблицы/колонки сохранения свойств `Spellbook` (`spells_bitmask`), `RecallRune` (`marked_facet_id`, `marked_x/y/z`, `rune_description`), `Runebook` (`entries_jsonb`, `charges`, `max_charges`, `default_slot`) в `world_items`.
   - `apps/game-server`: интеграция `MagicSystem` в 20 Гц цикл `WorldPartitionRoom`, связь с `CombatSystem` (прерывание каста при уроне), `DynamicTileProvider` (поля и порталы), `TargetCursorManager` (P14) и межпартиционным `TeleportSync`/`PartitionHandoffTicket` (P12/P32).
   - `apps/client` и `packages/ui-kit`: гампы `SpellbookGump`, `RunebookGump`, выносные иконки заклинаний, рендер летящих снарядов (`Fireball`, `Energy Bolt`), молний, полей 5×1 и порталов `Moongate`.
 - **Зависимости от предыдущих фаз**: опирается на P03 (`DynamicTileProvider` и 3D DDA LOS), P06 (тик 20 Гц и таймеры), P07 (`IntentHandlerRegistry`), P11 (анимации каста и `castRelease`), P12 (`checkMovement`, `TeleportSync`), P13 (инвентарь, стаки реагентов и свитков, слои `0x01`/`0x02`), P14 (`TargetCursorManager`, `SpeechRouter`, гамп книги заклинаний), P15 (статы, мана, пайплайн `SkillCheck`/`SkillGain` для `Magery`, `Evaluating Intelligence`, `Resisting Spells`) и P16 (хук прерывания каста при `FinalDamage >= 1`, `ICombatLegalityPolicy`, `AggressorRecord`).
-- **Разблокируемые фазы**: P17 (Криминал и карма — матрица `Harmful`/`Beneficial` действий магии), P19 (NPC и ИИ — кастующие монстры и ИИ саммонов), P20 (Крафт — навык `Inscription` для крафта свитков, книг и рунбук), P23 (Дома — запрет `Mark`/`Recall`/`Gate`/`Teleport` в приватные дома), P28 (Аудио и VFX — звуки и партиклы 64 заклинаний).
+- **Зависимость от P17**: криминальная атрибуция `Harmful`/`Beneficial` действий магии, полей и призывов выполняется через порт `ICombatLegalityPolicy` (P16), реализация которого поставляется уже завершённой фазой P17.
+- **Разблокируемые фазы**: P19 (NPC и ИИ — кастующие монстры и ИИ саммонов), P20 (Крафт — навык `Inscription` для крафта свитков, книг и рунбук), P23 (Дома — запрет `Mark`/`Recall`/`Gate`/`Teleport` в приватные дома), P28 (Аудио и VFX — звуки и партиклы 64 заклинаний).
 
 ### Вне скоупа
-- Полная матрица репутации, флагования `Criminal`/`Murderer`, гвардов города и кармы/славы (реализуется в **P17**, где подключается через порт `ICombatLegalityPolicy`).
+- Полная матрица репутации, флагования `Criminal`/`Murderer`, гвардов города и кармы/славы (реализована в предшествующей фазе **P17** и подключается через порт `ICombatLegalityPolicy`).
 - Полноценный BTree-интеллект диких монстров и приручение животных `Animal Taming` (реализуется в **P19**; в P18 реализуется базовый контроллер призванных существ и духов `Blade Spirits` / `Energy Vortex`).
 - Ремесленное создание пустых свитков, написание свитков и рунбук навыком `Inscription` и варка зелий `Alchemy` (реализуется в **P20**).
 - Правила владения домами, бан-листы домов и блокировка телепортации на крыши/внутрь кастомных домов (расширяется в **P23** через порт `IRegionSpellPolicy`).

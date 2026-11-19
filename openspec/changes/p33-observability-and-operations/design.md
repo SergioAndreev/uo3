@@ -15,19 +15,19 @@
 ### Goals
 - Обеспечить единую наблюдаемость «три столпа + ошибки + синтетика» с накладными расходами **≤ 1 мс на игровой тик 20 Гц** и жёсткой защитой от взрыва кардинальности и утечки PII.
 - Зафиксировать формальные 30-дневные SLO и мультиоконные правила алертинга по скорости сгорания бюджета ошибок (burn-rate), полностью привязанные к версионируемым ранбукам.
-- Перевести сборку, поставку (SBOM + подпись), оркестрацию (единый Helm-чарт), секреты, сетевые политики, WAL-бэкапы и еженедельные учения `restore-drill` (RTO ≤ 30 мин, сверка `item_ledger`) в код с автоматическими гейтами CI.
-- Гарантировать безопасные релизы без простоя (Expand-and-Contract миграции, канарейки, откат ≤ 5 мин) и безопасные рестарты шарда с поэтапным обратным отсчётом (`0x0330..0x0335`), режимом `DRAINING`, финальным синхронным flush без 300-секундного штрафа логаута и заморозкой игровых таймеров распада во время `MAINTENANCE`.
+- Перевести сборку, поставку (SBOM + подпись), оркестрацию (единый Helm-чарт), секреты, сетевые политики, WAL-бэкапы и еженедельные учения `restore-drill` (RTO ≤ 15 мин, сверка `item_ledger`) в код с автоматическими гейтами CI.
+- Гарантировать безопасные релизы без простоя (Expand-and-Contract миграции, канарейки, откат ≤ 5 мин) и безопасные рестарты шарда с поэтапным обратным отсчётом (`0x03C0..0x03C5`), режимом `DRAINING`, финальным синхронным flush без 300-секундного штрафа логаута и заморозкой игровых таймеров распада во время `MAINTENANCE`.
 - Внедрить дисциплинированный цикл реагирования на инциденты (`SEV-1..SEV-4`, on-call 24/7, аварийные рубильники локализации за ≤ 2 с, независимая статус-страница, blameless-постмортемы, ежемесячные GameDay и аудит шума алертов).
 
 ### Non-Goals
 - Перепроектирование игровых схем персистентности `world_*`/`item_ledger` (**P08**), горячей перезагрузки контента (**P30**), античита (**P31**) или алгоритма разбиения партиций (**P32**).
-- Проведение полномасштабного публичного нагрузочного марафона на тысячах одновременных ботов и запуск открытой беты (задача финальной фазы **P34**).
+- Проведение полномасштабного публичного нагрузочного марафона на тысячах одновременных ботов и запуск открытой беты (задачи фаз **P35** и **P36**).
 - Внедрение проприетарных клиентских файлов UO в Docker-образы, CI-раннеры или синтетические стенды (запрещено ADR-002).
 
 ## Decisions
 
 ### D1. Сохранение 9-пакетного DAG монорепозитория без введения лишнего пакета
-- **Выбор**: не создавать новый workspace-пакет; чистые доменные константы (SLO, `SEV-1..SEV-4`, состояния шарда, правила PII-редактирования, `ERR_OPS_*`) разместить в `@uo3/domain`, опкоды `0x0330..0x0335` — в `@uo3/protocol`, TypeBox-схемы env — в `@uo3/config`, таблицы учёта и линтер миграций — в `@uo3/db`, рантайм-инструментацию — в модулях `apps/*/src/ops`, а IaC и ранбуки — в `infra/*` и `docs/ops/*`.
+- **Выбор**: не создавать новый workspace-пакет; чистые доменные константы (SLO, `SEV-1..SEV-4`, состояния шарда, правила PII-редактирования, `ERR_OPS_*`) разместить в `@uo3/domain`, опкоды `0x03C0..0x03C5` — в `@uo3/protocol`, TypeBox-схемы env — в `@uo3/config`, таблицы учёта и линтер миграций — в `@uo3/db`, рантайм-инструментацию — в модулях `apps/*/src/ops`, а IaC и ранбуки — в `infra/*` и `docs/ops/*`.
 - **Обоснование**: сохраняется зафиксированный в **P00** граф зависимостей `6 apps/* + 9 packages/*`, `@uo3/domain` остаётся с 0 зависимостями, исключается дублирование конфигураций сборки Turborepo.
 - **Отвергнутые альтернативы**: выделение отдельного `@uo3/observability` (приводит к перестройке DAG P00 и тянет серверные зависимости OTel/Pino в общий слой пакетов).
 - **Соответствие ADR**: строго следует ADR-001 (монорепозиторий pnpm/Turborepo) и P00 DAG.
@@ -53,7 +53,7 @@
 - **Отвергнутые альтернативы**: SOPS/SealedSecrets в Git без автоматической ротации (высокие операционные риски при срочном отзыве ключа).
 
 ### D6. Непрерывная WAL-архивация и еженедельный автоматизированный Restore Drill
-- **Выбор**: резервное копирование PostgreSQL 17 строится на непрерывной архивации WAL (`archive_timeout = 300s`, RPO ≤ 5 мин, плюс синхронная реплика в кластере для RPO=0) и ежедневных зашифрованных полных бэкапах в географически независимое S3-хранилище (7 дней PITR + 30 дней daily) с SHA-256 контрольными суммами. Еженедельный `CronJob` (`uo3-restore-drill`) поднимает эфемерный PG17, восстанавливает последний базовый бэкап + WAL, запускает верификатор `item_ledger` (**P08/P31**), диапазонов серийников (**P01/P05**), домов (**P23**) и персонажей, замеряет фактический RTO (порог ≤ 30 мин), пишет результат в `ops_restore_drills` и уничтожает стенд.
+- **Выбор**: резервное копирование PostgreSQL 17 строится на непрерывной архивации WAL (`archive_timeout = 60s`, RPO ≤ 60 с, плюс синхронная реплика в кластере для RPO=0) и ежедневных зашифрованных полных бэкапах в географически независимое S3-хранилище (7 дней PITR + 30 дней daily) с SHA-256 контрольными суммами. Еженедельный `CronJob` (`uo3-restore-drill`) поднимает эфемерный PG17, восстанавливает последний базовый бэкап + WAL, запускает верификатор `item_ledger` (**P08/P31**), диапазонов серийников (**P01/P05**), домов (**P23**) и персонажей, замеряет фактический RTO (порог ≤ 30 мин), пишет результат в `ops_restore_drills` и уничтожает стенд.
 - **Обоснование**: бэкап, восстановление которого не проверялось автоматически, не является бэкапом; проверка игровых инвариантов `item_ledger` гарантирует бизнес-консистентность, а не только старт процесса СУБД.
 - **Отвергнутые альтернативы**: ручные квартальные проверки бэкапов или простая проверка `pg_isready` без валидации `item_ledger`.
 
@@ -65,9 +65,9 @@
 ### D8. Конечный автомат рестарта, `DRAINING`, финального flush и компенсации таймеров `MAINTENANCE`
 - **Выбор**: управление жизненным циклом шарда выполняется через NATS JetStream поток `OPS_CONTROL_STREAM` и хранится в `ops_maintenance_windows` + Valkey-ключе `uo3:shard:{id}:ops_state`.
   Переходы: `OPEN -> COUNTDOWN -> DRAINING (T <= 60s) -> FLUSHING (T = 0s) -> MAINTENANCE -> OPEN`.
-  - В `COUNTDOWN` сервер рассылает `0x0330` по шкале `[900, 600, 300, 120, 60, 30, 10, 5, 4, 3, 2, 1]` с (отмена `0x0331` разрешена при `T > 60s`).
+  - В `COUNTDOWN` сервер рассылает `0x03C0` по шкале `[900, 600, 300, 120, 60, 30, 10, 5, 4, 3, 2, 1]` с (отмена `0x03C1` разрешена при `T > 60s`).
   - В `DRAINING` `/health/ready` немедленно отдаёт `503`, новые входы, сделки, размещение домов и handoff блокируются (`ERR_OPS_SHARD_DRAINING`).
-  - В `FLUSHING` тик 20 Гц замораживает приём новых намерений, завершает открытые `CriticalTxCoordinator`-транзакции (таймаут 15 с), выполняет синхронный полный flush грязных сущностей с проверкой `partition_epoch`, сохраняет отметку `frozenAtUtcMs` и закрывает WS клиентов пакетом `0x0334` с флагом `gracefulShutdown: true`, что **отключает 300-секундный штраф логаута вне безопасной зоны** (персонаж мгновенно сохраняется и снимается с мира).
+  - В `FLUSHING` тик 20 Гц замораживает приём новых намерений, завершает открытые `CriticalTxCoordinator`-транзакции (таймаут 15 с), выполняет синхронный полный flush грязных сущностей с проверкой `partition_epoch`, сохраняет отметку `frozenAtUtcMs` и отправляет клиентам `0x03C4` с флагом `gracefulNoLogoutPenalty: true` и закрывает WS нормативным кодом `docs/PROTOCOL_REGISTRY.md` (`4112` `WS_CLOSE_SERVER_SHUTDOWN` для `GRACEFUL_RESTART`, `4127` `WS_CLOSE_SHARD_MAINTENANCE` для `MAINTENANCE`, `4116` `WS_CLOSE_PARTITION_DRAINING` для `PARTITION_REBALANCE`), что **отключает 300-секундный штраф логаута вне безопасной зоны** (персонаж мгновенно сохраняется и снимается с мира).
   - При выходе из `MAINTENANCE` в `OPEN` вычисляется `downtimeMs = reopenedAtUtcMs - frozenAtUtcMs`, и одним транзакционным обновлением сдвигаются сроки распада предметов на земле (60 мин), трупов (420+420 с) и домов IDOC (**P23**).
 - **Обоснование**: исключает откат инвентаря, незаслуженную смерть персонажа при рестарте и «испарение» домов/трупов после длительного техобслуживания.
 - **Отвергнутые альтернативы**: немедленный `SIGTERM` с надеждой на 60-секундный dirty-flush (гарантированная потеря до 60 с прогресса и конфликт незавершённых сделок).
@@ -84,12 +84,12 @@
 | Слой | Путь | Ответственность |
 |---|---|---|
 | Домен | `packages/domain/src/ops/*` | Типы SLO, `IncidentSeverity` (`SEV-1..SEV-4`), `ShardOpsMode`, `KillSwitchType`, шкала отсчёта, правила редактирования PII, константы `ERR_OPS_*` (0 deps) |
-| Протокол | `packages/protocol/src/ops/*` | Опкоды `0x0330..0x0335`, TypeBox-схемы, Colyseus-поля `ShardOpsBannerState` |
+| Протокол | `packages/protocol/src/ops/*` | Опкоды `0x03C0..0x03C5`, TypeBox-схемы, Colyseus-поля `ShardOpsBannerState` |
 | Конфигурация | `packages/config/src/ops.schema.ts` | TypeBox-схемы OTel, Sentry, проб, graceful shutdown, версии релиза, strict `production` fail-fast валидатор |
 | БД | `packages/db/src/schema/ops.ts`, `packages/db/src/cli/migration-lint.ts` | 8 таблиц Drizzle PG17, триггер append-only для `ops_incident_events`, Expand-and-Contract линтер и раннер с таймаутами |
-| Game Server | `apps/game-server/src/ops/*` | Реестр метрик `uo3_*` с проверкой кардинальности, Pino+PII, OTel W3C, `/health/*`, координатор `DRAINING`/финального flush, обработчик `0x0333` и kill-switches |
+| Game Server | `apps/game-server/src/ops/*` | Реестр метрик `uo3_*` с проверкой кардинальности, Pino+PII, OTel W3C, `/health/*`, координатор `DRAINING`/финального flush, обработчик `0x03C3` и kill-switches |
 | API | `apps/api/src/ops/*` | `/api/v1/meta/version`, `/api/v1/ops/*` (релизы, рестарты, окна заморозки, restore-drills, инциденты, постмортемы, рубильники, гигиенический отчёт), JWKS dual-key ротация |
-| Клиент | `apps/client/src/ops/*` | Агрегатор клиентских метрик (`0x0333` раз в 60 с + opt-out), Sentry PII/path scrubber, баннер таймера рестарта, экран `MAINTENANCE`, детектор обновлений SPA с защитой OPFS |
+| Клиент | `apps/client/src/ops/*` | Агрегатор клиентских метрик (`0x03C3` раз в 60 с + opt-out), Sentry PII/path scrubber, баннер таймера рестарта, экран `MAINTENANCE`, детектор обновлений SPA с защитой OPFS |
 | Админка | `apps/admin/src/features/ops/*` | UI управления релизами, рестартами (Two-Person Rule), рубильниками, карточками инцидентов, постмортемами, журналом `restore-drill` и ссылками в Grafana/Loki/Tempo |
 | Боты | `apps/bot-client/src/probes/*` | Режимы `synthetic-probe` (60 с цикл) и `post-release-smoke` (логин, вход, шаг, чат, банк) |
 | Инфраструктура | `infra/docker/*`, `infra/helm/uo3/*`, `infra/observability/*` | 5 Dockerfiles, SBOM/Cosign workflow, Helm-чарт + `values.schema.json`, 6 дашбордов Grafana, правила Prometheus/Alertmanager, OTel Collector, CronJob `restore-drill` |
@@ -118,22 +118,22 @@ $$\text{ErrorBudget} = 1 - \text{SLO}, \quad \text{ErrorRatio}(w) = 1 - \text{SL
 
 Дополнительная политика: при падении остатка бюджета $\text{BudgetRemaining}_{30d} \le 0$ для любого из двух верхних SLO активируется флаг `ERROR_BUDGET_EXHAUSTED`, блокирующий плановые фичевые релизы в пользу релизов надёжности.
 
-### Протокол `@uo3/protocol` (`0x0330..0x0335`) и реестр ошибок `ERR_OPS_*`
+### Протокол `@uo3/protocol` (`0x03C0..0x03C5`) и реестр ошибок `ERR_OPS_*`
 
 | Опкод | Направление | Имя | Поля TypeBox |
 |---|---|---|---|
-| `0x0330` | S2C | `ServerShutdownNotice` | `shutdownId: string`, `mode: 'GRACEFUL_RESTART'\|'MAINTENANCE'`, `reasonCode: string`, `remainingSec: uint16`, `scheduledAtUtcMs: uint64`, `estimatedResumeUtcMs?: uint64`, `messageKey: string` |
-| `0x0331` | S2C | `ServerShutdownCancelled` | `shutdownId: string`, `reasonCode: string`, `messageKey: string` |
-| `0x0332` | S2C | `ShardMaintenanceState` | `shardId: string`, `state: 'OPEN'\|'DRAINING'\|'MAINTENANCE'`, `estimatedResumeUtcMs?: uint64`, `allowedMinAccessLevel: uint8`, `messageKey: string` |
-| `0x0333` | C2S | `ClientTelemetryReport` | `sampleWindowSec: uint16 (55..65)`, `fpsP50: uint16`, `fpsP10: uint16`, `wsRttMs: uint16`, `jsHeapMb: uint16`, `webglContextLostCount: uint8`, `assetCacheState: 'SYNTHETIC'\|'BYOC_READY'\|'BYOC_DEGRADED'`, `clientBuildSha: string(max 40)` |
-| `0x0334` | S2C | `SessionDrainDisconnect` | `reason: 'GRACEFUL_RESTART'\|'MAINTENANCE'\|'PARTITION_REBALANCE'`, `gracefulNoLogoutPenalty: boolean`, `reconnectAfterMs: uint32`, `estimatedResumeUtcMs?: uint64` |
-| `0x0335` | S2C | `OpsNoticeBroadcast` | `noticeId: string`, `severity: 'INFO'\|'WARN'\|'CRITICAL'`, `killSwitch?: string`, `messageKey: string`, `ttlSec: uint16` |
+| `0x03C0` | S2C | `ServerShutdownNotice` | `shutdownId: string`, `mode: 'GRACEFUL_RESTART'\|'MAINTENANCE'`, `reasonCode: string`, `remainingSec: uint16`, `scheduledAtUtcMs: uint64`, `estimatedResumeUtcMs?: uint64`, `messageKey: string` |
+| `0x03C1` | S2C | `ServerShutdownCancelled` | `shutdownId: string`, `reasonCode: string`, `messageKey: string` |
+| `0x03C2` | S2C | `ShardMaintenanceState` | `shardId: string`, `state: 'OPEN'\|'DRAINING'\|'MAINTENANCE'`, `estimatedResumeUtcMs?: uint64`, `allowedMinAccessLevel: uint8`, `messageKey: string` |
+| `0x03C3` | C2S | `ClientTelemetryReport` | `sampleWindowSec: uint16 (55..65)`, `fpsP50: uint16`, `fpsP10: uint16`, `wsRttMs: uint16`, `jsHeapMb: uint16`, `webglContextLostCount: uint8`, `assetCacheState: 'SYNTHETIC'\|'BYOC_READY'\|'BYOC_DEGRADED'`, `clientBuildSha: string(max 40)` |
+| `0x03C4` | S2C | `SessionDrainDisconnect` | `reason: 'GRACEFUL_RESTART'\|'MAINTENANCE'\|'PARTITION_REBALANCE'`, `gracefulNoLogoutPenalty: boolean`, `reconnectAfterMs: uint32`, `estimatedResumeUtcMs?: uint64` |
+| `0x03C5` | S2C | `OpsNoticeBroadcast` | `noticeId: string`, `severity: 'INFO'\|'WARN'\|'CRITICAL'`, `killSwitch?: string`, `messageKey: string`, `ttlSec: uint16` |
 
 В `@colyseus/schema` (`ShardHubRoom` и `WorldPartitionRoom`) добавляется синхронизируемый подсхема-объект `OpsBannerState` (`mode: string`, `shutdownAtUtcMs: number`, `activeKillSwitches: ArraySchema<string>`), чтобы вновь подключившийся в окне `COUNTDOWN` игрок мгновенно получал актуальный таймер без ожидания следующей отметки шкалы.
 
 Коды ошибок `ERR_OPS_*` (экспортируются из `@uo3/domain`):
 - `ERR_OPS_METRIC_LABEL_CARDINALITY` — запрещённая высококардинальная метка метрики.
-- `ERR_OPS_TELEMETRY_RATE_LIMIT` — превышение лимита пакетов `0x0333` (> 2 за 60 с).
+- `ERR_OPS_TELEMETRY_RATE_LIMIT` — превышение лимита пакетов `0x03C3` (> 2 за 60 с).
 - `ERR_OPS_FORBIDDEN_ASSET_IN_IMAGE` — обнаружен проприетарный файл UO (`.mul`/`.uop`/`.idx`) при сборке образа.
 - `ERR_OPS_UNVERIFIED_IMAGE` — отсутствие или невалидность подписи OCI-образа.
 - `ERR_OPS_CONFIG_INVALID` — нарушение схемы конфигурации или небезопасные дефолты в `production`.
@@ -178,7 +178,7 @@ $$\Delta t = \max\left(0,\ \text{reopened\_at} - \text{frozen\_at}\right)$$
 flowchart LR
   GS["apps/game-server (20 Гц, OTLP + JSON)"] --> OC["OTel Collector (Tail Sampling, Quotas)"]
   API["apps/api (REST, W3C Trace)"] --> OC
-  CL["apps/client (0x0333 + Error Scrubber)"] --> API
+  CL["apps/client (0x03C3 + Error Scrubber)"] --> API
   CL --> SEN["Sentry (Source Maps, PII-Free)"]
   BOT["apps/bot-client (Synthetic Probe 60s)"] --> API
   BOT --> GS
@@ -213,18 +213,18 @@ sequenceDiagram
   API->>NATS: publish shard.restart.scheduled
   NATS->>GS: state=COUNTDOWN (T=900..61s)
   loop Шкала 900,600,300,120s
-    GS->>CL: 0x0330 ServerShutdownNotice
+    GS->>CL: 0x03C0 ServerShutdownNotice
   end
   Note over GS: T = 60s -> state = DRAINING
   GS->>GS: /health/ready -> 503, block logins/trades/housing/handoff
   loop Шкала 60,30,10,5..1s
-    GS->>CL: 0x0330 ServerShutdownNotice
+    GS->>CL: 0x03C0 ServerShutdownNotice
   end
   Note over GS: T = 0s -> state = FLUSHING
   GS->>GS: Freeze 20Hz intents, await active CriticalTx (<=15s)
   GS->>PG: Sync Final Dirty Flush (check partition_epoch)
   PG-->>GS: Commit OK (frozen_at saved)
-  GS->>CL: 0x0334 SessionDrainDisconnect (no 300s logout penalty)
+  GS->>CL: 0x03C4 SessionDrainDisconnect (no 300s logout penalty)
   GS->>NATS: publish shard.state.maintenance
   Note over API,PG: GM (AccessLevel>=4) verifies -> shift decay timers -> state=OPEN
 ```
@@ -250,14 +250,14 @@ stateDiagram-v2
 - **[Взрыв кардинальности метрик из-за игровых ID]** → Жёсткий allowlist меток в `MetricRegistry`, валидация в CI с кодом `ERR_OPS_METRIC_LABEL_CARDINALITY` и перенос детальной диагностики по `serial`/`account_id` исключительно в структурированные логи и трассы.
 - **[Зависание финального flush при рестарте шарда]** → Разграничить бюджет времени в `terminationGracePeriodSeconds: 180`: 15 с на завершение активных CriticalTx, 75 с на синхронный flush партиции, аварийный диагностический дамп и P1-алерт на 90 с с сохранением fencing `partition_epoch`.
 - **[Ложные срабатывания алертов и усталость дежурных (Alert Fatigue)]** → Мультиоконные burn-rate правила (требуют одновременного пробития короткого и длинного окна), правила ингибирования при `MAINTENANCE`/падении узла и автоматический еженедельный аудит шумных правил (> 30% за 14 дней).
-- **[Рост стоимости хранения логов и трасс при DDoS или баг-шторме]** → Политика квот в `OTel Collector` с drop-приоритетом (сначала `debug`-логи и базовые трассы, метрики SLO и `error`/аудит безопасности неприкосновенны) + лимит клиентской телеметрии `0x0333` (1 пакет/60 с).
-- **[Незамеченная деградация бэкапов или WAL-архива]** → Двойная защита: непрерывный алерт на возраст WAL > 15 мин / бэкапа > 26 ч плюс еженедельный автоматический `restore-drill` с полной сверкой `item_ledger` и замером RTO ≤ 30 мин.
+- **[Рост стоимости хранения логов и трасс при DDoS или баг-шторме]** → Политика квот в `OTel Collector` с drop-приоритетом (сначала `debug`-логи и базовые трассы, метрики SLO и `error`/аудит безопасности неприкосновенны) + лимит клиентской телеметрии `0x03C3` (1 пакет/60 с).
+- **[Незамеченная деградация бэкапов или WAL-архива]** → Двойная защита: непрерывный алерт на возраст WAL > 5 мин / бэкапа > 26 ч плюс еженедельный автоматический `restore-drill` с полной сверкой `item_ledger` и замером RTO ≤ 15 мин.
 - **[Ошибочное применение хаос-инъекций или PITR-отката в `production`]** → Жёсткие серверные и CLI-гейты: `ERR_OPS_CHAOS_PROD_FORBIDDEN` для GameDay и обязательное сочетание `MAINTENANCE` + Two-Person Rule (`ERR_OPS_ROLLBACK_PRECONDITION_FAILED`) для PITR-отката.
 - **[Потеря локального кэша OPFS у игроков при обновлении веб-клиента]** → Разделение версий бандла SPA и мажорной версии схемы OPFS-кэша; сохранение старых хешированных чанков на CDN ≥ 24 часа и ненавязчивый промпт перезагрузки для совместимых минорных обновлений.
 
 ## Migration Plan
 
-1. **Этап 1 — Контракты и БД**: добавить доменные константы (`@uo3/domain`), опкоды `0x0330..0x0335` (`@uo3/protocol`), TypeBox-схемы (`@uo3/config`), таблицы `ops_*` (`@uo3/db`) и включить CI-линтер Expand-and-Contract миграций.
+1. **Этап 1 — Контракты и БД**: добавить доменные константы (`@uo3/domain`), опкоды `0x03C0..0x03C5` (`@uo3/protocol`), TypeBox-схемы (`@uo3/config`), таблицы `ops_*` (`@uo3/db`) и включить CI-линтер Expand-and-Contract миграций.
 2. **Этап 2 — Инструментация и наблюдаемость**: подключить `MetricRegistry`, Pino JSON + PII-редактор, OTel W3C, `/health/{live,ready,startup}`, 6 дашбордов Grafana, правила burn-rate алертов и синтетический зонд `apps/bot-client` сначала в `dev` и `staging`.
 3. **Этап 3 — Цепочка поставки и деплой**: перевести все 5 сервисов на hardened multi-stage Dockerfiles + SBOM/Cosign, развернуть единый Helm-чарт в `staging`, включить `default-deny` NetworkPolicies, External Secrets, WAL-архивацию и прогнать первый `restore-drill`.
 4. **Этап 4 — Релизный и инцидентный контур**: активировать канареечную выкатку, конечный автомат рестарта/`DRAINING`/`MAINTENANCE` (включая UI в `apps/client` и `apps/admin`), аварийные рубильники, каталог ≥ 10 ранбуков с CI-гейтом, независимую статус-страницу и провести первый учебный GameDay на `staging` перед допуском в `production`.

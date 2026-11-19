@@ -46,7 +46,7 @@
 - **Выбор:** Границы слоёв и запреты импорта проверяются тремя взаимодополняющими слоями:
   1. `eslint-plugin-boundaries` + `no-restricted-imports` (в ESLint 9 flat config) — мгновенная обратная связь в IDE и на уровне каждого файла.
   2. `dependency-cruiser` (`.dependency-cruiser.mjs`) — полный транзитивный граф зависимостей всего монорепозитория: детекция циклов любой длины (`circular`), запрет импорта Node built-ins в браузер/изоморфное ядро, запрет импорта `apps/*` из любого другого модуля, запрет `@uo3/test-kit` вне тестовых путей.
-  3. `scripts/check-workspace-manifests.ts` — проверка `package.json` всех 15 модулей (область `@uo3/*`, `protocol workspace:*`, `0` runtime-зависимостей у `@uo3/domain`, нахождение `@uo3/test-kit` исключительно в `devDependencies`, синхронность `engines.node`).
+  3. `scripts/check-workspace-manifests.ts` — проверка `package.json` всех 15 модулей (область `@uo3/*`, `protocol workspace:*`, у `@uo3/domain` единственная внешняя runtime-зависимость — `@sinclair/typebox`, нахождение `@uo3/test-kit` исключительно в `devDependencies`, синхронность `engines.node`).
 - **Обоснование:** ESLint не видит многозвенных циклов между файлами/пакетами и не инспектирует `package.json`. Комбинация трёх проверок закрывает все классы архитектурной эрозии и выполняется за ≤ 5 с.
 - **Отвергнутые альтернативы:**
   - *Только ESLint* — пропускает транзитивные циклы и неправильное размещение зависимостей в `dependencies` вместо `devDependencies`.
@@ -96,7 +96,7 @@
 
 ### Decision 7: Автоматический гейт проприетарных ассетов UO с проверкой сигнатур и реестром CC0/synthetic
 - **Выбор:** Скрипт `scripts/check-assets.ts`, запускаемый в `pre-commit` (на staged-файлах) и в CI `quality-gates` (на всём дереве git), применяет 4 каскадные проверки:
-  1. Блокировка путей и расширений UO (`.mul`, `.uop`, `.idx`, `.def`, `.enu`, `tiledata.*`, `verdata.*`, `hues.*`, `cliloc.*`, `anim*`, `art*`, `map*.mul`, `statics*.mul`, `staidx*.mul`, `multi.*`, `gumpart.*`, `texmaps.*`, `radarcol.*`, `sound*.mul`).
+  1. Блокировка путей и расширений UO (`.mul`, `.uop`, `.idx`, `.def`, `.enu`, `tiledata.*`, `verdata.*`, `hues.*`, `cliloc.*`, `anim*`, `art*`, `map*.mul`, `statics*.mul`, `staidx*.mul`, `multi.*`, `gumpart.*`, `texmaps.*`, `radarcol.*`, `sound*.mul`); шаблоны имён (без явного UO-расширения) не применяются к исходникам и документации (`.ts`, `.tsx`, `.js`, `.mjs`, `.json`, `.md`, `.yaml`), чтобы не блокировать, например, `tiledata.ts` или `map-patch.ts`.
   2. Проверка магических байтов первых 16 байт любого бинарного файла (в т.ч. сигнатура UOP `4D 59 50 00` — `MYP\0`), блокирующая переименованные архивы UO.
   3. Жёсткий лимит размера `512` КиБ на любой бинарный файл в git.
   4. Обязательная регистрация каждого бинарного медиа/ассета в `assets/ASSET_MANIFEST.json` с полями `path`, `sha256`, `license` (`CC0-1.0` | `synthetic-generated`), `source`, `addedInPhase`.
@@ -158,7 +158,7 @@ flowchart TD
     CONT["packages/content (Isomorphic)"]
   end
 
-  subgraph L1["Слой 1: Чистое ядро (0 runtime deps)"]
+  subgraph L1["Слой 1: Чистое ядро (только @sinclair/typebox)"]
     DOM["packages/domain (Pure TS)"]
   end
 
@@ -190,7 +190,7 @@ flowchart TD
 | Модуль | Платформа | Разрешённые runtime `@uo3/*` | Явно запрещено |
 |---|---|---|---|
 | `@uo3/config` | Split (`shared`, `server`, `client`) | — | Любые `@uo3/*`; `node:*` в `/env/client` и `/env/shared` |
-| `@uo3/domain` | Isomorphic (Pure) | — (и `0` внешних runtime deps) | Любые `@uo3/*`, `node:*`, DOM (`window`, `document`), внешние `dependencies` |
+| `@uo3/domain` | Isomorphic (Pure) | — (из внешних runtime deps — только `@sinclair/typebox`) | Любые `@uo3/*`, `node:*`, DOM (`window`, `document`), прочие внешние `dependencies` |
 | `@uo3/rules` | Isomorphic | `@uo3/domain` | `@uo3/db`, `@uo3/ui-kit`, `node:*`, DOM |
 | `@uo3/protocol` | Isomorphic | `@uo3/domain` | `@uo3/db`, `@uo3/ui-kit`, `node:*`, DOM |
 | `@uo3/uo-formats` | Isomorphic | `@uo3/domain` | `@uo3/db`, `@uo3/ui-kit`, `node:fs`/`node:net`, DOM |
@@ -223,8 +223,8 @@ flowchart TD
   - `strict: true`, `noUncheckedIndexedAccess: true`, `exactOptionalPropertyTypes: true`, `noImplicitOverride: true`, `noFallthroughCasesInSwitch: true`, `noPropertyAccessFromIndexSignature: true`, `verbatimModuleSyntax: true`, `isolatedModules: true`, `declaration: true`, `declarationMap: true`, `composite: true`.
   - В `tsconfig/nestjs.json` (только для `apps/api` и `apps/game-server`): `experimentalDecorators: true`, `emitDecoratorMetadata: true`, `verbatimModuleSyntax: false` (требуется для emitDecoratorMetadata в NestJS).
 - **Типизированные схемы конфигурации (TypeBox):**
-  - `ApiEnvSchema`: `NODE_ENV`, `LOG_LEVEL`, `API_HOST`, `API_PORT` (default `3001`), `DATABASE_URL` (`x-sensitive-uri: true`), `VALKEY_URL` (`x-sensitive-uri: true`), `NATS_URL` (`x-sensitive-uri: true`), `JWT_SIGNING_KEY` (`x-secret: true`, minLength `32` в `production`), `CORS_ALLOWED_ORIGINS`, `CORS_ALLOW_CREDENTIALS`, `SHUTDOWN_TIMEOUT_MS` (default `15000`), `OTEL_EXPORTER_OTLP_ENDPOINT` (optional).
-  - `GameServerEnvSchema`: `NODE_ENV`, `LOG_LEVEL`, `GAME_HOST`, `GAME_PORT` (default `2567`), `GAME_HEALTH_PORT` (default `2568`), `DATABASE_URL`, `VALKEY_URL`, `NATS_URL`, `TICKET_SIGNING_SECRET` (`x-secret: true`), `SHARD_ID` (default `local-dev`), `SHUTDOWN_TIMEOUT_MS`, `OTEL_EXPORTER_OTLP_ENDPOINT`.
+  - `ApiEnvSchema`: `NODE_ENV`, `LOG_LEVEL`, `API_HOST`, `API_PORT` (default `3001`), `DATABASE_URL` (`x-sensitive-uri: true`), `VALKEY_URL` (`x-sensitive-uri: true`), `NATS_URL` (`x-sensitive-uri: true`), `IDENTITY_JWT_SIGNING_KEYS_JSON` (`x-secret: true`, набор Ed25519-ключей EdDSA по ADR-009; в P00 опционален, обязательность и формат значения фиксирует P04), `CORS_ALLOWED_ORIGINS`, `CORS_ALLOW_CREDENTIALS`, `SHUTDOWN_TIMEOUT_MS` (default `15000`), `OTEL_EXPORTER_OTLP_ENDPOINT` (optional).
+  - `GameServerEnvSchema`: `NODE_ENV`, `LOG_LEVEL`, `GAME_HOST`, `GAME_PORT` (default `2567`), `GAME_HEALTH_PORT` (default `2568`), `DATABASE_URL`, `VALKEY_URL`, `NATS_URL`, `SHARD_ID` (default `local-dev`), `SHUTDOWN_TIMEOUT_MS`, `OTEL_EXPORTER_OTLP_ENDPOINT`.
   - `ClientEnvSchema`: `VITE_APP_ENV`, `VITE_API_BASE_URL` (`http`/`https`), `VITE_GAME_WS_URL` (`ws`/`wss`), `VITE_ASSET_MODE` (`synthetic` | `user-folder`), `VITE_LOG_LEVEL`.
   - `AdminEnvSchema`: `VITE_APP_ENV`, `VITE_API_BASE_URL` (`http`/`https`), `VITE_LOG_LEVEL`.
   - `AssetToolEnvSchema`: `NODE_ENV`, `LOG_LEVEL`, `UO_ASSETS_INPUT_DIR` (optional), `SYNTHETIC_OUTPUT_DIR`.

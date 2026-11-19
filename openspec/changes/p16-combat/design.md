@@ -11,7 +11,7 @@
 ### Goals
 - Реализовать чистую изоморфную библиотеку боевой математики UO:R в `packages/rules/src/combat/*` без внешних зависимостей от БД и сети.
 - Обеспечить авторитарное управление боевым режимом (`War/Peace`), активной целью (`Combatant`), матрицей боевой вовлечённости (`AggressorMatrix`, TTL 120 с) и автоатакой на тике 20 Гц.
-- Реализовать точный расчёт `SwingTimer` в четверть-секундных шагах (250 мс), шанс попадания по боевым навыкам, рукопашный бой (`Wrestling`), стрельбу с задержкой остановки 500 мс и расходом боеприпасов, а также специальные удары двуручного оружия UO:R (`Concussion`, `Crushing`, `Paralyzing Blow`).
+- Реализовать точный расчёт `SwingTimer` в тиках 50 мс по формуле UO:R `15000 / ((Stam + 100) × WeaponSpeed)` с, шанс попадания по боевым навыкам, рукопашный бой (`Wrestling`), стрельбу с задержкой остановки 500 мс и расходом боеприпасов, а также специальные удары двуручного оружия UO:R (`Concussion`, `Crushing`, `Paralyzing Blow`).
 - Внедрить полный конвейер физического урона (`BaseDice` → `Tactics` → `STR`/`Anatomy`/`Lumberjacking` → `Parrying` → `ZoneAR` → `FinalDamage`), сжигание `Stam` и деградацию прочности экипировки с разрушением при `0 HP`.
 - Реализовать механику перевязки бинтами (`Healing`/`Veterinary`) с системой штрафов «соскользнувших пальцев» (`Slips`), снятием яда и воскрешением, а также 5 уровней яда (`Lesser`..`Lethal`) и отравленное оружие.
 - Реализовать атомарный жизненный цикл смерти, превращения в призрака (`0x0192`/`0x0193`), двухфазного контейнера трупа (`Corpse` 420 с → `Bones` 420 с), сохранения `Blessed`/`Newbied` вещей и воскрешения через алтари, целителей и бинты.
@@ -31,10 +31,10 @@
 - **Обоснование:** Соответствует ADR-003 и жёсткому правилу размещения общих формул в `packages/rules`. Позволяет тестировать весь баланс UO:R миллионами итераций за секунды в unit-тестах без поднятия Colyseus и PostgreSQL.
 - **Отвергнутые альтернативы:** Размещение формул непосредственно в методах `WorldPartitionRoom` или `MobileEntity` — нарушает изоморфность и усложняет проверку инвариантов.
 
-### D2. Дискретизация `SwingTimer` в шагах по 250 мс (5 тиков) и сохранение заряда замаха
-- **Выбор:** Вычислять длительность замаха в четверть-секундных квантах (250 мс = 5 серверных тиков по 50 мс):
-  $$\text{QuarterSteps} = \max\left(5, \min\left(120, \left\lfloor \frac{15000}{(\text{Stam} + 100) \times \text{WeaponSpeed}} \right\rfloor\right)\right)$$
-  $$\text{SwingDelayTicks} = \text{QuarterSteps} \times 5$$
+### D2. Дискретизация `SwingTimer` в тиках 50 мс и сохранение заряда замаха
+- **Выбор:** Вычислять длительность замаха по канонической формуле UO:R (секунды `15000 / ((Stam + 100) × WeaponSpeed)`), переведённой в тики 50 мс с округлением вверх и нижним порогом 1.25 с:
+  $$\text{SwingDelayTicks} = \max\left(25, \left\lceil \frac{300000}{(\text{Stam} + 100) \times \text{WeaponSpeed}} \right\rceil\right)$$
+  Пример: катана (`WeaponSpeed = 46`) при `Stam = 100` — 33 тика (1650 мс); алебарда (`25`) при `Stam = 100` — 60 тиков (3000 мс).
   Таймер замаха (`nextSwingReadyTick`) тикает непрерывно даже во время движения или в режиме `Peace`. При достижении `currentTick >= nextSwingReadyTick` удар переходит в состояние `READY` (заряжен) и срабатывает в первый же тик, когда выполнены условия: `WarMode == true`, `Combatant != null`, дистанция в пределах `WeaponRange`, `|ΔZ| <= 16` и прямая 3D DDA LOS. При переключении `Combatant` на новую цель прогресс таймера сохраняется, но накладывается минимальный анти-инстахит порог `nextSwingReadyTick = max(nextSwingReadyTick, currentTick + 5)` (250 мс). При смене оружия в руках `nextSwingReadyTick` пересчитывается заново от текущего тика.
 - **Обоснование:** В точности воспроизводит тактическую глубину UO:R (возможность «зарядить» удар алебардой на бегу и нанести его в момент сближения), исключая при этом эксплойт мгновенного переключения на случайного прохожего без паузы.
 - **Отвергнутые альтернативы:** Сброс `SwingTimer` до нуля при каждом шаге или при каждом ретаргете — делает тяжёлое оружие ближнего боя неиграбельным против подвижных целей.
@@ -110,7 +110,7 @@
   - `types.ts`: `WeaponSkillType`, `HitLocationZone`, `SpecialMoveType`, `PoisonLevel`, `CorpsePhase`, `ResurrectionSource`, `CombatOutcome`, `AggressorRecord`, `CombatResolutionRecord`.
   - `errors.ts`: коды `ERR_COMBAT_*`.
 - **`packages/rules/src/combat/*`:**
-  - `swing-timer.ts`: расчёт четверть-секундных шагов замаха и анти-ретаргет клемпинг.
+  - `swing-timer.ts`: расчёт тиков замаха и анти-ретаргет клемпинг.
   - `hit-chance.ts`: формула шанса попадания по оружейным навыкам и `Wrestling`.
   - `damage-pipeline.ts`: кубики оружия, бонусы `Tactics`, `STR`, `Anatomy`, `Lumberjacking`.
   - `parrying.ts`: шанс и объём блока щитом и двуручным оружием.
@@ -246,23 +246,23 @@ $$\text{TotalAR} = \left\lfloor \sum_{z \in \text{Zones}} (\text{ZoneAR}_z \time
   - `@type('uint8') corpsePhase: number = 0` (`1` = тело, `2` = кости)
   - `@type('uint16') corpseOriginalBody: number = 0`
 
-### 4. Сообщения протокола (`packages/protocol`, опкоды `0x0260..0x027F`)
+### 4. Сообщения протокола (`packages/protocol`, опкоды `0x01A0..0x01CF`)
 - **Клиент → Сервер (Intents):**
-  - `0x0260 ToggleWarModeIntent`: `{ warMode: boolean }`
-  - `0x0261 AttackRequestIntent`: `{ targetSerial: uint32 }`
-  - `0x0262 UseBandageIntent`: `{ bandageSerial: uint32, targetSerial: uint32 }`
-  - `0x0263 ResurrectResponseIntent`: `{ offerId: string, accept: boolean }`
-  - `0x0264 LootAllOwnCorpseIntent`: `{ corpseSerial: uint32 }`
+  - `0x01A0 ToggleWarModeIntent`: `{ warMode: boolean }`
+  - `0x01A1 AttackRequestIntent`: `{ targetSerial: uint32 }`
+  - `0x01A2 UseBandageIntent`: `{ bandageSerial: uint32, targetSerial: uint32 }`
+  - `0x01A3 ResurrectResponseIntent`: `{ offerId: string, accept: boolean }`
+  - `0x01A4 LootAllOwnCorpseIntent`: `{ corpseSerial: uint32 }`
 - **Сервер → Клиент (Events):**
-  - `0x0270 CombatTargetChangedEvent`: `{ combatantSerial: uint32, reason: 'SELECTED' | 'AUTO_DEFENSE' | 'CLEARED' | 'TARGET_DEAD' | 'OUT_OF_RANGE' }`
-  - `0x0271 CombatSwingEvent`: `{ attackerSerial: uint32, defenderSerial: uint32, actionAnimId: uint16, soundId: uint16, projectileGraphicId: uint16, outcome: 'HIT' | 'MISS' | 'PARRIED' }`
-  - `0x0272 CombatDamageEvent`: `{ targetSerial: uint32, attackerSerial: uint32, damageAmount: uint16, hitZone: uint8, parried: boolean, remainingHitsPct: uint8 }`
-  - `0x0273 SpecialMoveEvent`: `{ attackerSerial: uint32, targetSerial: uint32, moveType: 'CONCUSSION' | 'CRUSHING' | 'PARALYZING', durationMs: uint16 }`
-  - `0x0274 BandageProgressEvent`: `{ healerSerial: uint32, targetSerial: uint32, state: 'STARTED' | 'SLIPPED' | 'COMPLETED' | 'INTERRUPTED', durationMs: uint16, slipsCount: uint8, healedAmount: uint16, curedPoison: boolean, resurrected: boolean }`
-  - `0x0275 PoisonStateEvent`: `{ mobileSerial: uint32, poisonLevel: int8, ticksRemaining: uint8, reason: 'APPLIED' | 'TICK' | 'CURED' | 'EXPIRED' }`
-  - `0x0276 MobileDeathEvent`: `{ victimSerial: uint32, killerSerial: uint32, corpseSerial: uint32, x: uint16, y: uint16, z: int8, deathAnimId: uint16, soundId: uint16 }`
-  - `0x0277 ResurrectOfferEvent`: `{ offerId: string, sourceType: 'ANKH' | 'BANDAGE' | 'HEALER' | 'SPELL', healerName: string, expiresAtMs: uint64, restoredHitsPct: uint8 }`
-  - `0x0278 EquipmentDurabilityEvent`: `{ itemSerial: uint32, currentHp: uint16, maxHp: uint16, destroyed: boolean }`
+  - `0x01B0 CombatTargetChangedEvent`: `{ combatantSerial: uint32, reason: 'SELECTED' | 'AUTO_DEFENSE' | 'CLEARED' | 'TARGET_DEAD' | 'OUT_OF_RANGE' }`
+  - `0x01B1 CombatSwingEvent`: `{ attackerSerial: uint32, defenderSerial: uint32, actionAnimId: uint16, soundId: uint16, projectileGraphicId: uint16, outcome: 'HIT' | 'MISS' | 'PARRIED' }`
+  - `0x01B2 CombatDamageEvent`: `{ targetSerial: uint32, attackerSerial: uint32, damageAmount: uint16, hitZone: uint8, parried: boolean, remainingHitsPct: uint8 }`
+  - `0x01B3 SpecialMoveEvent`: `{ attackerSerial: uint32, targetSerial: uint32, moveType: 'CONCUSSION' | 'CRUSHING' | 'PARALYZING', durationMs: uint16 }`
+  - `0x01B4 BandageProgressEvent`: `{ healerSerial: uint32, targetSerial: uint32, state: 'STARTED' | 'SLIPPED' | 'COMPLETED' | 'INTERRUPTED', durationMs: uint16, slipsCount: uint8, healedAmount: uint16, curedPoison: boolean, resurrected: boolean }`
+  - `0x01B5 PoisonStateEvent`: `{ mobileSerial: uint32, poisonLevel: int8, ticksRemaining: uint8, reason: 'APPLIED' | 'TICK' | 'CURED' | 'EXPIRED' }`
+  - `0x01B6 MobileDeathEvent`: `{ victimSerial: uint32, killerSerial: uint32, corpseSerial: uint32, x: uint16, y: uint16, z: int8, deathAnimId: uint16, soundId: uint16 }`
+  - `0x01B7 ResurrectOfferEvent`: `{ offerId: string, sourceType: 'ANKH' | 'BANDAGE' | 'HEALER' | 'SPELL', healerName: string, expiresAtMs: uint64, restoredHitsPct: uint8 }`
+  - `0x01B8 EquipmentDurabilityEvent`: `{ itemSerial: uint32, currentHp: uint16, maxHp: uint16, destroyed: boolean }`
 
 ### 5. Коды ошибок (`CombatErrorCode`)
 - `ERR_COMBAT_WARMODE_COOLDOWN` — превышена частота переключения `War/Peace` (< 250 мс).
@@ -295,7 +295,7 @@ $$\text{TotalAR} = \left\lfloor \sum_{z \in \text{Zones}} (\text{ZoneAR}_z \time
 
 1. **Слой домена и контента (`@uo3/domain`, `@uo3/content`):** добавить типы боевых состояний, зон брони, уровней яда, особых ударов и расширить YAML-каталоги оружия, доспехов и бинтов/боеприпасов.
 2. **Изоморфное ядро правил (`@uo3/rules`):** реализовать и покрыть детерминированными unit-тестами все 10 модулей в `packages/rules/src/combat/*`.
-3. **База данных и протокол (`@uo3/db`, `@uo3/protocol`):** накатить миграцию Drizzle для `world_corpses` и боевых колонок `world_mobiles`, зарегистрировать опкоды `0x0260..0x0278` и обновить `MobileSchema`/`ItemSchema`.
+3. **База данных и протокол (`@uo3/db`, `@uo3/protocol`):** накатить миграцию Drizzle для `world_corpses` и боевых колонок `world_mobiles`, зарегистрировать опкоды `0x01A0..0x01B8` и обновить `MobileSchema`/`ItemSchema`.
 4. **Игровой сервер (`apps/game-server`):** подключить `CombatOrchestratorService`, `BandageSessionManager`, `PoisonTickProcessor` и `DeathAndCorpseService` к тику `WorldPartitionRoom` и связать с `SkillGainOrchestrator` (P15) и `item_ledger` (P08).
 5. **Клиент и боты (`apps/client`, `packages/ui-kit`, `apps/bot-client`):** внедрить управление `War/Peace` (`Tab`), индикацию цели и зелёных/красных хитбаров, эффект экрана призрака, гамп воскрешения и сценарии боевых дуэлей в `bot-client`.
 

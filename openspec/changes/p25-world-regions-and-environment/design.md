@@ -6,7 +6,7 @@
 
 В соответствии с ADR-001..013:
 - Сервер полностью авторитарен: проверка флагов региона, прав перехода между фасетами, расчёт глобального/персонального уровня темноты `0..26`, состояние дверей в `DynamicTileProvider` и замков выполняются исключительно на сервере.
-- Изоморфные чистые алгоритмы (индексация прямоугольников регионов по секторам `16×16`, астрономический цикл лун `Trammel`/`Felucca`, формулы времени суток и координат секстанта, симуляция погодных фронтов на `xoshiro128++`, проверка крыши над головой `RoofOcclusionChecker`) размещаются в `@uo3/rules`.
+- Изоморфные чистые алгоритмы (индексация прямоугольников регионов по секторам `16×16`, астрономический цикл лун `Trammel`/`Felucca`, формулы времени суток, переиспользование формулы секстанта из P24 `packages/rules/src/sea/sextant.ts`, симуляция погодных фронтов на `xoshiro128++`, проверка крыши над головой `RoofOcclusionChecker`) размещаются в `@uo3/rules`.
 - Все декларативные данные регионов, лунных врат, телепортеров, климатических зон и декораций хранятся в `@uo3/content` (YAML + JSON Schema), причём в репозитории и CI используется синтетический мир (`facetId = 200`) и CC0-заглушки без проприетарных ассетов UO (ADR-002).
 
 ## Goals / Non-Goals
@@ -49,7 +49,7 @@
     $$\text{trammelPhase} = \left\lfloor \frac{\text{totalGameMinutes}}{9} \right\rfloor \bmod 8, \quad \text{feluccaPhase} = \left\lfloor \frac{\text{totalGameMinutes}}{14} \right\rfloor \bmod 8$$
     Индекс целевых врат для исходных врат `sourceGateIndex (0..7)` равен:
     $$\text{targetGateIndex} = (\text{sourceGateIndex} + (\text{feluccaPhase} - \text{trammelPhase}) + 8) \bmod 8$$
-  - В режиме `GUMP_MENU` (стандарт позднего UO:R после появления `Trammel`) шаг на врата или двойной клик открывает гамп `MoongateMenuGumpPacket (0x02C6)` со списком разрешённых фасетов и городов, а переход совершается по `MoongateSelectIntent (0x02C7)` с повторной серверной проверкой дистанции `<= 2` тайлов.
+  - В режиме `GUMP_MENU` (стандарт позднего UO:R после появления `Trammel`) шаг на врата или двойной клик открывает гамп `MoongateMenuGumpPacket (0x02E6)` со списком разрешённых фасетов и городов, а переход совершается по `MoongateSelectIntent (0x02E7)` с повторной серверной проверкой дистанции `<= 2` тайлов.
 - **Обоснование**: Позволяет поддерживать как классический хардкорный цикл двух лун, так и каноническое межфасетное меню `Felucca`/`Trammel` эпохи Renaissance без изменения клиент-серверного протокола.
 - **Отвергнутые альтернативы**: Жёсткая фиксация только меню лишила бы шард астрономической механики двух лун, описанной в базовых правилах UO.
 
@@ -65,7 +65,7 @@
   - Рассвет (`04:00..05:59`, `m ∈ [240, 359]`):$$\lfloor 18 \times (360 - m) / 120 \rfloor$$.
   - Для регионов `DUNGEON` `baseLightLevel = 26`.
   - Эффективный уровень темноты игрока: `effectiveLight = clamp(baseLightLevel - max(nightSightBonus, equippedLightBonus), 0, 26)`.
-- **Обоснование**: Все партиции шарда вычисляют абсолютно одинаковое время и уровень света без межсерверных блокировок. Клиент получает `GlobalLightLevelPacket (0x02C2)` и `PersonalLightLevelPacket (0x02C3)` только при фактическом изменении целочисленного уровня `0..26` (не чаще `1 Гц`).
+- **Обоснование**: Все партиции шарда вычисляют абсолютно одинаковое время и уровень света без межсерверных блокировок. Клиент получает `GlobalLightLevelPacket (0x02E2)` и `PersonalLightLevelPacket (0x02E3)` только при фактическом изменении целочисленного уровня `0..26` (не чаще `1 Гц`).
 - **Отвергнутые альтернативы**: Хранение тикающих часов в БД PostgreSQL создавало бы лишнюю запись каждые `5 с` и дрейф при рестартах партиций.
 
 ### Decision 5: Симуляция погодных фронтов на `xoshiro128++` и клиентское отсечение под крышами (`RoofOcclusionChecker`)
@@ -82,7 +82,7 @@
 - **Отвергнутые альтернативы**: Одноразовый SQL-дамп мира не позволяет версионировать декорации в Git и проводить контрактные тесты в CI.
 
 ### Decision 7: Кинематика дверей через `DynamicTileProvider` и иерархическое колесо таймеров
-- **Выбор**: Каждая дверь `WorldDoor` регистрируется в `DynamicTileProvider` (P03/P12). В состоянии `CLOSED` она находится в базовой точке `(baseX, baseY, baseZ)` с `closedGraphicId` (флаг `Impassable | Door`). При двойном клике (`DoorToggleIntent 0x02C8`) на дистанции `<= 2` тайлов:
+- **Выбор**: Каждая дверь `WorldDoor` регистрируется в `DynamicTileProvider` (P03/P12). В состоянии `CLOSED` она находится в базовой точке `(baseX, baseY, baseZ)` с `closedGraphicId` (флаг `Impassable | Door`). При двойном клике (`DoorToggleIntent 0x02E8`) на дистанции `<= 2` тайлов:
   1. Проверяется `isLocked`: если `true`, возвращается `ERR_DOOR_LOCKED`.
   2. Вычисляется открытая позиция `(baseX + dx, baseY + dy, baseZ)` и `openGraphicId`.
   3. Если дверь имеет парную створку `linkedDoorSerial`, обе створки переключаются атомарно в одном тике `50 мс`.
@@ -104,7 +104,7 @@ flowchart TD
     GameServer --> EnvSvc["EnvironmentClockService (Light 0..26, Weather Fronts, Streetlamps)"]
     GameServer --> DecoSvc["WorldDecorationService (Doors, Signs, Ankhs, Dungeon Chests)"]
     DecoSvc --> DynTiles["DynamicTileProvider (P03/P12 Collision & LOS)"]
-    RegSvc --> Protocol["@uo3/protocol (0x02C0..0x02CF)"]
+    RegSvc --> Protocol["@uo3/protocol (0x02E0..0x02EF)"]
     TravelSvc --> Protocol
     EnvSvc --> Protocol
     DecoSvc --> Protocol
@@ -124,18 +124,18 @@ sequenceDiagram
     P1->>TC: "handleMoongateEntry(player, gate)"
     TC->>TC: "Проверка таймеров преступника/агрессора/боя"
     alt "Режим GUMP_MENU"
-        TC-->>C: "0x02C6 MoongateMenuGumpPacket (список фасетов и городов)"
-        C->>P1: "0x02C7 MoongateSelectIntent (targetFacetId, targetGateId)"
+        TC-->>C: "0x02E6 MoongateMenuGumpPacket (список фасетов и городов)"
+        C->>P1: "0x02E7 MoongateSelectIntent (targetFacetId, targetGateId)"
         P1->>TC: "validateAndExecuteTravel(player, targetFacetId, targetGateId)"
     end
     TC->>TC: "Проверка murderCount >= 5 для Trammel и дистанции <= 2"
     TC->>TC: "Поиск свободного тайла (спираль 0..2) и сбор питомцев FOLLOW <= 18"
     alt "Целевая точка в другой партиции/фасете"
         TC->>P2: "Резервирование Handoff (player + followers, SpawnExitImmunity 3000ms)"
-        TC-->>C: "0x0105 PartitionHandoffTicket + 0x02C5 SeasonChangePacket"
+        TC-->>C: "0x0105 PartitionHandoffTicket + 0x02E5 SeasonChangePacket"
     else "Целевая точка в той же партиции"
         TC->>P1: "Перемещение player + followers, обновление RegionSpatialIndex"
-        TC-->>C: "0x0104 TeleportSync + 0x02C0 RegionChangedNotification"
+        TC-->>C: "0x0104 TeleportSync + 0x02E0 RegionChangedNotification"
     end
 ```
 
@@ -191,23 +191,23 @@ sequenceDiagram
 
 ## Протокол и сетевые сообщения (`@uo3/protocol`)
 
-Вводятся uint16 опкоды диапазона `0x02C0..0x02CF` со схемами TypeBox:
+Вводятся uint16 опкоды диапазона `0x02E0..0x02EF` со схемами TypeBox:
 
 | Опкод | Направление | Имя пакета | Поля TypeBox | Назначение |
 | :--- | :--- | :--- | :--- | :--- |
-| `0x02C0` | S → C | `RegionChangedNotification` | `regionId: string`, `regionName: string`, `regionType: uint8`, `isGuarded: boolean`, `isSafeLogout: boolean`, `combatRule: uint8`, `spellBanMask: uint16` | Уведомление о смене активного региона персонажа |
-| `0x02C1` | S → C | `MusicTriggerPacket` | `musicTrackId: uint8`, `loop: boolean`, `crossfadeMs: uint16` | Команда переключения музыкальной темы региона |
-| `0x02C2` | S → C | `GlobalLightLevelPacket` | `lightLevel: uint8 (0..26)`, `gameHour: uint8 (0..23)`, `gameMinute: uint8 (0..59)` | Обновление базового уровня темноты и игрового времени |
-| `0x02C3` | S → C | `PersonalLightLevelPacket` | `mobileSerial: uint32`, `effectiveLightLevel: uint8 (0..26)`, `personalBonus: uint8` | Персональный уровень света от `Night Sight` и факелов |
-| `0x02C4` | S → C | `WeatherUpdatePacket` | `weatherType: uint8 (0..4)`, `particleDensity: uint8 (0..70)`, `temperatureC: int8`, `windDir: uint8 (0..7)`, `windSpeed: uint8 (0..100)` | Состояние погодного фронта и вектора ветра |
-| `0x02C5` | S → C | `SeasonChangePacket` | `facetId: uint8`, `seasonId: uint8 (0..4)`, `playTransitionSound: boolean` | Установка сезонного профиля фасета/региона |
-| `0x02C6` | S → C | `MoongateMenuGumpPacket` | `gateSerial: uint32`, `currentFacetId: uint8`, `destinations: Array<{ facetId: uint8, gateIndex: uint8, nameCliloc: uint32, isAllowed: boolean }>` | Открытие диалога выбора назначения публичных лунных врат |
-| `0x02C7` | C → S | `MoongateSelectIntent` | `gateSerial: uint32`, `targetFacetId: uint8`, `targetGateIndex: uint8` | Выбор пункта назначения в меню лунных врат |
-| `0x02C8` | C → S | `DoorToggleIntent` | `doorSerial: uint32` | Запрос открытия/закрытия двери двойным кликом |
-| `0x02C9` | S → C | `DoorStateChangedPacket` | `doorSerial: uint32`, `isOpen: boolean`, `graphicId: uint16`, `x: uint16`, `y: uint16`, `z: int8`, `soundId: uint16` | Синхронизация положения и звука створки двери |
-| `0x02CA` | S → C | `SignPlaqueInspectPacket` | `objectSerial: uint32`, `signGumpId: uint16`, `clilocId: uint32`, `title: string`, `subtitle: string` | Отображение текста вывески, указателя или надгробия |
-| `0x02CB` | S → C | `TimeAndCoordsResponsePacket` | `gameHour: uint8`, `gameMinute: uint8`, `formattedTime: string`, `latitudeStr: string`, `longitudeStr: string` | Ответ на использование часов или секстанта |
-| `0x02CC` | S → C | `EnvironmentErrorPacket` | `errorCode: string`, `targetSerial: uint32`, `messageCliloc: uint32` | Стандартизированный отказ (`ERR_REGION_*`, `ERR_TRAVEL_*`, `ERR_DOOR_*`) |
+| `0x02E0` | S → C | `RegionChangedNotification` | `regionId: string`, `regionName: string`, `regionType: uint8`, `isGuarded: boolean`, `isSafeLogout: boolean`, `combatRule: uint8`, `spellBanMask: uint16` | Уведомление о смене активного региона персонажа |
+| `0x02E1` | S → C | `MusicTriggerPacket` | `musicTrackId: uint8`, `loop: boolean`, `crossfadeMs: uint16` | Команда переключения музыкальной темы региона |
+| `0x02E2` | S → C | `GlobalLightLevelPacket` | `lightLevel: uint8 (0..26)`, `gameHour: uint8 (0..23)`, `gameMinute: uint8 (0..59)` | Обновление базового уровня темноты и игрового времени |
+| `0x02E3` | S → C | `PersonalLightLevelPacket` | `mobileSerial: uint32`, `effectiveLightLevel: uint8 (0..26)`, `personalBonus: uint8` | Персональный уровень света от `Night Sight` и факелов |
+| `0x02E4` | S → C | `WeatherUpdatePacket` | `weatherType: uint8 (0..4)`, `particleDensity: uint8 (0..70)`, `temperatureC: int8`, `windDir: uint8 (0..7)`, `windSpeed: uint8 (0..100)` | Состояние погодного фронта и вектора ветра |
+| `0x02E5` | S → C | `SeasonChangePacket` | `facetId: uint8`, `seasonId: uint8 (0..4)`, `playTransitionSound: boolean` | Установка сезонного профиля фасета/региона |
+| `0x02E6` | S → C | `MoongateMenuGumpPacket` | `gateSerial: uint32`, `currentFacetId: uint8`, `destinations: Array<{ facetId: uint8, gateIndex: uint8, nameCliloc: uint32, isAllowed: boolean }>` | Открытие диалога выбора назначения публичных лунных врат |
+| `0x02E7` | C → S | `MoongateSelectIntent` | `gateSerial: uint32`, `targetFacetId: uint8`, `targetGateIndex: uint8` | Выбор пункта назначения в меню лунных врат |
+| `0x02E8` | C → S | `DoorToggleIntent` | `doorSerial: uint32` | Запрос открытия/закрытия двери двойным кликом |
+| `0x02E9` | S → C | `DoorStateChangedPacket` | `doorSerial: uint32`, `isOpen: boolean`, `graphicId: uint16`, `x: uint16`, `y: uint16`, `z: int8`, `soundId: uint16` | Синхронизация положения и звука створки двери |
+| `0x02EA` | S → C | `SignPlaqueInspectPacket` | `objectSerial: uint32`, `signGumpId: uint16`, `clilocId: uint32`, `title: string`, `subtitle: string` | Отображение текста вывески, указателя или надгробия |
+| `0x02EB` | S → C | `TimeAndCoordsResponsePacket` | `gameHour: uint8`, `gameMinute: uint8`, `formattedTime: string`, `latitudeStr: string`, `longitudeStr: string` | Ответ на использование часов или секстанта |
+| `0x02EC` | S → C | `EnvironmentErrorPacket` | `errorCode: string`, `targetSerial: uint32`, `messageCliloc: uint32` | Стандартизированный отказ (`ERR_REGION_*`, `ERR_TRAVEL_*`, `ERR_DOOR_*`) |
 
 ### Коды ошибок домена (`@uo3/domain`)
 - `ERR_REGION_NOT_GUARDED` — попытка вызвать стражу `guards` вне охраняемого региона.
@@ -215,8 +215,8 @@ sequenceDiagram
 - `ERR_REGION_FIELD_BANNED` — полевое заклинание запрещено в городе (`NO_FIELDS`).
 - `ERR_REGION_COMBAT_FORBIDDEN` — атака или враждебное действие в регионе с `combatRule = NO_COMBAT` или `JAIL`.
 - `ERR_REGION_SKILL_BANNED` — использование навыка запрещено в регионе (`JAIL`).
-- `ERR_FACET_NON_CONSENSUAL_PVP` — попытка несогласованной атаки игрока на фасете `Trammel`.
-- `ERR_MURDERER_TRAMMEL_FORBIDDEN` — попытка убийцы (`murderCount >= 5`) перейти на фасет `Trammel`.
+- `ERR_FACET_PVP_FORBIDDEN` — попытка несогласованной атаки игрока на фасете `Trammel` (код определён в P17 `pvp/facet-rulesets`, P25 его переиспользует).
+- `ERR_FACET_TRAVEL_BLOCKED` — попытка убийцы (`murderCount >= 5`) перейти на фасет `Trammel` (код определён в P17 `pvp/facet-rulesets`, P25 его переиспользует).
 - `ERR_TRAVEL_CRIMINAL_RESTRICTED` — попытка преступника, агрессора или участника боя войти в лунные врата.
 - `ERR_TRAVEL_OUT_OF_RANGE` — персонаж отошёл от лунных врат или телепортера дальше `2` тайлов.
 - `ERR_TRAVEL_DESTINATION_BLOCKED` — точка назначения непроходима и все тайлы спирали `1..2` заблокированы.
@@ -250,9 +250,9 @@ sequenceDiagram
 
 ## Migration Plan
 
-1. **Расширение `@uo3/domain` и `@uo3/protocol`**: добавление типов регионов, фасетов, погоды, сезонов, декораций, кодов ошибок `ERR_*` и опкодов `0x02C0..0x02CF`.
+1. **Расширение `@uo3/domain` и `@uo3/protocol`**: добавление типов регионов, фасетов, погоды, сезонов, декораций, кодов ошибок `ERR_*` и опкодов `0x02E0..0x02EF`.
 2. **Миграция БД в `@uo3/db`**: создание таблиц `world_region_overrides`, `world_decorations`, `world_doors`, `world_dungeon_containers` и идемпотентного сидера декораций.
-3. **Изоморфное ядро `@uo3/rules`**: реализация `RegionSpatialIndex`, `IRegionSpellPolicy`, `ICombatLegalityPolicy`, `WorldClockCalculator`, `MoongateCycleCalculator`, `WeatherFrontSimulator`, `RoofOcclusionChecker`, `SextantCalculator`.
+3. **Изоморфное ядро `@uo3/rules`**: реализация `RegionSpatialIndex`, `IRegionSpellPolicy`, `ICombatLegalityPolicy`, `WorldClockCalculator`, `MoongateCycleCalculator`, `WeatherFrontSimulator`, `RoofOcclusionChecker`, `SextantCalculator` (обёртка над формулой секстанта P24 с проверкой региона `DUNGEON`).
 4. **Контент `@uo3/content`**: наполнение YAML-манифестов регионов, лунных врат, телепортеров, климатических зон и декораций для синтетического фасета `200` и базовой разметки `Felucca (0)` / `Trammel (1)`.
 5. **Интеграция в `apps/game-server`, `apps/client` и `apps/admin`**: подключение сервисов к `WorldPartitionRoom`, рендер погоды, света, сезонов, гампов врат и вывесок на клиенте.
 

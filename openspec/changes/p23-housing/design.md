@@ -136,7 +136,7 @@ $$X \in [cx + x_{\min}, cx + x_{\max}], \quad Y \in [cy + y_{\min}, cy + y_{\max
 1. **Проверка границ партиции (`Partition Boundary Check`)**:
    Прямоугольник $[cx + x_{\min} - 4, cx + x_{\max} + 4] \times [cy + y_{\min} - 4, cy + y_{\max} + 4]$ должен целиком лежать внутри одной серверной партиции (`ERR_HOUSE_CROSSES_PARTITION_BOUNDARY`).
 2. **Проверка региона (`Region & Road Check`)**:
-   Ни один тайл внутри $[x_{\min}-1 \dots x_{\max}+1] \times [y_{\min}-1 \dots y_{\max}+4]$ не должен принадлежать региону с флагами `GuardZone`, `Dungeon`, `NoHousing`, находиться ближе 16 тайлов к `Moongate` / входу в подземелье (`ERR_HOUSE_RESTRICTED_REGION`) или содержать тайл дороги (`ERR_HOUSE_ON_ROAD`).
+   Проверка выполняется через порт `IHousingRegionPolicy`: реализация по умолчанию в P23 использует охраняемые зоны `pvp/guard-zones` (P17) и статический список запретных прямоугольников (`content/housing/restricted-areas.yaml`: подземелья, лунные врата, входы в данжи); фаза P25 заменяет её реализацией на основе `world/regions` без изменения контракта. Ни один тайл внутри $[x_{\min}-1 \dots x_{\max}+1] \times [y_{\min}-1 \dots y_{\max}+4]$ не должен принадлежать региону с флагами `GuardZone`, `Dungeon`, `NoHousing`, находиться ближе 16 тайлов к `Moongate` / входу в подземелье (`ERR_HOUSE_RESTRICTED_REGION`) или содержать тайл дороги (`ERR_HOUSE_ON_ROAD`).
 3. **Проверка рельефа основного футпринта (`Terrain Flatness & Surface`)**:
    Для всех тайлов $(x, y) \in [cx + x_{\min}, cx + x_{\max}] \times [cy + y_{\min}, cy + y_{\max}]$:
    - Вычисляется $z(x, y) = \text{GetAverageZ}(x, y)$.
@@ -155,7 +155,7 @@ $$X \in [cx + x_{\min}, cx + x_{\max}], \quad Y \in [cy + y_{\min}, cy + y_{\max
 ```mermaid
 flowchart TD
     A["Игрок активирует House Deed в рюкзаке"] --> B["Клиент: GhostMultiPlacementTool (полупрозрачный силуэт)"]
-    B --> C["Клик ЛКМ: HousePlacementRequest (0x02C1)"]
+    B --> C["Клик ЛКМ: HousePlacementRequest (0x02B1)"]
     C --> D{"Дид в рюкзаке и нет кулдауна 168ч?"}
     D -- "Нет" --> E["HouseActionResult: ERR_HOUSE_DEED / COOLDOWN"]
     D -- "Да" --> F{"Аккаунт уже владеет домом на шарде?"}
@@ -302,22 +302,22 @@ erDiagram
 
 ## Сетевой протокол и схемы Colyseus (`packages/protocol/src/housing`)
 
-### Опкоды сообщений (`0x02C0..0x02CB`)
+### Опкоды сообщений (`0x02B0..0x02BB`)
 
 | Опкод | Имя сообщения | Направление | Назначение и ключевые поля TypeBox |
 | :--- | :--- | :--- | :--- |
-| `0x02C0` | `HousePlacementPreviewStart` | S -> C | Запуск режима превью: `deedSerial: uint32`, `templateId: string`, `multiId: uint16`, `footprint: { minX, maxX, minY, maxY }` |
-| `0x02C1` | `HousePlacementRequest` | C -> S | Запрос постройки: `deedSerial: uint32`, `targetX: uint16`, `targetY: uint16`, `targetZ: int8` |
-| `0x02C2` | `HouseSignGumpOpen` | S -> C | Открытие гампа вывески: `houseId: string`, `houseName: string`, `ownerName: string`, `signGraphicId: uint16`, `decayStage: HouseDecayStage`, `publicityMode: 'PRIVATE'\|'PUBLIC'`, `usedLockdowns: uint16`, `maxLockdowns: uint16`, `usedSecures: uint8`, `maxSecures: uint8`, `usedVendors: uint8`, `maxVendors: uint8`, `viewerRole: HouseAccessRole`, `lists: { coOwners, friends, access, bans }` |
-| `0x02C3` | `HouseManageActionRequest` | C -> S | Действие в гампе вывески: `houseId: string`, `action: 'RENAME' \| 'CHANGE_SIGN' \| 'SET_PUBLICITY' \| 'CHANGE_LOCKS' \| 'DEMOLISH' \| 'INIT_TRANSFER'`, `payload: { newName?, signGraphicId?, publicityMode? }` |
-| `0x02C4` | `HouseAccessListModifyRequest` | C -> S | Управление списками доступа: `houseId: string`, `listType: 'CO_OWNER' \| 'FRIEND' \| 'ACCESS' \| 'BAN'`, `operation: 'ADD_BY_TARGET' \| 'REMOVE' \| 'CLEAR'`, `targetCharacterId?: string` |
-| `0x02C5` | `HouseInteriorCommandRequest` | C -> S | Прямой/голосовой запрос фиксации или изгнания: `command: 'LOCKDOWN' \| 'RELEASE' \| 'SECURE' \| 'UNSECURE' \| 'PLACE_TRASH' \| 'EJECT' \| 'BAN'`, `targetSerial?: uint32` |
-| `0x02C6` | `HouseSecureLevelUpdateRequest` | C -> S | Изменение уровня доступа к сундуку: `houseId: string`, `containerSerial: uint32`, `accessLevel: 'OWNER_ONLY' \| 'CO_OWNERS' \| 'FRIENDS' \| 'ANYONE'` |
-| `0x02C7` | `HouseTransferOfferEvent` | S -> C | Модальное предложение приёма дома получателю: `transferId: string`, `houseId: string`, `houseName: string`, `templateId: string`, `fromOwnerName: string`, `expiresInMs: uint16` |
-| `0x02C8` | `HouseTransferResponse` | C -> S | Ответ получателя на передачу дома: `transferId: string`, `accepted: boolean` |
-| `0x02C9` | `HouseActionResult` | S -> C | Результат любой операции с домом: `success: boolean`, `action: string`, `errorCode?: HouseErrorCode`, `messageClilocId?: uint32` |
-| `0x02CA` | `HouseMultiSyncEvent` | S -> C | Дескриптор мульти в AOI 31 тайл: `serial: uint32`, `houseId: string`, `multiId: uint16`, `x: uint16`, `y: uint16`, `z: int8`, `signSerial: uint32`, `houseName: string`, `guildTag?: string` |
-| `0x02CB` | `HouseCollapseBroadcast` | S -> C | Событие обрушения IDOC / сноса для удаления из `DynamicTileProvider` и `MultiLayer`: `serial: uint32`, `houseId: string`, `reason: 'IDOC' \| 'REDEED'` |
+| `0x02B0` | `HousePlacementPreviewStart` | S -> C | Запуск режима превью: `deedSerial: uint32`, `templateId: string`, `multiId: uint16`, `footprint: { minX, maxX, minY, maxY }` |
+| `0x02B1` | `HousePlacementRequest` | C -> S | Запрос постройки: `deedSerial: uint32`, `targetX: uint16`, `targetY: uint16`, `targetZ: int8` |
+| `0x02B2` | `HouseSignGumpOpen` | S -> C | Открытие гампа вывески: `houseId: string`, `houseName: string`, `ownerName: string`, `signGraphicId: uint16`, `decayStage: HouseDecayStage`, `publicityMode: 'PRIVATE'\|'PUBLIC'`, `usedLockdowns: uint16`, `maxLockdowns: uint16`, `usedSecures: uint8`, `maxSecures: uint8`, `usedVendors: uint8`, `maxVendors: uint8`, `viewerRole: HouseAccessRole`, `lists: { coOwners, friends, access, bans }` |
+| `0x02B3` | `HouseManageActionRequest` | C -> S | Действие в гампе вывески: `houseId: string`, `action: 'RENAME' \| 'CHANGE_SIGN' \| 'SET_PUBLICITY' \| 'CHANGE_LOCKS' \| 'DEMOLISH' \| 'INIT_TRANSFER'`, `payload: { newName?, signGraphicId?, publicityMode? }` |
+| `0x02B4` | `HouseAccessListModifyRequest` | C -> S | Управление списками доступа: `houseId: string`, `listType: 'CO_OWNER' \| 'FRIEND' \| 'ACCESS' \| 'BAN'`, `operation: 'ADD_BY_TARGET' \| 'REMOVE' \| 'CLEAR'`, `targetCharacterId?: string` |
+| `0x02B5` | `HouseInteriorCommandRequest` | C -> S | Прямой/голосовой запрос фиксации или изгнания: `command: 'LOCKDOWN' \| 'RELEASE' \| 'SECURE' \| 'UNSECURE' \| 'PLACE_TRASH' \| 'EJECT' \| 'BAN'`, `targetSerial?: uint32` |
+| `0x02B6` | `HouseSecureLevelUpdateRequest` | C -> S | Изменение уровня доступа к сундуку: `houseId: string`, `containerSerial: uint32`, `accessLevel: 'OWNER_ONLY' \| 'CO_OWNERS' \| 'FRIENDS' \| 'ANYONE'` |
+| `0x02B7` | `HouseTransferOfferEvent` | S -> C | Модальное предложение приёма дома получателю: `transferId: string`, `houseId: string`, `houseName: string`, `templateId: string`, `fromOwnerName: string`, `expiresInMs: uint16` |
+| `0x02B8` | `HouseTransferResponse` | C -> S | Ответ получателя на передачу дома: `transferId: string`, `accepted: boolean` |
+| `0x02B9` | `HouseActionResult` | S -> C | Результат любой операции с домом: `success: boolean`, `action: string`, `errorCode?: HouseErrorCode`, `messageClilocId?: uint32` |
+| `0x02BA` | `HouseMultiSyncEvent` | S -> C | Дескриптор мульти в AOI 31 тайл: `serial: uint32`, `houseId: string`, `multiId: uint16`, `x: uint16`, `y: uint16`, `z: int8`, `signSerial: uint32`, `houseName: string`, `guildTag?: string` |
+| `0x02BB` | `HouseCollapseBroadcast` | S -> C | Событие обрушения IDOC / сноса для удаления из `DynamicTileProvider` и `MultiLayer`: `serial: uint32`, `houseId: string`, `reason: 'IDOC' \| 'REDEED'` |
 
 ### Схема состояния Colyseus (`HouseMultiSchema`)
 В `WorldPartitionState` добавляется коллекция `multis: MapSchema<HouseMultiSchema>`, синхронизируемая через `StateView` всем клиентам, чей секторный AOI (`31` тайл) пересекает Bounding Box дома. Двери дома синхронизируются как `WorldItemSchema` с флагами `isDoor = true`, `isOpen: boolean`, `isLocked: boolean` и `parentMultiSerial: uint32`.
@@ -352,7 +352,7 @@ stateDiagram-v2
 2. **`ContainerAccessGrantPort` (P07/P13)**:
    - При попытке игрока открыть контейнер или взять из него предмет `HouseInteriorService` проверяет, зарегистрирован ли контейнер в `world_house_lockdowns` с `isSecure = true`. Если да — проверяет роль игрока в доме против `secureAccessLevel` (`OWNER_ONLY`, `CO_OWNERS`, `FRIENDS`, `ANYONE`). Если предмет имеет `isLockedDown = true`, операция `PickUp` отклоняется с `ERR_ITEM_LOCKED_DOWN`.
 3. **`IRegionSpellPolicy` (P18)**:
-   - Любой тайл, попадающий во внутренний Bounding Box активного дома, отклоняет каст `Mark`, а также выбор целевой точки для `Teleport`, `Recall` и `Gate Travel` с кодом `ERR_SPELL_TARGET_BLOCKED_BY_HOUSE`.
+   - Любой тайл, попадающий во внутренний Bounding Box активного дома, отклоняет каст `Mark`, а также выбор целевой точки для `Teleport`, `Recall` и `Gate Travel` с кодом `ERR_TRAVEL_RESTRICTED` / `ERR_TELEPORT_BLOCKED` (коды P18).
 4. **`Add-on Deeds` (P20)**:
    - Когда игрок активирует крафтовый `Add-on Deed` (`Anvil Deed`, `Forge Deed`, `Loom Deed`, `Spinning Wheel Deed`, `Small Bed Deed`, `Large Bed Deed`, `Stone Oven Deed`, `Training Dummy Deed`, `Pickpocket Dip Deed`), вызывается `HouseInteriorService.placeAddon()`. Проверяется роль `Owner` или `Co-Owner`, нахождение всех тайлов аддона внутри комнат дома и отсутствие дверей в радиусе 1 тайла (`ERR_HOUSE_ADDON_BLOCKS_DOOR`). При ударе топором по любому компоненту аддона владельцем/совладельцем аддон удаляется и в рюкзак возвращается `Add-on Deed`.
 5. **`IVendorPlacementPolicy` (P21)**:

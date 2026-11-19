@@ -2,7 +2,7 @@
 
 ## Context
 
-Фаза P16 реализовала детерминированный боевой цикл UO:R (`@uo3/rules/combat`): шаги замаха по 250 мс, расчёт шанса попадания, базовые кубики оружия, бонусы Tactics/Anatomy/STR/Lumberjacking, парирование щитом, распределение по 6 зонам брони (`44/14/14/14/7/7`), перевязку бинтами со `Slips`, 5 уровней яда, смерть с созданием контейнера трупа `0x2006` и базовый контракт `ICombatLegalityPolicy` с черновым `AggressorRecord` (TTL 120 с). Ранее фаза P07 заложила порты `NotorietyRelationProvider` (для индивидуальной фильтрации/окраски сущностей в Colyseus `@colyseus/schema` v3 `StateView`) и `ContainerAccessGrantPort` (для авторизации доступа к контейнерам в P13), а фаза P12 ввела проверку коллизий и проталкивания (`shove` за 10 стамины).
+Фаза P16 реализовала детерминированный боевой цикл UO:R (`@uo3/rules/combat`): таймер замаха в тиках 50 мс, расчёт шанса попадания, базовые кубики оружия, бонусы Tactics/Anatomy/STR/Lumberjacking, парирование щитом, распределение по 6 зонам брони (`44/14/14/14/7/7`), перевязку бинтами со `Slips`, 5 уровней яда, смерть с созданием контейнера трупа `0x2006` и базовый контракт `ICombatLegalityPolicy` с черновым `AggressorRecord` (TTL 120 с). Ранее фаза P07 заложила порты `NotorietyRelationProvider` (для индивидуальной фильтрации/окраски сущностей в Colyseus `@colyseus/schema` v3 `StateView`) и `ContainerAccessGrantPort` (для авторизации доступа к контейнерам в P13), а фаза P12 ввела проверку коллизий и проталкивания (`shove` за 10 стамины).
 
 В Ultima Online: Renaissance правовой статус персонажа (Notoriety) не является исключительно глобальным свойством сущности: один и тот же игрок в один и тот же тик может быть **синим** (`Innocent = 1`) для случайного прохожего, **серым** (`CanBeAttacked = 3`) для жертвы, которую он атаковал полторы минуты назад (или чей труп он ограбил), **зелёным** (`Ally = 2`) для согильдийца и **оранжевым** (`Enemy = 5`) для члена враждебной гильдии. Кроме того, мир UO:R разделён на два фундаментальных набора правил фасетов: открытое неконсенсусное PvP на фасете **Felucca** (`facetId = 0`) и консенсусное PvP с защитой от нежелательных атак, AoE-заклинаний и мародёрства на фасете **Trammel** (`facetId = 1`). Внутри городов обоих фасетов действуют охраняемые зоны (`Guard Zones`), где стража мгновенно казнит преступников (`Criminal = 4`) и убийц (`Murderer = 6`, `LongTermMurders >= 5`) при совершении преступления или по голосовой команде `"guards"` из потока речи `SpeechRouter` (P14).
 
@@ -21,14 +21,14 @@
 ### Non-Goals
 - Реализация конкретных заклинаний и магических AoE-формул (выполняется в P18 поверх предоставляемых в P17 функций `evaluateHarmfulActionLegality`, `evaluateBeneficialActionEffects` и `filterAoeTargetsByFacetRuleset`).
 - Карма, слава (`Karma / Fame`), титулы и поведение диких NPC/монстров (выполняется в P19).
-- Приручение животных и команды управления питомцами (выполняется в P20; в P17 реализуется только разрешение `ownerSerial` при вычислении нотореити и ответственности за атаку).
+- Приручение животных и команды управления питомцами (выполняется в P19; в P17 реализуется только разрешение `ownerSerial` при вычислении нотореити и ответственности за атаку).
 - Управление гильдиями, объявление войн и фракции (выполняется в P26; в P17 используется абстрактный порт `IGuildAndPartyRelationPort`).
-- Навык `Stealing` и механика воровства из рюкзаков живых игроков (выполняется в P27; в P17 закладывается сам механизм персонального и глобального `PermaGrey`).
+- Навык `Stealing` и механика воровства из рюкзаков живых игроков (выполняется в P22; в P17 закладывается сам механизм персонального и глобального `PermaGrey`).
 
 ## Decisions
 
 ### Decision 1: Двухуровневая модель синхронизации нотореити (Base Schema + Per-Viewer Override Packet)
-- **Выбор**: В `@colyseus/schema` (`MobileSchema`) хранится публичный базовый статус `baseNotoriety: uint8` (`Innocent = 1`, `CanBeAttacked = 3`, `Criminal = 4`, `Murderer = 6`, `Invulnerable = 7`), одинаковый для 95% наблюдателей в AOI. Персональные переопределения для конкретного наблюдателя (`Ally = 2`, `Enemy = 5`, либо персональный `CanBeAttacked = 3` по записи `AggressorEntry` или `PermaGrey`) доставляются легковесным бинарным пакетом `NotorietyOverrideDeltaPacket (0x0290)` при входе в AOI или при изменении пары отношений `viewer <-> target`.
+- **Выбор**: В `@colyseus/schema` (`MobileSchema`) хранится публичный базовый статус `baseNotoriety: uint8` (`Innocent = 1`, `CanBeAttacked = 3`, `Criminal = 4`, `Murderer = 6`, `Invulnerable = 7`), одинаковый для 95% наблюдателей в AOI. Персональные переопределения для конкретного наблюдателя (`Ally = 2`, `Enemy = 5`, либо персональный `CanBeAttacked = 3` по записи `AggressorEntry` или `PermaGrey`) доставляются легковесным бинарным пакетом `NotorietyOverrideDeltaPacket (0x01D0)` при входе в AOI или при изменении пары отношений `viewer <-> target`.
 - **Обоснование**: Если хранить цвет каждого мобила для каждого наблюдателя внутри Colyseus `StateView`, потребуется $O(N^2)$ клонов состояния при 50 игроках в одном секторе. Разделение на глобальный `baseNotoriety` в схеме и точечный `NotorietyOverrideDeltaPacket` для пар с активной агрессией/гильдией снижает сетевой трафик и нагрузку на CPU до $O(N + E)$, где $E$ — число активных парных конфликтов в секторе.
 - **Отвергнутые альтернативы**: Полная отправка индивидуального пакета нотореити на каждый чих для всех $N \times N$ пар в AOI (избыточный трафик); вычисление всех правил агрессии на клиенте (нарушает серверную авторитарность и раскрывает приватные списки агрессоров чужих игроков).
 
@@ -69,12 +69,12 @@
 - **Отвергнутые альтернативы**: Необратимое удаление 20% базовых навыков при каждой смерти — приводило в классическом UO к тому, что игроки оставляли персонажа призраком на 40 часов в макросе вместо игры.
 
 ### Decision 6: Пространственный индекс Guard Zones и реактивный Guard Whack
-- **Выбор**: Регионы из `@uo3/content` (`guard-zones.yaml`) компилируются при старте партиции в плоский сетчатый индекс по секторам `16×16` тайлов (`SectorGuardMask`). Каждый сектор хранит битовую маску тайлов `guarded` или список перекрывающих AABB.
+- **Выбор**: Правила стражи читают охраняемость тайла только через порт `GuardZoneProvider` (`isTileGuarded(facetId, x, y, z)`, `zoneAt(facetId, x, y, z)`, событие `onGuardedChanged(zoneId, isGuarded)`). Регионы мира (`world/regions`) принадлежат более поздней фазе P25, поэтому P17 вводит **собственный минимальный реестр охраняемых зон** и реализацию порта по умолчанию; P25 подменяет реализацию порта региональной (флаг `isGuarded` типа региона `GUARDED`/`TOWN`, перенос данных `guard-zones.yaml` в YAML регионов) без изменения требований `pvp/guard-zones`, пакета `GuardZoneTransitionPacket` и правил Guard Whack. Реализация P17: зоны из `@uo3/content` (`guard-zones.yaml`) компилируются при старте партиции в плоский сетчатый индекс по секторам `16×16` тайлов (`SectorGuardMask`). Каждый сектор хранит битовую маску тайлов `guarded` или список перекрывающих AABB.
   - Проверка `isTileGuarded(facetId, x, y, z)` выполняется за $O(1)$ по битовой маске сектора.
   - `GuardZoneService` подписывается на два источника триггеров:
     1. **Речевой триггер**: событие из `SpeechRouter` (P14), если `normalizedText` содержит слово `\bguards\b`, говорящий жив, кулдаун `lastGuardCallTick` ($\ge 40$ тиков = 2000 мс) прошёл, и в радиусе речи (`15` тайлов для `Regular`, `18` тайлов для `Yell`) есть нарушитель, при этом либо говорящий, либо нарушитель стоит на тайле `guarded: true`.
-    2. **Авто-триггер**: событие `CriminalActionCommitted` или вход `Murderer (6)` в радиус агро патрульного NPC на тайле `guarded: true` (с задержкой реакции 5–10 тиков = 250–500 мс).
-  - При срабатывании вызывается `executeGuardWhack(offender)`: спавнится временный NPC-гвард (`Invulnerable = 7`, TTL 15 000 мс), телепортируется на свободный соседний тайл Чебышёва $\le 1$ от нарушителя, рассылается пакет `GuardInterventionEventPacket (0x0295)` и наносится неблокируемый абсолютный урон `max(offender.currentHits, 9999)`.
+    2. **Авто-триггер**: событие `CriminalActionCommitted` на тайле `guarded: true` (с задержкой реакции 5–10 тиков = 250–500 мс). Проактивная атака стоящих NPC-стражников на вошедших убийц — поведение `npc/ai-behaviors` фазы P19, P17 от него не зависит.
+  - При срабатывании вызывается `executeGuardWhack(offender)`: спавнится временный NPC-гвард (`Invulnerable = 7`, TTL 15 000 мс), телепортируется на свободный соседний тайл Чебышёва $\le 1$ от нарушителя, рассылается пакет `GuardInterventionEventPacket (0x01D5)` и наносится неблокируемый абсолютный урон `max(offender.currentHits, 9999)`.
 - **Обоснование**: Битовая маска на уровне сектора `16×16` (`256` бит = четыре `uint64`) занимает 32 байта на сектор и позволяет проверять статус `guarded` на каждом шаге `WalkRequest` (P12) и каждом ударе (P16) за единицы наносекунд без аллокаций.
 - **Отвергнутые альтернативы**: Полноценный поиск пути гвардом через 3D A* (P12) с обычными ударами мечом — нарушает канон UO:R (`Instant Guard Whack`) и позволяет преступникам убегать от стражи на лошади (100 мс/шаг).
 
@@ -86,7 +86,7 @@
 | Неконсенсусное PvP (Игрок $\rightarrow$ Игрок/Питомец) | Разрешено (с криминалом) | Запрещено (`ERR_FACET_PVP_FORBIDDEN`) | Запрещено (`ERR_GUARDZONE_PROTECTED`) |
 | Гильдейские войны и дуэли (`Enemy = 5`) | Разрешено (без криминала) | Разрешено (без криминала) | Запрещено (`ERR_GUARDZONE_PROTECTED`) |
 | Выборка AoE по нейтральным игрокам | Поражает всех + криминализирует | Исключает неконсенсусных игроков | Блокирует AoE |
-| Коллизия с живым гуманоидом (`shove`) | `10` стамины или `maxStam`, иначе блок | `0` стамины (свободный проход при $<2$ мобов) | `0` стамины |
+| Коллизия с живым гуманоидом (`shove`) | только при `stam == maxStam`, списание `10` стамины (правило P12), иначе `ERR_MOVE_MOBILE_BLOCKED` | `0` стамины (свободный проход при $<2$ мобов) | `0` стамины |
 | Вход для `Murderer (6)` или в PvP-бою | Разрешён | Запрещён (`ERR_FACET_TRAVEL_BLOCKED`) | Запрещён (`ERR_FACET_TRAVEL_BLOCKED`) |
 | Чужой лут трупа `Innocent (1)` (0..420 с) | Разрешён + `Criminal (4)` + `PermaGrey` | Запрещён (`ERR_LOOT_FORBIDDEN`) | Запрещён (`ERR_LOOT_FORBIDDEN`) |
 | Чужой лут костей `Innocent (1)` (420..840 с) | Разрешён (без криминала) | Запрещён (`ERR_LOOT_FORBIDDEN`) | Запрещён (`ERR_LOOT_FORBIDDEN`) |
@@ -121,12 +121,12 @@ flowchart TD
     D -- "Да" --> F{"Вызывает криминал?"}
     F -- "Нет (Самооборона / Гильдвойна / Монстр / Красный)" --> G["Выполнение действия без штрафа, продление AggressorEntry"]
     F -- "Да (Атака синего / Хил преступника / Мародёрство в Felucca)" --> H["Назначение Criminal (120 000 мс) + AggressorEntry / PermaGrey"]
-    H --> I["Рассылка baseNotoriety=4 и NotorietyOverrideDelta (0x0290) в AOI"]
+    H --> I["Рассылка baseNotoriety=4 и NotorietyOverrideDelta (0x01D0) в AOI"]
     I --> J{"Тайл в Guard Zone (guarded: true)?"}
-    J -- "Да (Авто-реакция 250-500 мс или крик 'guards')" --> K["Guard Whack: спавн гварда, телепорт, урон 9999 HP (0x0295)"]
+    J -- "Да (Авто-реакция 250-500 мс или крик 'guards')" --> K["Guard Whack: спавн гварда, телепорт, урон 9999 HP (0x01D5)"]
     J -- "Нет (Дикие земли Felucca)" --> L{"Жертва Innocent погибла?"}
-    L -- "Да" --> M["Формирование MurderReportPrompt (0x0292) для агрессоров с уроном >= 1"]
-    M --> N["Подтверждение жертвой (0x0293): +1 ShortTerm и +1 LongTerm Murders"]
+    L -- "Да" --> M["Формирование MurderReportPrompt (0x01D2) для агрессоров с уроном >= 1"]
+    M --> N["Подтверждение жертвой (0x01D3): +1 ShortTerm и +1 LongTerm Murders"]
     N --> O{"LongTermMurders >= 5?"}
     O -- "Да" --> P["Статус Murderer (6, красный) + проверка PingPongCount"]
 ```
@@ -186,20 +186,20 @@ export const murderReports = pgTable('murder_reports', {
 });
 ```
 
-### 2. Пакеты и опкоды `@uo3/protocol` (`0x0290..0x0298`)
+### 2. Пакеты и опкоды `@uo3/protocol` (`0x01D0..0x01D8`)
 
 Все пакеты валидируются схемами TypeBox и регистрируются в `IntentHandlerRegistry` (P07):
 
 | Опкод | Направление | Имя пакета | Поля TypeBox / Назначение |
 | :--- | :--- | :--- | :--- |
-| `0x0290` | `S -> C` | `NotorietyOverrideDeltaPacket` | `{ entries: Array<{ targetSerial: uint32, notoriety: uint8 (1..7) }> }` — персональные переопределения цвета в AOI для наблюдателя. |
-| `0x0291` | `S -> C` | `CriminalStatusSyncPacket` | `{ criminalRemainingMs: uint32, shortTermMurders: uint16, longTermMurders: uint16, shortTermDecayRemSec: uint32, longTermDecayRemSec: uint32, statLossPct: uint8, statLossRemSec: uint16, inGuardZone: boolean }` — личный статус игрока. |
-| `0x0292` | `S -> C` | `MurderReportPromptPacket` | `{ reportId: string, expiresAtMs: uint64, killers: Array<{ killerSerial: uint32, killerName: string, damageDealt: uint16 }> }` — открытие гампа репорта об убийстве (окно 60 000 мс). |
-| `0x0293` | `C -> S` | `MurderReportSubmitPacket` | `{ reportId: string, reportedKillerSerials: Array<uint32> }` — подтверждение жертвой выбранных убийц для начисления счётчиков. |
-| `0x0294` | `S -> C` | `GuardZoneTransitionPacket` | `{ regionId: string, regionNameCliloc: uint32, isGuarded: boolean, facetRuleset: uint8 }` — уведомление о пересечении границы охраняемой зоны. |
-| `0x0295` | `S -> C` | `GuardInterventionEventPacket` | `{ guardSerial: uint32, offenderSerial: uint32, targetX: uint16, targetY: uint16, targetZ: int8, damage: uint32 }` — визуальный эффект телепорта гварда, молнии и летального удара (`Guard Whack`). |
-| `0x0296` | `S -> C` | `PvpLegalityRejectPacket` | `{ errorCode: string, targetSerial: uint32, actionType: uint8 }` — отказ в атаке/хиле/луте/переходе (`ERR_TARGET_INVULNERABLE`, `ERR_FACET_PVP_FORBIDDEN`, `ERR_GUARDZONE_PROTECTED`, `ERR_CRIMINAL_RESTRICTED`, `ERR_GUARDS_NO_OFFENDER`, `ERR_FACET_TRAVEL_BLOCKED`, `ERR_LOOT_FORBIDDEN`). |
-| `0x0297` | `C -> S` | `CriminalActionConfirmTogglePacket` | `{ confirmHarmfulOnInnocent: boolean, confirmCriminalHeal: boolean, confirmCriminalLoot: boolean }` — клиентская настройка предохранителя от случайного криминала. |
+| `0x01D0` | `S -> C` | `NotorietyOverrideDeltaPacket` | `{ entries: Array<{ targetSerial: uint32, notoriety: uint8 (1..7) }> }` — персональные переопределения цвета в AOI для наблюдателя. |
+| `0x01D1` | `S -> C` | `CriminalStatusSyncPacket` | `{ criminalRemainingMs: uint32, shortTermMurders: uint16, longTermMurders: uint16, shortTermDecayRemSec: uint32, longTermDecayRemSec: uint32, statLossPct: uint8, statLossRemSec: uint16, inGuardZone: boolean }` — личный статус игрока. |
+| `0x01D2` | `S -> C` | `MurderReportPromptPacket` | `{ reportId: string, expiresAtMs: uint64, killers: Array<{ killerSerial: uint32, killerName: string, damageDealt: uint16 }> }` — открытие гампа репорта об убийстве (окно 60 000 мс). |
+| `0x01D3` | `C -> S` | `MurderReportSubmitPacket` | `{ reportId: string, reportedKillerSerials: Array<uint32> }` — подтверждение жертвой выбранных убийц для начисления счётчиков. |
+| `0x01D4` | `S -> C` | `GuardZoneTransitionPacket` | `{ regionId: string, regionNameCliloc: uint32, isGuarded: boolean, facetRuleset: uint8 }` — уведомление о пересечении границы охраняемой зоны. |
+| `0x01D5` | `S -> C` | `GuardInterventionEventPacket` | `{ guardSerial: uint32, offenderSerial: uint32, targetX: uint16, targetY: uint16, targetZ: int8, damage: uint32 }` — визуальный эффект телепорта гварда, молнии и летального удара (`Guard Whack`). |
+| `0x01D6` | `S -> C` | `PvpLegalityRejectPacket` | `{ errorCode: string, targetSerial: uint32, actionType: uint8 }` — отказ в атаке/хиле/луте/переходе (`ERR_TARGET_INVULNERABLE`, `ERR_FACET_PVP_FORBIDDEN`, `ERR_GUARDZONE_PROTECTED`, `ERR_CRIMINAL_RESTRICTED`, `ERR_GUARDS_NO_OFFENDER`, `ERR_FACET_TRAVEL_BLOCKED`, `ERR_LOOT_FORBIDDEN`). |
+| `0x01D7` | `C -> S` | `CriminalActionConfirmTogglePacket` | `{ confirmHarmfulOnInnocent: boolean, confirmCriminalHeal: boolean, confirmCriminalLoot: boolean }` — клиентская настройка предохранителя от случайного криминала. |
 
 ### 3. Палитра цветов нотореити в клиенте (`apps/client` / `@uo3/ui-kit`)
 
@@ -215,21 +215,21 @@ export const murderReports = pgTable('murder_reports', {
 
 ## Risks / Trade-offs
 
-- **[Шторм пакетов `NotorietyOverrideDeltaPacket` в массовых PvP-сражениях]** $\rightarrow$ Митигация: глобальные смены статуса (`Innocent -> Criminal -> Murderer`) передаются одним байтом `baseNotoriety` в общей схеме Colyseus `MobileSchema`. Индивидуальный пакет `0x0290` отправляется только тем двум игрокам, между которыми возникла персональная запись `AggressorEntry` или `PermaGrey`, с батчингом до конца текущего 50-мс тика.
+- **[Шторм пакетов `NotorietyOverrideDeltaPacket` в массовых PvP-сражениях]** $\rightarrow$ Митигация: глобальные смены статуса (`Innocent -> Criminal -> Murderer`) передаются одним байтом `baseNotoriety` в общей схеме Colyseus `MobileSchema`. Индивидуальный пакет `0x01D0` отправляется только тем двум игрокам, между которыми возникла персональная запись `AggressorEntry` или `PermaGrey`, с батчингом до конца текущего 50-мс тика.
 - **[Эксплойт обхода репорта об убийстве через добивание монстром или падением]** $\rightarrow$ Митигация: список кандидатов на репорт об убийстве формируется по всем записям `AggressorEntry(wasUnprovoked = true, unprovokedDamageDealt >= 1)` за последние 120 с независимо от того, кто именно нанёс финальный 1 HP урона (другой игрок, монстр или тик яда).
 - **[Эксплойт «синего хилера» (Blue Healer), лечащего красного убийцу из безопасности]** $\rightarrow$ Митигация: любое благоприятное действие на `Criminal (4)`, `Murderer (6)` или активного агрессора немедленно переводит самого лекаря в статус `Criminal (4)` на 120 с, делая его легальной мишенью для всех игроков и городской стражи, а в Trammel вмешательство извне в чужой бой блокируется с `ERR_FACET_PVP_FORBIDDEN`.
 - **[Злоупотребление спамом команды `"guards"` в чате]** $\rightarrow$ Митигация: жёсткий серверный троттлинг 1 вызов на 2000 мс (40 тиков) на персонажа, проверка только живых говорящих и $O(1)$ фильтрация по секторной битовой маске `SectorGuardMask`.
 - **[Потеря прогресса отмывания убийств при краше или перезапуске партиции]** $\rightarrow$ Митигация: `shortTermDecayElapsedSec` и `longTermDecayElapsedSec` входят в стандартный 60-секундный `dirty-flush` (P08) и пакет `PartitionHandoffTicket` (P12/P32), поэтому максимальная потеря при аварийном сбое не превышает 60 секунд из 40 часов.
-- **[Случайное получение статуса преступника из-за мисклика в клиенте]** $\rightarrow$ Митигация: в `ClientSettingsV1` (P09) и пакете `0x0297` предусмотрены флаги подтверждения криминальной атаки, криминального лечения и криминального мародёрства синего трупа с модальным предупреждением на клиенте.
+- **[Случайное получение статуса преступника из-за мисклика в клиенте]** $\rightarrow$ Митигация: в `ClientSettingsV1` (P09) и пакете `0x01D7` предусмотрены флаги подтверждения криминальной атаки, криминального лечения и криминального мародёрства синего трупа с модальным предупреждением на клиенте.
 
 ## Migration Plan
 
 1. **Схема БД (`@uo3/db`)**: добавить Drizzle-миграцию для создания таблиц `character_pvp_states` и `murder_reports`. Для всех существующих персонажей в dev/test БД инициализировать запись по умолчанию (`Murders = 0`, `criminalRemainingMs = 0`).
 2. **Контракты `@uo3/domain` и `@uo3/rules`**: заменить временную заглушку `ICombatLegalityPolicy` из P16 на полнофункциональный `PvpLegalityAndNotorietyEngine`, сохранив обратную совместимость существующих unit-тестов P16 (по умолчанию синтетический боевой харнесс P16 работает в профиле `FELUCCA_RULESET` вне охраняемой зоны).
 3. **Интеграция с `P12` (Движение) и `P13` (Контейнеры)**: подключить проверку `FacetRulesetConfig.shoveStaminaCost` в `checkMovement` (P12) и `CorpseLootingGuardService` в `ContainerAccessGrantPort` (P13).
-4. **Клиент (`apps/client`)**: подключить палитру 7 цветов нотореити к рендереру имён и контуров мобилов (P11), гампам `Paperdoll`/`HealthBar` (P14) и зарегистрировать гамп `MurderReportGump` (`0x0292/0x0293`).
+4. **Клиент (`apps/client`)**: подключить палитру 7 цветов нотореити к рендереру имён и контуров мобилов (P11), гампам `Paperdoll`/`HealthBar` (P14) и зарегистрировать гамп `MurderReportGump` (`0x01D2/0x01D3`).
 
 ## Open Questions
 
 - Должен ли размер штрафа `StatLoss` иметь опцию мгновенного выкупа за золото у NPC-целителя на кастомных шардах? *(Отложено до P21 «Деньги, банки и NPC-торговля»; в P17 параметр `allowStatLossBribe` заложен в конфигурацию шарда со значением `false` по умолчанию по канону UO:R).*
-- Требуется ли визуальный индикатор оставшихся секунд криминального таймера на HUD клиента? *(Решается настройкой клиента `showCriminalCountdownHud: true` в `ClientSettingsV1`, данные уже передаются в `CriminalStatusSyncPacket 0x0291`).*
+- Требуется ли визуальный индикатор оставшихся секунд криминального таймера на HUD клиента? *(Решается настройкой клиента `showCriminalCountdownHud: true` в `ClientSettingsV1`, данные уже передаются в `CriminalStatusSyncPacket 0x01D1`).*

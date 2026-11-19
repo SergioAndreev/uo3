@@ -54,7 +54,7 @@
   - **Уровень L2:** `64` слота × `16 384` тика (`13.65 мин`) = `52 428.8 с` (~`14.56 ч` — распад предметов 60 мин, short-term murder 8 ч).
   - **Уровень L3:** `64` слота × `1 048 576` тиков (`14.56 ч`) = `3 355 443.2 с` (~`38.84 сут` — long-term murder 40 ч, распад домов IDOC 5–15 сут).
   - **Overflow:** отсортированный по `dueTick` список для крайне редких таймеров > `38.84` суток.
-  Узлы таймеров хранятся в интрузивном двусвязном списке с переиспользуемым пулом индексов (`slotIndex` + 24-битный счётчик `generation` упакованы в числовой `TimerHandle` с безопасной проверкой устаревшего дескриптора). Каждая ячейка L0 и очередь срабатывания разделяют 3 класса приоритетов: `critical` (выход, боевые/сессионные таймеры), `normal` (стандартные игровые события), `deferred` (фоновая уборка, decay, несрочный ИИ). Постановка таймера с `delay = 0` изнутри колбэка принудительно назначает `dueTick = currentTick + 1`.
+  Узлы таймеров хранятся в интрузивном двусвязном списке с переиспользуемым пулом индексов (`slotIndex` + 21-битный счётчик `generation` упакованы в числовой `TimerHandle` с безопасной проверкой устаревшего дескриптора). Каждая ячейка L0 и очередь срабатывания разделяют 3 класса приоритетов: `critical` (выход, боевые/сессионные таймеры), `normal` (стандартные игровые события), `deferred` (фоновая уборка, decay, несрочный ИИ). Постановка таймера с `delay = 0` изнутри колбэка принудительно назначает `dueTick = currentTick + 1`.
 - **Обоснование:** `448` ячеек на все 4 уровня занимают пренебрежимо мало памяти, покрывают весь спектр игровых таймеров UO:R от `50 мс` до `38.8` суток за `O(1)` амортизированно на вставку, отмену и тик, без перебалансировки двоичной кучи `O(log N)` на миллионе таймеров и без давления на GC V8.
 - **Отвергнутые альтернативы:**
   - *`setTimeout` / `setInterval` Node.js:* недетерминированы, не синхронизированы с тиком `50 мс`, огромные накладные расходы при 100k+ таймерах.
@@ -81,7 +81,7 @@
 
 ### D6. Атомарный конечный автомат сессий с Valkey Lua CAS и межпроцессным вытеснением по NATS
 - **Выбор:** `SessionLifecycleEngine` управляет локальной сессией в `WorldPartitionRoom` (состояния: `ONLINE`, `RECONNECT_WINDOW`, `LOGOUT_DELAY`, `HANDOFF_OUT`, `OFFLINE`), а распределённое владение единственной сессией аккаунта на шарде закрепляется в Valkey-ключе `uo3:shard:{shardId}:session:{accountId}` через три атомарных Lua-скрипта:
-  - `acquire_world_session.lua`: если ключа нет — создаёт запись и возвращает `ACQUIRED`; если ключ есть с тем же `characterId` — атомарно перезаписывает владельца и возвращает `TAKEOVER_LOCAL` (тот же `roomId`) или `TAKEOVER_REMOTE` (другой `roomId`/`nodeId` с прежними `nodeId`, `worldRoomId`, `sessionId`); если ключ есть с **другим** `characterId` — не трогает ключ и возвращает `CONFLICT_OTHER_CHARACTER` → WS `4003` (`ACCOUNT_ALREADY_IN_WORLD`).
+  - `acquire_world_session.lua`: если ключа нет — создаёт запись и возвращает `ACQUIRED`; если ключ есть с тем же `characterId` — атомарно перезаписывает владельца и возвращает `TAKEOVER_LOCAL` (тот же `roomId`) или `TAKEOVER_REMOTE` (другой `roomId`/`nodeId` с прежними `nodeId`, `worldRoomId`, `sessionId`); если ключ есть с **другим** `characterId` — не трогает ключ и возвращает `CONFLICT_OTHER_CHARACTER` → WS `4124` (`WS_CLOSE_ACCOUNT_ALREADY_IN_WORLD`).
   - `refresh_world_session.lua`: продлевает TTL ключа (`90 с`, обновляется каждые `15 с`) и обновляет `state` (`online` | `logout_delay`) только при совпадении `sessionId`.
   - `release_world_session.lua`: удаляет ключ строго при совпадении `sessionId` (CAS-удаление исключает затирание новой сессии после перехвата!).
   При `TAKEOVER_REMOTE` (сценарий перехода/рассинхронизации узлов) новая комната отправляет NATS-команду `uo3.shard.{shardId}.session.evict` прежней комнате и ожидает подтверждения сохранения (или таймаута `3 с`) перед спавном мобайла.
@@ -111,7 +111,7 @@
 - **Соответствие ADR:** ADR-006, ADR-011.
 
 ### D9. Двухэтапный Graceful Shutdown и согласование `GameServerEnvSchema` с P00/P03/P05
-- **Выбор:** Зафиксировать конечный автомат хоста `STARTING → READY → DRAINING → SHUTTING_DOWN → STOPPED` с двумя раздельными таймерами: `SHUTDOWN_DRAIN_MS` (по умолчанию `15 000 мс` в dev, `60 000 мс` в prod, `0 мс` в unit-тестах) и `SHUTDOWN_HARD_TIMEOUT_MS` (по умолчанию `30 000 мс`). Во время `DRAINING` рассылаются ступенчатые объявления `shutdown_countdown` (T-60s, T-30s, T-10s..1s) и обновляется `draining: true` в Valkey. По истечении `DRAINING` (или при повторном `SIGTERM`/`SIGINT`) планировщики доводят текущий тик до фазы `TELEMETRY`, останавливаются, вызываются все зарегистрированные `WorldFlushHook` (в P06 — пакетное сохранение `characters` в PG; в P08 — полный flush грязных сущностей мира), сокеты закрываются кодом `4009`, удаляются Valkey-ключи узла/партиций/хаба и закрываются пулы NATS/Valkey/PG.
+- **Выбор:** Зафиксировать конечный автомат хоста `STARTING → READY → DRAINING → SHUTTING_DOWN → STOPPED` с двумя раздельными таймерами: `SHUTDOWN_DRAIN_MS` (по умолчанию `15 000 мс` в dev, `60 000 мс` в prod, `0 мс` в unit-тестах) и `SHUTDOWN_HARD_TIMEOUT_MS` (по умолчанию `30 000 мс`). Во время `DRAINING` рассылаются ступенчатые объявления `shutdown_countdown` (T-60s, T-30s, T-10s..1s) и обновляется `draining: true` в Valkey. По истечении `DRAINING` (или при повторном `SIGTERM`/`SIGINT`) планировщики доводят текущий тик до фазы `TELEMETRY`, останавливаются, вызываются все зарегистрированные `WorldFlushHook` (в P06 — пакетное сохранение `characters` в PG; в P08 — полный flush грязных сущностей мира), сокеты закрываются кодом `4112`, удаляются Valkey-ключи узла/партиций/хаба и закрываются пулы NATS/Valkey/PG.
   В `packages/config` схема `GameServerEnvSchema` (введённая каркасом P00) эволюционно расширяется параметрами P06, а устаревшее поле-заглушка `TICKET_SIGNING_SECRET` из P00 переводится в опциональное (deprecated, не используется, так как P05 утвердил одноразовые 256-битные тикеты через Valkey Lua `consume_game_ticket.lua` без общего симметричного секрета!).
 - **Обоснование:** Двухэтапное завершение предотвращает потерю игрового прогресса и «висящие» в Valkey мёртвые партиции при rolling-обновлениях Kubernetes, а явное согласование `GameServerEnvSchema` устраняет стыковое расхождение между P00 и P05 до начала написания кода.
 - **Отвергнутые альтернативы:**
@@ -126,7 +126,8 @@
 
 | Пакет / приложение | Модули и ключевые файлы | Ответственность |
 |---|---|---|
-| `packages/domain` | `src/runtime/errors.ts`, `src/runtime/ws-close-codes.ts`, `src/runtime/types.ts` | Перечисления `RuntimeErrorCode`, `WsCloseCode` (`4000..4014`), `HostLifecycleState`, `NodeRole`, `TickPhase`, `TimerPriority`, `TimerHandle`, `PartitionState`, `PartitionDescriptor`, `EntityLocationState`, `SessionLifecycleState`, `DisconnectReason`, `PresenceStatus`, `AnnouncementSeverity`, `AnnouncementScope`, `AnnouncementDisplayMode`. |
+| `packages/protocol` | `src/errors/ws-close-codes.ts` | Единый модуль `WsCloseCode` (`4100..4199` по реестру `docs/PROTOCOL_REGISTRY.md`, включая признак реконнекта); P06 вводит модуль со всеми кодами реестра, P07 и последующие фазы только используют его. |
+| `packages/domain` | `src/runtime/errors.ts`, `src/runtime/types.ts` | Перечисления `RuntimeErrorCode`, `HostLifecycleState`, `NodeRole`, `TickPhase`, `TimerPriority`, `TimerHandle`, `PartitionState`, `PartitionDescriptor`, `EntityLocationState`, `SessionLifecycleState`, `DisconnectReason`, `PresenceStatus`, `AnnouncementSeverity`, `AnnouncementScope`, `AnnouncementDisplayMode`. |
 | `packages/rules` | `src/simulation/hierarchical-timing-wheel.ts`, `src/simulation/simulation-scheduler.ts`, `src/simulation/sector-spatial-index.ts`, `src/simulation/sector-dynamic-tile-provider.ts`, `src/simulation/world-partition-core.ts`, `src/simulation/behaviour-registry.ts`, `src/simulation/session-lifecycle-engine.ts`, `src/simulation/shard-hub-core.ts`, `src/simulation/state-digest.ts` | Чистое детерминированное ядро симуляции (0 I/O, только `@uo3/domain` + `rules/world` + `rules/digest`): 4-уровневое колесо таймеров, планировщик 20 Гц с бюджетами и квотами, секторный индекс `16×16` с инкрементальной активацией, адаптер `DynamicTileProvider` (P03), реестр сущностей/поведений/dirty-hook, КА сессий UO:R, ядро присутствия/объявлений хаба и канонический SHA-256 дайджест состояния. |
 | `packages/protocol` | `src/p06/messages.schema.ts`, `src/p06/nats-events.schema.ts`, `src/p06/valkey.schema.ts`, `src/p06/ws-codes.ts`, `src/p06/index.ts` | TypeBox-схемы сообщений клиент↔сервер (`world:ready`, `session:logout_request`, `session:kicked`, `session:takeover_notice`, `hub:motd`, `hub:announcement`, `hub:presence_summary`), NATS-событий (`presence.updated`, `hub.announce`, `session.evict`), Valkey-структур (`NodeHeartbeatPayload`, `PartitionRegistryPayload`, `HubRegistryPayload`, `ActiveWorldSessionPayload`) и кодов закрытия WS. |
 | `packages/config` | `src/env/game-server.schema.ts` (расширение `GameServerEnvSchema` из P00) | Типизированная валидация env `apps/game-server` (роль узла, партиции, тайминги heartbeat/shutdown/reconnect/logout/idle, бюджеты тика, вместимость, лимиты хаба). |
@@ -182,25 +183,25 @@ flowchart TD
 ```mermaid
 stateDiagram-v2
   [*] --> AUTHENTICATING : "WS connect (worldTicket)"
-  AUTHENTICATING --> OFFLINE : "Invalid/expired ticket (WS 4001) или конфликт другого персонажа (WS 4003)"
+  AUTHENTICATING --> OFFLINE : "Invalid/expired ticket (WS 4101) или конфликт другого персонажа (WS 4124)"
   AUTHENTICATING --> ENTERING : "Ticket OK + Valkey CAS ACQUIRED / TAKEOVER"
   ENTERING --> ONLINE : "Загрузка из PG + валидация спавна P03 + спавн в SectorIndex"
-  ENTERING --> OFFLINE : "Неактивный статус персонажа (WS 4006/4007)"
+  ENTERING --> OFFLINE : "Неактивный статус персонажа (WS 4125/4126)"
 
-  ONLINE --> ONLINE : "Перехват тем же персонажем (старый сокет WS 4002, новый привязан)"
+  ONLINE --> ONLINE : "Перехват тем же персонажем (старый сокет WS 4104, новый привязан)"
   ONLINE --> RECONNECT_WINDOW : "Неожиданный обрыв сокета (старт таймера 30с + 5мин LOGOUT_DELAY)"
-  ONLINE --> LOGOUT_DELAY : "Явный выход вне безопасной зоны или блокировка политикой (WS 4000, delayed=true)"
-  ONLINE --> OFFLINE : "Явный выход в безопасной зоне / персонал (WS 4000, delayed=false, save+despawn)"
+  ONLINE --> LOGOUT_DELAY : "Явный выход вне безопасной зоны или блокировка политикой (WS 4122, delayed=true)"
+  ONLINE --> OFFLINE : "Явный выход в безопасной зоне / персонал (WS 4122, delayed=false, save+despawn)"
   ONLINE --> HANDOFF_OUT : "Переход в другую партицию/фасет (подтверждено целевой комнатой)"
-  ONLINE --> OFFLINE : "Бан 4004 / Отзыв 4005 / Блокировка 4006 / Rename 4007 / Maintenance 4008 / Shutdown 4009"
+  ONLINE --> OFFLINE : "Бан 4103 / Отзыв 4123 / Блокировка 4125 / Rename 4126 / Maintenance 4127 / Shutdown 4112"
 
   RECONNECT_WINDOW --> ONLINE : "Реконнект <= 30с или перехват тем же персонажем (отмена 5мин таймера)"
   RECONNECT_WINDOW --> LOGOUT_DELAY : "Истекло 30с окна реконнекта (продолжение оставшихся 270с)"
-  RECONNECT_WINDOW --> OFFLINE : "Бан 4004 / Блокировка 4006 / Shutdown 4009 (немедленный save+despawn)"
+  RECONNECT_WINDOW --> OFFLINE : "Бан 4103 / Блокировка 4125 / Shutdown 4112 (немедленный save+despawn)"
 
   LOGOUT_DELAY --> ONLINE : "Повторный вход тем же персонажем (отмена таймера выхода)"
   LOGOUT_DELAY --> OFFLINE : "Истекло 300 000мс (save в PG + despawn + release Valkey)"
-  LOGOUT_DELAY --> OFFLINE : "Бан 4004 / Блокировка 4006 / Shutdown 4009 (отмена таймера + save+despawn)"
+  LOGOUT_DELAY --> OFFLINE : "Бан 4103 / Блокировка 4125 / Shutdown 4112 (отмена таймера + save+despawn)"
 
   HANDOFF_OUT --> OFFLINE : "Локальный despawn без задержки выхода и без удаления Valkey session"
 ```
@@ -232,7 +233,7 @@ sequenceDiagram
   C2->>WPR: "WS join (worldTicket_2, charA, acc1)"
   WPR->>VK: "Lua consume_game_ticket + acquire_world_session (acc1, charA, S2)"
   VK-->>WPR: "TAKEOVER_LOCAL (old=S1)"
-  WPR-->>C1: "session:kicked + WS close 4002 (SESSION_REPLACED)"
+  WPR-->>C1: "session:kicked + WS close 4104 (WS_CLOSE_DUPLICATE_SESSION)"
   WPR-->>C2: "world:ready (перепривязка к существующему мобайлу charA)"
 
   Note over C2,WPR: "Неожиданный обрыв сети C2"
@@ -246,7 +247,7 @@ sequenceDiagram
   NATS-->>SHR: "identity.account.banned (acc1, eventId)"
   WPR->>WPR: "Отмена LOGOUT_DELAY + save(charA) в PG + despawn"
   WPR->>VK: "Lua release_world_session (acc1, S2)"
-  SHR-->>C2: "WS close 4004 (ACCOUNT_BANNED)"
+  SHR-->>C2: "WS close 4103 (WS_CLOSE_BANNED)"
 ```
 
 ### 5. Модели данных, схемы Colyseus, протокол и Valkey Lua-скрипты
@@ -261,7 +262,7 @@ class WorldPartitionState extends Schema {
   @type('uint8') facetId!: number;
   @type('string') worldDataVersion!: string;   // контракт P03
   @type('string') rulesetDigest!: string;      // контракт P01
-  @type('uint32') currentTick!: number;
+  @type('uint32') serverTick!: number;
   @type('uint16') onlineCount!: number;
   // Точка расширения P07: @view() @type({ map: ReplicatedMobileSchema }) mobiles ...
 }
@@ -289,6 +290,23 @@ class ShardHubState extends Schema {
 ```
 
 #### 5.2. Сообщения протокола (`packages/protocol/src/p06/*`, TypeBox)
+Каждое сообщение P06 имеет `uint16`-опкод строго из блока P06 `0x0020..0x003F` нормативного реестра `docs/PROTOCOL_REGISTRY.md` (`0x002C..0x003F` — резерв P06); строковые имена ниже — символьные имена каталога P07. После подключения каталога и рукопожатия P07 сообщение `world:ready` отправляется только после `session.welcome` (`0x0002`).
+
+| Опкод | Имя | Направление |
+|---|---|---|
+| `0x0020` | `world:ready` (SessionReady) | WorldPartitionRoom → Client |
+| `0x0021` | `session:logout_request` (SafeLogout) | Client → WorldPartitionRoom |
+| `0x0022` | `session:logout_ack` | WorldPartitionRoom → Client |
+| `0x0023` | `session:kicked` | Room → Client |
+| `0x0024` | `session:access_updated` | Room → Client |
+| `0x0025` | `session:heartbeat` | Client → WorldPartitionRoom |
+| `0x0026` | `session:takeover_notice` | WorldPartitionRoom → Client |
+| `0x0027` | `hub:motd` | ShardHubRoom → Client |
+| `0x0028` | `hub:announcement` (SystemBroadcast) | ShardHubRoom → Client |
+| `0x0029` | `hub:presence_summary` (Presence) | ShardHubRoom → Client |
+| `0x002A` | `hub:announce_request` | Client → ShardHubRoom |
+| `0x002B` | `hub:staff_stealth_toggle` | Client → ShardHubRoom |
+
 - **WorldPartitionRoom → Client:**
   - `world:ready`: `{ serial, characterId, facet, x, y, z, direction, currentTick, tickMs, worldDataVersion, rulesetDigest, reconnectToken, safeSpawnApplied }`
   - `session:logout_ack`: `{ delayed: boolean, delayMs: number, reason?: string }`
@@ -305,25 +323,29 @@ class ShardHubState extends Schema {
   - `hub:announce_request` (требует `effectiveAccessLevel >= GameMaster`): `{ severity, displayMode, text (1..512), scope, targetFacet?, ttlMs?, sticky? }`
   - `hub:staff_stealth_toggle` (требует `effectiveAccessLevel >= Counselor`): `{ hidden: boolean }`
 
-#### 5.3. Единый реестр кодов закрытия WebSocket (`packages/domain` & `packages/protocol`)
+#### 5.3. Коды закрытия WebSocket, используемые P06 (подмножество `docs/PROTOCOL_REGISTRY.md` §2)
 
-| WS Close Code | Символический код | Описание |
-|---|---|---|
-| `4000` | `LOGOUT_COMPLETE` | Штатный выход игрока (мгновенный или с переходом в `LOGOUT_DELAY`) |
-| `4001` | `TICKET_INVALID_OR_EXPIRED` | Невалидный, просроченный, повторный тикет, неверный `roomType` или невалидный токен реконнекта |
-| `4002` | `SESSION_REPLACED` | Сессия перехвачена новым подключением того же аккаунта/персонажа |
-| `4003` | `ACCOUNT_ALREADY_IN_WORLD` | Другой персонаж этого аккаунта уже находится в мире или в `LOGOUT_DELAY` |
-| `4004` | `ACCOUNT_BANNED` | Аккаунт заблокирован (получено событие из `IDENTITY_EVENTS`) |
-| `4005` | `SESSION_REVOKED` | Сессии аккаунта отозваны (смена пароля / logout-all) |
-| `4006` | `CHARACTER_LOCKED` | Персонаж заблокирован персоналом (`staff_locked`) или в `pending_deletion` |
-| `4007` | `CHARACTER_FORCE_RENAME` | Персонаж переведён в `rename_required` |
-| `4008` | `SHARD_MAINTENANCE` | Шард в режиме обслуживания, уровень доступа ниже `maintenanceBypassLevel` |
-| `4009` | `SERVER_SHUTDOWN` | Плановая остановка / рестарт игрового узла |
-| `4010` | `SHARD_DRAINING` | Узел или шард в режиме `draining`, новые входы закрыты |
-| `4011` | `INTERNAL_ERROR` | Изолированная внутренняя ошибка обработки сессии |
-| `4012` | `PARTITION_FULL` | Достигнут предел `hardCapacity` (для неперсонала) |
-| `4013` | `PARTITION_NOT_READY` | Комната партиции ещё в состоянии `LOADING` |
-| `4014` | `IDLE_TIMEOUT` | Отключение обычного игрока по таймауту бездействия |
+Числовые значения, имена констант и поведение реконнекта нормативно задаются реестром протокола; P06 не вводит собственных номеров. Поле `retryable` сообщения `session:kicked` MUST совпадать с колонкой «Реконнект» (`да`/`перенаправление` → `true`, `нет` → `false`).
+
+| Код | Константа (реестр) | Реконнект | Применение в P06 |
+|---|---|---|---|
+| `4101` | `WS_CLOSE_INVALID_TICKET` | да | Невалидный, просроченный, повторный тикет, неверный `roomType` или невалидный токен реконнекта |
+| `4103` | `WS_CLOSE_BANNED` | нет | Аккаунт заблокирован (получено событие из `IDENTITY_EVENTS`) |
+| `4104` | `WS_CLOSE_DUPLICATE_SESSION` | нет | Старое подключение вытеснено новым подключением того же персонажа (мир) или того же аккаунта (хаб) |
+| `4106` | `WS_CLOSE_PARTITION_FULL` | да | Достигнут предел `hardCapacity` (для неперсонала) |
+| `4109` | `WS_CLOSE_IDLE_TIMEOUT` | нет | Отключение обычного игрока по таймауту бездействия |
+| `4112` | `WS_CLOSE_SERVER_SHUTDOWN` | да | Плановая остановка / рестарт игрового узла |
+| `4113` | `WS_CLOSE_INTERNAL_ERROR` | да | Изолированная внутренняя ошибка обработки сессии |
+| `4116` | `WS_CLOSE_PARTITION_DRAINING` | перенаправление | Узел или шард в режиме `draining`, новые входы на этот узел закрыты |
+| `4122` | `WS_CLOSE_LOGOUT_COMPLETE` | нет | Штатный выход игрока (мгновенный или с переходом в `LOGOUT_DELAY`) |
+| `4123` | `WS_CLOSE_SESSION_REVOKED` | нет | Сессии аккаунта отозваны (смена пароля / logout-all) |
+| `4124` | `WS_CLOSE_ACCOUNT_ALREADY_IN_WORLD` | нет | Другой персонаж этого аккаунта уже находится в мире или в `LOGOUT_DELAY` |
+| `4125` | `WS_CLOSE_CHARACTER_LOCKED` | нет | Персонаж заблокирован персоналом (`staff_locked`) или в `pending_deletion` |
+| `4126` | `WS_CLOSE_CHARACTER_FORCE_RENAME` | нет | Персонаж переведён в `rename_required` |
+| `4127` | `WS_CLOSE_SHARD_MAINTENANCE` | нет | Шард в режиме обслуживания, уровень доступа ниже `maintenanceBypassLevel` |
+| `4128` | `WS_CLOSE_PARTITION_NOT_READY` | да | Комната партиции ещё в состоянии `LOADING` |
+
+Коды `4100` (`WS_CLOSE_PROTOCOL_ERROR`), `4119` (`WS_CLOSE_STATE_DESYNC`), `4129`/`4130` и прочие сетевые коды применяются транспортным уровнем P07.
 
 #### 5.4. События NATS JetStream и ключи/Lua-скрипты Valkey 8
 
@@ -411,13 +433,13 @@ class ShardHubState extends Schema {
    - Зависимости `@colyseus/*` и `@nestjs/core` добавляются строго в `apps/game-server/package.json` (не попадая в изоморфные пакеты `domain`/`rules`/`protocol`), проходя проверку лицензий SPDX (`check:licenses`) и границ пакетов (`dependency-cruiser`) из P00.
 2. **Порядок развёртывания:**
    - Сначала обновляются общие пакеты (`domain` → `rules` → `protocol` → `config` → `test-kit`), проверяется `pnpm turbo run build typecheck lint test`.
-   - Затем разворачивается `apps/game-server` рядом с работающим `apps/api` (P04/P05), валидируются Valkey-ключи heartbeat/partitions/hub (подхватываются `GET /v1/shards` из P05) и прохождение полного пути `POST /v1/shards/:id/tickets` → WS `WorldPartitionRoom` + `ShardHubRoom`.
+   - Затем разворачивается `apps/game-server` рядом с работающим `apps/api` (P04/P05), валидируются Valkey-ключи heartbeat/partitions/hub (подхватываются `GET /api/v1/shards` из P05) и прохождение полного пути `POST /api/v1/shards/:id/tickets` → WS `WorldPartitionRoom` + `ShardHubRoom`.
 3. **Стратегия отката:**
    - Поскольку БД-миграции не вносятся, откат узлов `apps/game-server` выполняется простым перезапуском предыдущего образа после штатного `SIGTERM`-дренажа; ключи Valkey имеют автоматический TTL 15–90 с и самоочищаются без ручного вмешательства.
 
 ## Open Questions
 
-Блокирующих архитектурных вопросов нет — все ключевые решения (структура колеса таймеров, фазы тика, секторный индекс, Lua CAS сессий, коды закрытия WebSocket `4000..4014`, модель хаба и headless-харнес) зафиксированы.
+Блокирующих архитектурных вопросов нет — все ключевые решения (структура колеса таймеров, фазы тика, секторный индекс, Lua CAS сессий, коды закрытия WebSocket `4100..4199` (по реестру `docs/PROTOCOL_REGISTRY.md`), модель хаба и headless-харнес) зафиксированы.
 
 Отложимые детали для последующих фаз:
 - Точный формат бинарной сериализации дельт сущностей в `@colyseus/schema` `StateView` и приоритезация обновлений AOI при перегрузке канала — фиксируется в **P07 (`p07-netcode-and-replication`)**.

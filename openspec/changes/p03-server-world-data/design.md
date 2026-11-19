@@ -8,10 +8,10 @@
 - **ADR-001 (Монорепозиторий):** чёткое разделение пакетов; общие формулы и чистые алгоритмы живут в изоморфном `packages/rules`, типы — в `packages/domain`, протокольные контракты — в `packages/protocol`, бинарные парсеры — в `packages/uo-formats`, серверная оркестрация — в `apps/game-server`.
 - **ADR-002 (Правовая модель ассетов):** проприетарные файлы UO Classic предоставляются оператором шарда при развёртывании; вся разработка и CI обязаны проходить на процедурном синтетическом мире из P02 (`packages/test-kit` / `apps/asset-tool`).
 - **ADR-006 / ADR-007 (Симуляция и партиции):** тик симуляции `20 Гц` (`50 мс`), целевая задержка команды `p99 ≤ 30 мс`, пространственные сектора `16×16` тайлов (= `2×2` блока UO `8×8`), радиус AOI `18` тайлов (настраиваемо до `24`, мульти — `31`), задел на многопартиционные фасеты (P32).
-- **ADR-010 (Ruleset UO:R):** фасеты по умолчанию Felucca (`0`) и Trammel (`1`) размером `7168×4096` (плюс поддержка legacy `6144×4096`, произвольных кратных 8 размеров и дополнительных фасетов через `EraProfile`), `PersonHeight = 16`, `StepHeight = 2`, `MobileEyeOffset = 14`.
+- **ADR-010 (Ruleset UO:R):** фасеты по умолчанию Felucca (`0`) и Trammel (`1`) размером `7168×4096` (плюс поддержка legacy `6144×4096`, произвольных кратных 8 размеров и дополнительных фасетов через `RulesetProfile`), `PersonHeight = 16`, `StepHeight = 2`, `MobileEyeOffset = 14`.
 - **ADR-012 (Безопасность и авторитарность):** сервер — единственный источник истины по геометрии и LOS; запрещены односторонние «прострелы углов», выходы за пределы буфера и рассинхронизация версий карты между партициями.
 
-Входные зависимости: `packages/domain` и `packages/rules` (`EraProfile`, `TileFlag`, `Point3D`, `FacetId`) из **P01**, парсеры `packages/uo-formats` (`map*`, `statics*`/`staidx*`, `tiledata`, `multi`, `mapdif*`, `stadif*`) и синтетический мир из **P02**.
+Входные зависимости: `packages/domain` и `packages/rules` (`RulesetProfile`, `TileFlag`, `Point3D`, `FacetId`) из **P01**, парсеры `packages/uo-formats` (`map*`, `statics*`/`staidx*`, `tiledata`, `multi`, базовый `MulIdxStore`) и синтетический мир из **P02**; читатели `mapdif*`/`stadif*` добавляются в P03.
 
 ## Goals / Non-Goals
 
@@ -166,7 +166,7 @@
 |---|---|---|
 | `packages/domain` | `src/world/types.ts`, `src/world/errors.ts`, `src/world/manifest.ts` | Типы `LandTile`, `StaticTile`, `LandElevation`, `SurfaceCandidate`, `ColumnCheckOptions`, `ColumnCheckResult`, `MultiDefinition`, `MultiComponent`, `LosMode`, `LosOptions`, `LosTraceResult`, `LosBlocker`, `MapPatchDefinition`, `MapPatchOperation`, `WorldDataManifest`, `WorldDataVersionInfo`, `CompatibilityResult`, enum кодов ошибок `WorldDataErrorCode`. |
 | `packages/rules` | `src/world/tile-data-table.ts`, `src/world/facet-tile-matrix.ts`, `src/world/multi-catalog.ts`, `src/world/elevation.ts`, `src/world/surfaces.ts`, `src/world/line-of-sight.ts`, `src/world/map-patch-engine.ts`, `src/world/world-hasher.ts`, `src/world/compatibility.ts` | Изоморфные компактные структуры данных на TypedArray, формулы `GetAverageZ`/`interpolateLandZ`/`CalcHeight`/`resolveSurfaces`/`checkStaticColumn`, симметричный 3D DDA LOS (`hasLineOfSight` + `traceLineOfSight`), движок валидации/применения/diff патчей, двухуровневое SHA-256 хэширование и сверка совместимости версий. |
-| `packages/uo-formats` | `src/world-snapshot/uo3world-codec.ts`, `src/world-snapshot/uo3patch-codec.ts`, `src/world-snapshot/diff-adapters.ts` | Интеграция адаптеров выходов парсеров P02 (`map*`, `statics*`, `tiledata`, `multi`, `mapdif*`, `stadif*`), кодеки бинарного кэша `.uo3world` и компактных патчей `.uo3patch.bin` / `.uo3patch.json`. |
+| `packages/uo-formats` | `src/world-snapshot/uo3world-codec.ts`, `src/world-snapshot/uo3patch-codec.ts`, `src/world-snapshot/diff-adapters.ts` | Интеграция адаптеров выходов парсеров P02 (`map*`, `statics*`, `tiledata`, `multi`) и новые читатели `mapdif*`/`stadif*`, кодеки бинарного кэша `.uo3world` и компактных патчей `.uo3patch.bin` / `.uo3patch.json`. |
 | `packages/protocol` | `src/world/world-data-version.schema.ts` | TypeBox-схемы `WorldDataVersionSchema`, `ClientAssetFingerprintSchema`, `WorldDataCompatibilitySchema` (переиспользуются в рукопожатии P07/P09 и межпартиционном контроле P32). |
 | `packages/config` | `src/world-data.config.ts` | Валидация env-переменных `WORLD_DATA_*` (TypeBox/Zod-схема проекта из P00). |
 | `packages/test-kit` | `src/world/world-fixtures.ts`, `src/world/synthetic-world-loader.ts` | Детерминированные мини-фасеты и фикстуры (холмы, обрывы, мосты, лестницы, подземелья с `0x0002`, окна/решётки, крыши/этажи, диагональные углы, мульти, цепочки патчей и конфликтов). |
@@ -177,7 +177,7 @@
 
 ```mermaid
 flowchart TD
-  CFG["Конфигурация WORLD_DATA_* и EraProfile"] --> MODE{"Режим источника"}
+  CFG["Конфигурация WORLD_DATA_* и RulesetProfile"] --> MODE{"Режим источника"}
   MODE -- "uo (MUL / UOP)" --> PARSE_UO["Парсеры packages/uo-formats (P02)"]
   MODE -- "synthetic (CI / Dev)" --> PARSE_SYN["Синтетический мир (P02 / test-kit)"]
   PARSE_UO --> FP["Расчёт sourceFingerprint + patchStackHash"]
@@ -268,7 +268,7 @@ export type MapPatchOperation =
 |---|---|---|
 | `WORLD_DATA_MODE` | `'synthetic' \| 'uo'` (`'synthetic'`) | Источник статического мира |
 | `WORLD_DATA_DIR` | `string` | Каталог исходных файлов UO или синтетического мира |
-| `WORLD_DATA_FACETS` | `string` (`'0,1'`) | Список активных `FacetId` (override поверх `EraProfile`) |
+| `WORLD_DATA_FACETS` | `string` (`'0,1'`) | Список активных `FacetId` (override поверх `RulesetProfile`) |
 | `WORLD_DATA_PATCHES_DIR` | `string` (опционально) | Каталог с `world-patch-stack.json` и патчами |
 | `WORLD_DATA_ENABLE_UO_DIFS` | `boolean` (`true`) | Применять ли классические `mapdif*`/`stadif*` |
 | `WORLD_DATA_CONFLICT_POLICY` | `'strict' \| 'last-wins'` (`'strict'`) | Политика конфликтов независимых патчей |
@@ -319,11 +319,11 @@ flowchart LR
 ```
 
 Точные правила блокировки тайла `T` (статического или динамического) на вертикальном интервале `[zMin, zMax]` внутри клетки:
-- `isLosBlocker(flags, height, eraProfile)`:
+- `isLosBlocker(flags, height, rulesetProfile)`:
   - `if (flags & TileFlag.NoShoot) return true;`
   - `if (flags & TileFlag.Roof) return true;`
-  - `if ((flags & TileFlag.Window) && !eraProfile.windowBlocksLos) return false;`
-  - `if ((flags & TileFlag.Foliage) && !eraProfile.foliageBlocksLos) return false;`
+  - `if ((flags & TileFlag.Window) && !rulesetProfile.losRules.windowBlocksLos) return false;`
+  - `if ((flags & TileFlag.Foliage) && !rulesetProfile.losRules.foliageBlocksLos) return false;`
   - `if (flags & TileFlag.Wall) return true;`
   - `if ((flags & TileFlag.Impassable) && !(flags & TileFlag.Wet) && height > 0) return true;`
   - `return false;`
@@ -377,14 +377,14 @@ sequenceDiagram
 |---|---|
 | `WorldDataLoaderService` | Хук `OnModuleInit`: читает `WorldDataConfig`, выбирает адаптер источника (`uo` или `synthetic`), проверяет кэш `.uo3world`, при промахе прогоняет пайплайн `Base → mapdif/stadif → UO3 patches → SHA-256`, атомарно пишет кэш и передаёт иммутабельный `WorldDataSnapshot` в `WorldDataRegistryService`. |
 | `WorldDataRegistryService` | Хранит `activeSnapshot: WorldDataSnapshot \| null` и статус готовности (`LOADING \| READY \| FAILED`). Предоставляет zero-alloc фасад запросов (`getLandTile`, `getLandElevation`, `forEachStaticTile`, `resolveSurfaces`, `checkStaticColumn`, `getMulti`, `queryArea`, `getManifest`, `checkCompatibility`) и атомарный метод `swapSnapshot(next)` для staged-перезагрузки патчей. |
-| `LineOfSightService` | DI-сервис поверх `WorldDataRegistryService` и `EraProfile`: `hasLineOfSight(facet, src, dst, options?, dynamicProvider?)` и `traceLineOfSight(...)` с профильными лимитами (`maxLosRange`, `mobileEyeOffset`, `windowBlocksLos`, `foliageBlocksLos`). |
+| `LineOfSightService` | DI-сервис поверх `WorldDataRegistryService` и `RulesetProfile`: `hasLineOfSight(facet, src, dst, options?, dynamicProvider?)` и `traceLineOfSight(...)` с профильными лимитами (`maxLosRange`, `mobileEyeOffset`, `windowBlocksLos`, `foliageBlocksLos`). |
 | `MapPatchService` | Оркестрирует валидацию стека патчей, dry-run проверку конфликтов, генерацию diff-патча и staged CoW-сборку нового снапшота с откатом при ошибке. |
 | `WorldDataHealthIndicator` | Возвращает `{ status: 'READY' \| 'NOT_READY', mode, worldDataVersion, facets, multiCount, memoryBytes, loadDurationMs, errorCode? }` для readiness-проб и диагностики старта. |
 | `WorldDataMetrics` | Регистрирует счётчики/гистограммы OpenTelemetry/Prometheus: `uo3_world_data_memory_bytes{facet}`, `uo3_world_data_load_duration_ms{cache_hit}`, `uo3_world_data_static_tiles_total{facet}`, `uo3_world_data_patches_applied{facet}`, `uo3_los_checks_total{result}`, `uo3_los_duration_us`. |
 
 ## Risks / Trade-offs
 
-- **[Расхождение деталей LOS с редкими уголками оригинальных карт UO Classic]** → Покрыть набор эталонных сценариев (банки Британии, окна домов, решётки темниц, многоэтажные башни, пещеры с `0x0002`, диагональные стены) параметризованными тестами; ключевые спорные флаги (`windowBlocksLos`, `foliageBlocksLos`, `maxLosRange`, `mobileEyeOffset`) вынесены в `EraProfile` для тонкой настройки без переписывания ядра.
+- **[Расхождение деталей LOS с редкими уголками оригинальных карт UO Classic]** → Покрыть набор эталонных сценариев (банки Британии, окна домов, решётки темниц, многоэтажные башни, пещеры с `0x0002`, диагональные стены) параметризованными тестами; ключевые спорные флаги (`windowBlocksLos`, `foliageBlocksLos`, `maxLosRange`, `mobileEyeOffset`) вынесены в `RulesetProfile` для тонкой настройки без переписывания ядра.
 - **[Потребление памяти при загрузке 5–6 фасетов на одном процессе в будущих эпохах]** → Один фасет `7168×4096` укладывается в `~174 МБ`, а загрузка срезов партиций с буфером `32` тайла и поддержка раздельных процессов партиций (P32) ограничивают расход RAM пропорционально обслуживаемой зоне.
 - **[Конфликты при ручном редактировании кастомных патчей несколькими строителями]** → Политика `strict` по умолчанию в CI гарантированно ловит перекрытия на этапе PR с точными координатами конфликта, а явное объявление `dependsOn` фиксирует преднамеренный порядок слоёв.
 - **[Рассинхронизация клиентской картинки и серверных коллизий при наличии кастомного шардового патча]** → Контракт `WorldDataCompatibilitySchema` классифицирует отсутствие кастомного патча у клиента как `PATCH_DIFF_WARNING` со списком недостающих `patchId`, чтобы клиент P09/P10 мог предупредить игрока или подгрузить разрешённый шардовый патч; при этом сервер остаётся строго авторитарным (ADR-012).

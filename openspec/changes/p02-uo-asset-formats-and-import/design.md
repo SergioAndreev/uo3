@@ -265,17 +265,17 @@ stateDiagram-v2
 |---|---|---|
 | **UOP** (`*.uop`) | Header 40B (`MYP\0`, `uint32 version=4|5`, `uint32 format=0xFD23EC43`, `uint64 firstBlock`, `uint32 blockSize`, `uint32 fileCount`); Block Header 12B (`uint32 count`, `uint64 nextBlock`); Entry 34B (`uint64 offset`, `uint32 headerLen`, `uint32 compLen`, `uint32 decompLen`, `uint64 hash`, `uint32 adler32`, `uint16 flags`) | `flags === 1` → zlib; 64-bit `HashLittle2`; макс. `decompLen <= 64 MiB` |
 | **IDX** (`*.idx`) | 12B/запись: `int32 lookup`, `int32 length`, `int32 extra` | `lookup === -1` или `length <= 0` → пустой слот |
-| **verdata.mul** | `int32 patchCount` + `patchCount × 20B` (`int32 fileId`, `int32 blockId`, `int32 pos`, `int32 len`, `int32 extra`) | Приоритетное наложение на `map0=0`, `staidx0=1`, `statics0=2`, `artidx=3`, `art=4`, `anim.idx=5`, `anim.mul=6`, `soundidx=7`, `sound=8`, `texidx=9`, `texmaps=10`, `gumpidx=11`, `gumpart=12`, `multi.idx=13`, `multi.mul=14`, `tiledata=16`, `hues=32` |
+| **verdata.mul** | `int32 patchCount` + `patchCount × 20B` (`int32 fileId`, `int32 blockId`, `int32 pos`, `int32 len`, `int32 extra`) | Приоритетное наложение на `map0=0`, `staidx0=1`, `statics0=2`, `artidx=3`, `art=4`, `anim.idx=5`, `anim.mul=6`, `soundidx=7`, `sound=8`, `texidx=9`, `texmaps=10`, `gumpidx=11`, `gumpart=12`, `multi.idx=13`, `multi.mul=14`, `tiledata=30`, `animdata=31`, `hues=32` |
 | **tiledata.mul** | 512 групп Land × (`4B header + 32 × landEntry`), далее 512/1024/2048 групп Item × (`4B header + 32 × itemEntry`) | **Legacy 32-bit:** land 26B (`u32 flags, u16 texId, char[20] name`), item 37B (`u32 flags, u8 weight, u8 quality, u16 misc, u8 unk2, u8 qty, u16 anim, u8 unk3, u8 hue, u16 stackOff, u8 height, char[20] name`). **High Seas 64-bit:** `u64 flags` → land 30B, item 41B |
 | **hues.mul** | 375 групп × (`4B header + 8 × 88B`) = 3 000 палитр; палитра: `32 × u16 RGB555`, `u16 tableStart`, `u16 tableEnd`, `char[20] name` | Индекс 1..3000; 0 = identity |
 | **radarcol.mul** | `65 536` или `81 920` × `u16 RGB555` | `0x0000..0x3FFF` = land, `0x4000+` = static |
 | **map\*** (MUL/UOP) | Блоки 8×8 = 196B (`u32 header` + 64 × (`u16 tileId`, `i8 z`)) | Column-major `blockIdx = blockX * heightBlocks + blockY`; Felucca/Trammel `7168×4096` (896×512) и legacy `6144×4096` (768×512); в UOP чанки по 4096 блоков (`0xC4000` байт) |
 | **statics\* / staidx\*** | IDX на каждый 8×8 блок; запись статики 7B (`u16 tileId`, `u8 x`, `u8 y`, `i8 z`, `u16 hue`) | `x, y ∈ [0..7]`, `z ∈ [-128..127]` |
-| **art** (MUL/UOP) | `id < 0x4000`: 1024 × `u16 RGB555` (ромб 44×44). `id >= 0x4000`: `u32 flag`, `u16 w`, `u16 h`, `h × u16 rowOff`, RLE `(u16 xOff, u16 xRun, pixels)` до `(0,0)` | `0x0000` прозрачный; макс. `4096×4096` |
+| **art** (MUL/UOP) | `id < 0x4000`: 1012 × `u16 RGB555` (2 024 байта, ромб 44×44). `id >= 0x4000`: `u32 flag`, `u16 w`, `u16 h`, `h × u16 rowOff`, RLE `(u16 xOff, u16 xRun, pixels)` до `(0,0)` | `0x0000` прозрачный; макс. `4096×4096` |
 | **texmaps** | `extra === 0` → `64×64 × u16` (8 192B); `extra === 1` → `128×128 × u16` (32 768B) | Растягиваемые текстуры земли |
 | **gumpart** (MUL/UOP) | MUL: `w = extra >>> 16`, `h = extra & 0xFFFF`; UOP: префикс `u32 w, u32 h`; далее `h × u32 rowOff`, RLE `(u16 color, u16 run)` | Защита от переполнения `run` за `w` (`WARN_UO_RLE_OVERFLOW`) |
 | **light** | `w = extra & 0xFFFF`, `h = extra >>> 16`; `w × h` байт интенсивности (`int8` / `0..31`) | Конвертируется в R8 маску с сохранением знака/интенсивности |
-| **anim** (MUL/UOP) | MUL: `256 × u16 palette`, `i32 frameCount`, `frameCount × i32 offs`, кадр (`i16 cx, i16 cy, u16 w, u16 h`, RLE `u32 header` до `0x7FFF7FFF`). UOP: `AnimationFrame1..4.uop` (`AMOU`/кадры) + `AnimationSequence.uop` | `bodyconv.def`, `body.def`, `mobtypes.txt`; направления `0..4`, `5..7` зеркалятся (`3,2,1`) |
+| **anim** (MUL/UOP) | MUL: `256 × u16 palette`, `i32 frameCount`, `frameCount × i32 offs`, кадр (`i16 cx, i16 cy, u16 w, u16 h`, RLE `u32 header` до `0x7FFF7FFF`). UOP: `AnimationFrame1..4.uop` (`AMOU`/кадры) + `AnimationSequence.uop` | `bodyconv.def`, `body.def`, `mobtypes.txt`; хранятся 5 направлений; игровые `0,1,2` зеркалят хранимые `3,2,1` |
 | **multi** (MUL/UOP) | MUL: 12B (`u16 id, i16 x, i16 y, i16 z, u32 flags`) или HS 16B (`u64 flags`). UOP: `MultiCollection.uop` zlib-запись с `u32 count`, полями компонента и списком cliloc | Вычисляемый AABB `(minX..maxX, minY..maxY, minZ..maxZ)` |
 | **sound** (MUL/UOP) | 40B заголовок (`char[32] name`, `u32 unk1`, `u32 unk2`) + PCM 22 050 Гц, 16-bit signed LE, 1 канал | `sampleCount = (len - 40) / 2`, проверка чётности |
 | **cliloc.\<lang\>** | 6B заголовок (`u32=2, u16=1`) + записи (`u32 id, u8 flag, u16 len, utf8[len]`) | Подстановка `~1_LABEL~` из `\t`-аргументов + `#<id>` глубина ≤ 4 |
@@ -307,7 +307,7 @@ halfRow = y < 22 ? y : 43 - y
 runWidth = (halfRow + 1) * 2        // 2, 4, ..., 44, 44, ..., 2
 xStart   = 22 - (halfRow + 1)       // 21, 20, ..., 0, 0, ..., 21
 ```
-Сумма `runWidth` по `y = 0..43` равна ровно `1024` пикселя (`2048` байт). Пиксели с `x < xStart` или `x >= xStart + runWidth` имеют `alpha = 0`.
+Сумма `runWidth` по `y = 0..43` равна ровно `1012` пикселям (`2024` байта полезных данных; хвост записи сверх этого игнорируется). Пиксели с `x < xStart` или `x >= xStart + runWidth` имеют `alpha = 0`.
 
 #### 3. 64-битный хэш UOP (`HashLittle2`)
 Выполняется над ASCII-байтами пути в нижнем регистре с начальными 32-битными регистрами `eax = ecx = edx = (len + 0xDEADBEEF) >>> 0` (реализация Jenkins `lookup3` `hashlittle2` с 12-байтными раундами `mix` и финальным `final`, возвращающая `(BigInt(esi) << 32n) | BigInt(edi)`). Все промежуточные сдвиги и сложения выполняются через `>>> 0` и `Math.imul` для точной 32-битной беззнаковой арифметики в JS без потери точности.
@@ -318,9 +318,9 @@ xStart   = 22 - (halfRow + 1)       // 21, 20, ..., 0, 0, ..., 21
 - `200 <= body < 400` (Low-Detail Animals): `base = 22000 + (body - 200) * 65`, 13 действий × 5 направлений.
 - `body >= 400` (Human / Equipment): `base = 35000 + (body - 400) * 175`, 35 действий × 5 направлений.
 - В файлах `anim2.mul`..`anim5.mul` применяются канонические пороги слотов ClassicUO/ServUO (`anim2`: `<200` / `200..399` / `>=400`; `anim3`: `<300` / `300..399` / `>=400`; `anim4`/`anim5`: аналогично по `bodyconv.def`).
-- Направление игрока `dir ∈ [0..7]` (по доменному `Direction` из P01):
-  - `dir ∈ {0, 1, 2, 3, 4}` → `storedDir = dir`, `flipHorizontal = false`.
-  - `dir = 5` → `storedDir = 3`, `flipHorizontal = true`; `dir = 6` → `storedDir = 2`, `flipHorizontal = true`; `dir = 7` → `storedDir = 1`, `flipHorizontal = true`.
+- Направление игрока `dir ∈ [0..7]` (по доменному `Direction` из P01, `North = 0`) переводится в индекс направления анимации `animDir = (dir + 5) & 7` (хранимое `0` — лицом вниз экрана, `Down(3)`):
+  - `animDir ∈ {0, 1, 2, 3, 4}` (игровые `3, 4, 5, 6, 7`) → `storedDir = animDir`, `flipHorizontal = false`.
+  - `animDir = 5` (игровое `North`) → `storedDir = 3`; `animDir = 6` (`Right`) → `storedDir = 2`; `animDir = 7` (`East`) → `storedDir = 1`; во всех трёх случаях `flipHorizontal = true`.
 
 #### 5. Битовый RLE кадров `anim*.mul`
 Каждая команда RLE — `uint32 header`:

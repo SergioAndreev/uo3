@@ -150,9 +150,9 @@ sequenceDiagram
 | `packages/domain` | `magic/types.ts`: `SpellId` (`1..64`), `SpellCircle` (`1..8`), `ReagentId` (8 видов), `SpellTargetType`, `SpellAlignment` (`Harmful`, `Beneficial`, `Neutral`), `CastPhase`, `CastSourceType` (`Spellbook`, `Scroll`, `RunebookCharge`), `FieldType`, `SummonArchetypeId`, `RuneEntry`, коды ошибок `ERR_SPELL_*`. |
 | `packages/content` | `data/spells.yaml` (все 64 заклинания с кругом, маной, битовой маской реагентов, мантрой, флагами `isResistable`, `isReflectable`, `baseDamageDice`), `data/summons.yaml` (параметры 7 типов призывов и 12 форм `Polymorph`), TypeBox-схемы валидации контента. |
 | `packages/rules` | `magic/cast-state-machine.ts`, `magic/formulas.ts` (шанс `Magery`, `EvalInt`, `Resisting Spells`, длительности, радиусы), `magic/field-geometry.ts` (расчёт 5 тайлов поля), `magic/resolvers/*` (10 семейств резолверов для 64 заклинаний), `magic/spirit-target-selector.ts`. |
-| `packages/protocol` | Опкоды `0x0280..0x028F`, TypeBox-схемы клиентских интентов и серверных событий магии, расширение Colyseus `MobileStateSchema` полями `castPhase`, `activeSpellId`, `hasMagicReflection`, `controlSlotsUsed`, `polymorphBodyId`. |
+| `packages/protocol` | Опкоды `0x01F0..0x021F`, TypeBox-схемы клиентских интентов и серверных событий магии, расширение Colyseus `MobileStateSchema` полями `castPhase`, `activeSpellId`, `hasMagicReflection`, `controlSlotsUsed`, `polymorphBodyId`. |
 | `packages/db` | Расширение схемы `world_items` (`magic_props_jsonb` для `Spellbook`, `RecallRune`, `Runebook`) и сохранение активных долгоживущих баффов/таймеров при выходе персонажа. |
-| `apps/game-server` | `MagicSystem` в 20 Гц цикле `WorldPartitionRoom`, обработчики интентов `0x0280..0x0286`, интеграция с `CombatSystem.onDamageDealt` (прерывание каста), `DynamicTileProvider` (поля/порталы), `TargetCursorManager` (P14) и `PartitionHandoffService` (для `Recall`/`Gate Travel` между партициями). |
+| `apps/game-server` | `MagicSystem` в 20 Гц цикле `WorldPartitionRoom`, обработчики интентов `0x01F0..0x01F6`, интеграция с `CombatSystem.onDamageDealt` (прерывание каста), `DynamicTileProvider` (поля/порталы), `TargetCursorManager` (P14) и `PartitionHandoffService` (для `Recall`/`Gate Travel` между партициями). |
 | `apps/client` / `packages/ui-kit` | `SpellbookGump` (8 вкладок кругов, индекс, 64 страницы, выносные мини-иконки заклинаний на экран), `RunebookGump` (16 вкладок рун, индикатор зарядов, кнопки `Recall`/`Gate`/`Default`/`Drop`), визуализация летящих снарядов, молний, полей 5×1 и порталов `Moongate`. |
 
 ## Математические формулы и канонические таблицы UO:R
@@ -236,7 +236,7 @@ sequenceDiagram
 | **7** | 52 | `Gate Travel` | `Vas Rel Por` | BP, MR, SA | Item | Двусторонний портал `Moongate` на `30 000` мс |
 | **7** | 53 | `Mana Vampire` | `Ort Sanct` | BP, BM, MR, SS | Mobile | Перекачка до `floor((Magery - Resist)/10)` маны от цели к магу |
 | **7** | 54 | `Mass Dispel` | `Vas An Ort` | BP, GA, MR, SA | Point | Массовый `Dispel` призывов в радиусе 8 тайлов |
-| **7** | 55 | `Meteor Swarm` | `Flam Kal Des Ylem` | BP, BM, MR, SA | Point | AoE урон 7 круга в радиусе 3 тайлов с проверкой LOS |
+| **7** | 55 | `Meteor Swarm` | `Flam Kal Des Ylem` | BM, MR, SS, SA | Point | AoE урон 7 круга в радиусе 3 тайлов с проверкой LOS |
 | **7** | 56 | `Polymorph` | `Vas Ylem Rel` | BM, MR, SS | Self | Смена `bodyId` из списка форм + флаг `Criminal` |
 | **8** | 57 | `Earthquake` | `In Vas Por` | BM, GI, MR, SA | Self | AoE вокруг кастера (`1+floor(Magery/150)`т): `clamp(Hits/2, 10, 75)` |
 | **8** | 58 | `Energy Vortex` | `Vas Corp Por` | BP, BM, MR, NS | Point | Автономный дух (1 слот) на `90` с, цель по `INT + Magery` |
@@ -250,32 +250,33 @@ sequenceDiagram
 ### 3. Формулы урона, `Evaluating Intelligence` и `Resisting Spells`
 
 1. **Вероятность сопротивления заклинанию (`resistChanceBp`, `0..10000`)**:
-   $$\text{branch}_1 = \text{resistTenths} \times 2$$
-   $$\text{branch}_2 = \text{resistTenths} \times 2 - \left\lfloor \left(\frac{\text{mageryTenths} - 200}{5} + \text{circle} \times 50\right) \times 10 \right\rfloor$$
+   $$\text{branch}_1 = \text{resistTenths}$$
+   $$\text{branch}_2 = \text{resistTenths} \times 5 - (\text{mageryTenths} - 200) - \text{circle} \times 250$$
+   (эквивалент канонической формулы UO:R `max(Resist/5, Resist - ((Magery - 20)/5 + circle*5)) / 2` в процентах, переведённой в десятые навыка и bp).
    $$\text{resistChanceBp} = \text{clamp}(\max(\text{branch}_1, \text{branch}_2), 0, 10000)$$
 2. **Итоговый прямой магический урон (`FinalSpellDamage`)**:
    - Пусть `baseRoll` — бросок кубиков круга заклинания.
    - Коэффициент масштабирования `Evaluating Intelligence` пробивает пассивную защиту `Resisting Spells`:
-     $$\text{skillFactorBp} = \begin{cases} 10000 + \lfloor \frac{(\text{evalIntTenths} - \text{resistTenths}) \times 10000}{2000} \rfloor, & \text{если } \text{evalIntTenths} \ge \text{resistTenths} \\ 10000 - \lfloor \frac{(\text{resistTenths} - \text{evalIntTenths}) \times 10000}{2000} \rfloor, & \text{иначе} \end{cases}$$
+     $$\text{skillFactorBp} = \begin{cases} 10000 + \lfloor \frac{(\text{evalIntTenths} - \text{resistTenths}) \times 10000}{5000} \rfloor, & \text{если } \text{evalIntTenths} \ge \text{resistTenths} \\ 10000 - \lfloor \frac{(\text{resistTenths} - \text{evalIntTenths}) \times 10000}{2000} \rfloor, & \text{иначе} \end{cases}$$
    - Если проверка `Resisting Spells` (`rand(0..9999) < resistChanceBp`) **успешна**, урон дополнительно умножается на `0.5` (`50%` снижение).
    - Итоговый урон: `FinalSpellDamage = max(1, floor(baseRoll * skillFactorBp / 10000 * (isResisted ? 0.5 : 1.0)))`.
 
 ## Сетевой протокол (`@uo3/protocol`) и модели данных
 
-### Опкоды сообщений P18 (`0x0280..0x028F`)
+### Опкоды сообщений P18 (`0x01F0..0x021F`)
 
 | Опкод | Направление | Имя сообщения | Поля TypeBox | Описание |
 |---|---|---|---|---|
-| `0x0280` | `C -> S` | `CastSpellRequest` | `spellId: uint8 (1..64)`, `sourceType: uint8 (0=Book, 1=Scroll, 2=Macro)`, `sourceSerial?: uint32`, `polymorphFormId?: uint16` | Запрос чтения заклинания из книги, со свитка или макроса |
-| `0x0281` | `S -> C` | `SpellCastStartedEvent` | `casterSerial: uint32`, `spellId: uint8`, `circle: uint8`, `castDurationMs: uint16`, `mantra: string` | Старт фазы `Casting` в AOI (мантра + анимация) |
-| `0x0282` | `S -> C` | `SpellCastFizzledEvent` | `casterSerial: uint32`, `spellId: uint8`, `reasonCode: string` | Срыв заклинания (физзл по `Magery` или прерывание уроном) |
-| `0x0283` | `S -> C` | `SpellEffectResolvedEvent` | `casterSerial: uint32`, `targetSerial?: uint32`, `targetX: uint16`, `targetY: uint16`, `targetZ: int8`, `spellId: uint8`, `effectGraphicId: uint16`, `soundId: uint16`, `isReflected: boolean`, `isResisted: boolean` | Визуальный эффект, снаряд или отражение заклинания в AOI |
-| `0x0284` | `S -> C` | `SpellbookContentEvent` | `bookSerial: uint32`, `maskLow: uint32`, `maskHigh: uint32`, `spellCount: uint8` | Содержимое открытой книги заклинаний (64 бита) |
-| `0x0285` | `C -> S` | `RunebookActionRequest` | `runebookSerial: uint32`, `action: uint8 (0=UseCharge, 1=CastRecall, 2=CastGate, 3=SetDefault, 4=DropRune, 5=RenameBook)`, `slotIndex?: uint8 (0..15)`, `newTitle?: string` | Действие игрока в гампе `Runebook` |
-| `0x0286` | `S -> C` | `RunebookContentEvent` | `runebookSerial: uint32`, `title: string`, `charges: uint8`, `maxCharges: uint8`, `defaultSlot: int8`, `entries: Array<RunebookEntryDto>` | Полное состояние открытой `Runebook` (до 16 рун) |
-| `0x0287` | `C -> S` | `RenameRuneRequest` | `runeSerial: uint32`, `description: string (maxLength 40)` | Переименование помеченной `RecallRune` владельцем |
-| `0x0288` | `S -> C` | `FieldSegmentSpawnedEvent` | `segmentSerial: uint32`, `fieldType: uint8`, `x: uint16`, `y: uint16`, `z: int8`, `graphicId: uint16`, `expiresAtTick: uint32` | Появление сегмента поля `5×1` или портала `Moongate` |
-| `0x0289` | `S -> C` | `BuffStateUpdatedEvent` | `mobileSerial: uint32`, `activeBuffsMask: uint32`, `reactiveArmorPool: uint16`, `hasMagicReflection: boolean` | Обновление активных магических баффов/дебаффов мобила |
+| `0x01F0` | `C -> S` | `CastSpellRequest` | `spellId: uint8 (1..64)`, `sourceType: uint8 (0=Book, 1=Scroll, 2=Macro)`, `sourceSerial?: uint32`, `polymorphFormId?: uint16` | Запрос чтения заклинания из книги, со свитка или макроса |
+| `0x01F1` | `S -> C` | `SpellCastStartedEvent` | `casterSerial: uint32`, `spellId: uint8`, `circle: uint8`, `castDurationMs: uint16`, `mantra: string` | Старт фазы `Casting` в AOI (мантра + анимация) |
+| `0x01F2` | `S -> C` | `SpellCastFizzledEvent` | `casterSerial: uint32`, `spellId: uint8`, `reasonCode: string` | Срыв заклинания (физзл по `Magery` или прерывание уроном) |
+| `0x01F3` | `S -> C` | `SpellEffectResolvedEvent` | `casterSerial: uint32`, `targetSerial?: uint32`, `targetX: uint16`, `targetY: uint16`, `targetZ: int8`, `spellId: uint8`, `effectGraphicId: uint16`, `soundId: uint16`, `isReflected: boolean`, `isResisted: boolean` | Визуальный эффект, снаряд или отражение заклинания в AOI |
+| `0x01F4` | `S -> C` | `SpellbookContentEvent` | `bookSerial: uint32`, `maskLow: uint32`, `maskHigh: uint32`, `spellCount: uint8` | Содержимое открытой книги заклинаний (64 бита) |
+| `0x01F5` | `C -> S` | `RunebookActionRequest` | `runebookSerial: uint32`, `action: uint8 (0=UseCharge, 1=CastRecall, 2=CastGate, 3=SetDefault, 4=DropRune, 5=RenameBook)`, `slotIndex?: uint8 (0..15)`, `newTitle?: string` | Действие игрока в гампе `Runebook` |
+| `0x01F6` | `S -> C` | `RunebookContentEvent` | `runebookSerial: uint32`, `title: string`, `charges: uint8`, `maxCharges: uint8`, `defaultSlot: int8`, `entries: Array<RunebookEntryDto>` | Полное состояние открытой `Runebook` (до 16 рун) |
+| `0x01F7` | `C -> S` | `RenameRuneRequest` | `runeSerial: uint32`, `description: string (maxLength 40)` | Переименование помеченной `RecallRune` владельцем |
+| `0x01F8` | `S -> C` | `FieldSegmentSpawnedEvent` | `segmentSerial: uint32`, `fieldType: uint8`, `x: uint16`, `y: uint16`, `z: int8`, `graphicId: uint16`, `expiresAtTick: uint32` | Появление сегмента поля `5×1` или портала `Moongate` |
+| `0x01F9` | `S -> C` | `BuffStateUpdatedEvent` | `mobileSerial: uint32`, `activeBuffsMask: uint32`, `reactiveArmorPool: uint16`, `hasMagicReflection: boolean` | Обновление активных магических баффов/дебаффов мобила |
 
 ### Схема хранения магических свойств предметов в PostgreSQL (`packages/db`)
 
@@ -301,7 +302,7 @@ sequenceDiagram
 1. Добавить доменные типы магии и коды ошибок в `packages/domain`.
 2. Опубликовать каталог 64 заклинаний `spells.yaml` и архетипы призывов `summons.yaml` в `packages/content` с валидацией схем при сборке.
 3. Реализовать чистый конечный автомат каста, математические формулы, геометрию полей 5×1 и 10 семейств резолверов в `packages/rules/src/magic/*`, покрыв их детерминированными unit-тестами.
-4. Расширить `packages/protocol` опкодами `0x0280..0x0289` и `packages/db` поддержкой `ItemMagicPropsV1` для `Spellbook`, `RecallRune` и `Runebook`.
+4. Расширить `packages/protocol` опкодами `0x01F0..0x01F9` и `packages/db` поддержкой `ItemMagicPropsV1` для `Spellbook`, `RecallRune` и `Runebook`.
 5. Встроить `MagicSystem` в 20 Гц цикл `apps/game-server`, связав его с `CombatSystem`, `DynamicTileProvider`, `TargetCursorManager` и `TeleportSync`.
 6. Реализовать `SpellbookGump`, `RunebookGump` и рендеринг эффектов заклинаний/полей в `packages/ui-kit` и `apps/client`.
 

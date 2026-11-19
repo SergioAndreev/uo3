@@ -43,16 +43,17 @@
 - **Затрагиваемые пакеты и приложения**:
   - `packages/domain`: типы шаблонов домов (`HouseTemplateId`, `HouseFootprint`, `HouseStorageLimits`), ролей доступа (`HouseAccessRole`, `HousePublicityMode`), стадий распада (`HouseDecayStage`), кодов ошибок `ERR_HOUSE_*`.
   - `packages/rules`: чистые изоморфные функции проверки площадки `validateHousePlacement`, расчёта бюджета `calculateHouseStorageUsage`, матрицы прав `evaluateHouseAccess`, переходов стадий распада `evaluateHouseDecayStage`, проверки аддонов `validateAddonPlacement` и интеграции тайлов мульти в `DynamicTileProvider` (P03).
-  - `packages/protocol`: опкоды `0x02C0..0x02CF` (превью и запрос постройки, гамп вывески, управление списками доступа, команды фиксации/сундуков, передача дома, снос, синхронизация мульти в AOI 31 тайл).
+  - `packages/protocol`: опкоды `0x02B0..0x02BF` (превью и запрос постройки, гамп вывески, управление списками доступа, команды фиксации/сундуков, передача дома, снос, синхронизация мульти в AOI 31 тайл).
   - `packages/content`: YAML-реестр 18 канонических домов UO:R (`content/housing/house-templates.yaml`), каталог табличек (`house-signs.yaml`) и маппинг крафтовых аддонов (`house-addons.yaml`).
   - `packages/db`: таблицы `world_houses`, `world_house_access_lists`, `world_house_secures`, `world_house_lockdowns`, `world_house_addons`, миграции Drizzle и атомарные записи в `item_ledger` через `CriticalTxCoordinator` (P08).
   - `apps/game-server`: `HouseModule`, `HousePlacementService`, `HouseAccessService`, `HouseInteriorService`, `HouseDecayScheduler`, реализация портов `IVendorPlacementPolicy` (P21), `IRegionSpellPolicy` (P18), `ContainerAccessGrantPort` (P07/P13) и `CHARACTER_DELETION_GUARDS` (P05).
   - `apps/client`: режим `GhostMultiPlacementTool` в `MultiLayer` (P10), послойный Z-culling крыш, гамп вывески дома (`HouseSignGump`) в `@uo3/ui-kit`.
-- **Зависимости от предыдущих фаз**: P03 (`DynamicTileProvider`, 3D LOS), P05 (`CHARACTER_DELETION_GUARDS`), P06/P07 (AOI 31 тайл для мульти, `ContainerAccessGrantPort`), P08 (`CriticalTxCoordinator` RPO=0, `item_ledger`), P10 (`MultiLayer`), P12 (`checkMovement`), P13/P14 (контейнеры, гампы, таргетинг, речь), P18 (`IRegionSpellPolicy`), P20 (`Add-on Deeds`), P21 (`IVendorPlacementPolicy`, `planCurrencySpend`, `Bank Check`).
+- **Зависимости от предыдущих фаз**: P03 (`DynamicTileProvider`, 3D LOS), P05 (`CHARACTER_DELETION_GUARDS`), P06/P07 (AOI 31 тайл для мульти, `ContainerAccessGrantPort`), P08 (`CriticalTxCoordinator` RPO=0, `item_ledger`), P10 (`MultiLayer`), P12 (`checkMovement`), P13/P14 (контейнеры, гампы, таргетинг, речь), P17 (`pvp/guard-zones` для реализации по умолчанию `IHousingRegionPolicy`), P18 (`IRegionSpellPolicy`), P20 (`Add-on Deeds`), P21 (`IVendorPlacementPolicy`, `planCurrencySpend`, `Bank Check`).
 - **Разблокируемые фазы**: P24 (Корабли — переиспользуют движок мульти-объектов и динамических тайлов), P26 (Гильдии — установка Guildstone внутри домов), P32 (Сшивка партиций и кросс-серверный реестр недвижимости).
 
 ### Вне скоупа
 - Кастомный поблочный конструктор домов из эпохи Age of Shadows (House Customization Tool) — в UO:R используются строго фиксированные классические чертежи домов.
 - Плавучие мульти-объекты, перемещение мульти по воде и трапы кораблей — относятся к фазе **P24 (Корабли и мореплавание)**.
 - Установка камней гильдий (Guildstones) и гильдейская дипломатия — относятся к фазе **P26 (Гильдии и партии)**.
-- Захват домов фракциями и сигилы городов — относятся к фазе **P27 (Фракции и города)**.
+- Захват домов фракциями и сигилы городов — механика после эпохи UO:R, вне скоупа ROADMAP.
+- Региональные данные (города, подземелья, лунные врата) — **P25**; до неё запретные зоны размещения берутся из реализации порта `IHousingRegionPolicy` по умолчанию (охраняемые зоны P17 + статический список контента), которую P25 заменяет.

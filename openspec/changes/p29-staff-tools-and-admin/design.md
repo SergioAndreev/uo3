@@ -24,7 +24,7 @@
 - Создать append-only журнал `staff_audit_log` с цепочкой хешей SHA-256, снимками `beforeState`/`afterState`, редактированием PII/секретов, проверкой целостности и детектором аномалий персонала в реальном времени.
 
 ### Non-Goals
-- Развёртывание инфраструктуры Prometheus/Grafana/Tempo/Loki и профилировщиков — относится к **P30**.
+- Развёртывание инфраструктуры Prometheus/Grafana/Tempo/Loki и профилировщиков — относится к **P33**.
 - Детекция читов со стороны обычных игроков (speedhack, packet tampering) — относится к **P31**.
 - Автоматическое динамическое расщепление и слияние партиций — относится к **P32**.
 - Настройка физического резервного копирования СУБД (pgBackRest/Barman WAL/PITR) — относится к **P33**.
@@ -97,31 +97,31 @@
 | :--- | :--- |
 | `packages/domain` | Перечисления и типы `StaffCommandName`, `StaffScopeModifier`, `HelpPageCategory`, `HelpPageStatus`, `SanctionType`, `AuditActionType`, `ApprovalStatus`, матрица минимальных уровней доступа `STAFF_COMMAND_ACL`. |
 | `packages/rules` | AST-парсер команд `[` и предикатов `where`, реестр `PropsWhitelistPolicy`, расчёт хеш-цепочки `computeAuditEntryHash` и `verifyAuditChain`, редакция секретов `redactAuditPayload`, правила `evaluateStaffAnomaly`, выбор безопасного города `resolveUnstuckDestination`. |
-| `packages/protocol` | Опкоды `0x02E0..0x02EF` (TypeBox-схемы команд, гампа `[props`, очереди `[pages`, подачи тикета `Help`, алертов персонала и HUD-статуса GM). |
+| `packages/protocol` | Опкоды `0x0360..0x036F` (TypeBox-схемы команд, гампа `[props`, очереди `[pages`, подачи тикета `Help`, алертов персонала и HUD-статуса GM). |
 | `packages/db` | Таблицы Drizzle ORM: `staff_audit_log` (помесячные партиции), `audit_chain_checkpoints`, `help_pages`, `help_page_messages`, `admin_sanctions`, `admin_approval_requests`; SQL-триггер запрета мутаций аудита. |
 | `apps/game-server` | `StaffCommandInterceptor`, `StaffBatchJobRunner` (10 мс/тик), исполнители команд, интеграция с `CriticalTxCoordinator` (P08) и `StateView` (`StaffHidden`), захват `HelpPageContextSnapshotV1`, NATS-подписчик `AdminPartitionCommandConsumer`. |
 | `apps/api` | Контроллеры `/api/v1/admin/*` (`AdminAuthGuard` + Step-up MFA + RateLimit), `AdminMutationRouter`, `LedgerRollbackCoordinator`, `TwoPersonApprovalService`, `HelpDeskService`, `AuditQueryAndExportService`, `ShardMaintenanceService`, SSE `/api/v1/admin/events/stream`. |
 | `apps/admin` | Веб-консоль на React 19 + TanStack Query 5 + `@uo3/ui-kit`: дашборд партиций и экономики M1/M2/M3, поиск игроков/аккаунтов, дерево инвентаря/банка, граф и откат `item_ledger`, очередь `Help Desk`, журнал аудита с проверкой цепочки, страница заявок `Two-Person Rule`. |
 | `apps/client` & `packages/ui-kit` | Гампы `HelpRequestGump`, `PlayerTicketNotificationGump`, `StaffPropsGump`, `StaffPagesQueueGump`, визуальный индикатор активного GM-режима (`StaffHidden`/`Invul`) и полупрозрачный рендер скрытых коллег равного или младшего ранга. |
 
-### Сетевой протокол (`@uo3/protocol`, диапазон `0x02E0..0x02EF`)
+### Сетевой протокол (`@uo3/protocol`, диапазон `0x0360..0x036F`)
 
 | Опкод | Направление | Имя сообщения | Ключевые поля TypeBox |
 | :--- | :--- | :--- | :--- |
-| `0x02E0` | C -> S | `StaffCommandExecuteIntent` | `rawCommand: string (1..512)`, `clientCorrelationId: string` |
-| `0x02E1` | S -> C | `StaffCommandFeedbackEvent` | `correlationId: string`, `ok: boolean`, `errorCode?: string`, `message: string`, `affectedCount: uint16` |
-| `0x02E2` | S -> C | `StaffModeStateSyncEvent` | `assignedLevel: uint8 (0..6)`, `effectiveLevel: uint8 (0..6)`, `staffHidden: boolean`, `invulnerable: boolean`, `mfaExpiresAtMs: uint64` |
-| `0x02E3` | S -> C | `StaffPropsOpenEvent` | `targetSerial: uint32`, `entityKind: string`, `title: string`, `entries: Array<{ key, label, valueType, currentValue, editable, minWriteLevel }>` |
-| `0x02E4` | C -> S | `StaffPropsMutateIntent` | `targetSerial: uint32`, `propertyKey: string`, `newValue: unknown`, `reason?: string` |
-| `0x02E5` | C -> S | `HelpPageSubmitIntent` | `category: HelpPageCategory`, `description: string (10..500)` |
-| `0x02E6` | C -> S | `HelpAutoUnstuckIntent` | `confirmFreeze120s: boolean` |
-| `0x02E7` | S -> C | `HelpPagePlayerStateEvent` | `ticketId?: string`, `status?: HelpPageStatus`, `category?: string`, `unstuckRemainingToday: uint8`, `cooldownRemainingSec: uint16`, `unreadMessages: Array<{ id, authorName, body, createdAtMs }>` |
-| `0x02E8` | C -> S | `HelpPagePlayerReplyIntent` | `ticketId: string`, `message: string (1..500)`, `cancelTicket?: boolean` |
-| `0x02E9` | S -> C | `StaffPagesQueueSyncEvent` | `openCount: uint16`, `breachedCount: uint16`, `items: Array<{ ticketId, category, status, priority, playerSerial, playerName, facetId, x, y, z, assignedStaffName?, createdAtMs, slaBreached }>` |
-| `0x02EA` | C -> S | `StaffPageActionIntent` | `ticketId: string`, `action: 'CLAIM' \| 'RELEASE' \| 'ESCALATE' \| 'RESOLVE' \| 'GOTO' \| 'BRING' \| 'REPLY' \| 'SQUELCH'`, `payload?: { message?: string, squelchHours?: uint8, reason?: string }` |
-| `0x02EB` | S -> C | `StaffPageDetailEvent` | `ticketId: string`, `snapshot: HelpPageContextSnapshotV1`, `messages: Array<{ id, senderRole, senderName, body, createdAtMs }>` |
-| `0x02EC` | S -> C | `ShardMaintenanceBroadcastEvent` | `active: boolean`, `shutdownAtMs?: uint64`, `remainingSec?: uint32`, `reason?: string` |
-| `0x02ED` | S -> C | `StaffSecurityAlertEvent` | `alertId: string`, `severity: 'WARN' \| 'CRITICAL'`, `ruleCode: string`, `actorName: string`, `summary: string`, `createdAtMs: uint64` |
+| `0x0360` | C -> S | `StaffCommandExecuteIntent` | `rawCommand: string (1..512)`, `clientCorrelationId: string` |
+| `0x0361` | S -> C | `StaffCommandFeedbackEvent` | `correlationId: string`, `ok: boolean`, `errorCode?: string`, `message: string`, `affectedCount: uint16` |
+| `0x0362` | S -> C | `StaffModeStateSyncEvent` | `assignedLevel: uint8 (0..6)`, `effectiveLevel: uint8 (0..6)`, `staffHidden: boolean`, `invulnerable: boolean`, `mfaExpiresAtMs: uint64` |
+| `0x0363` | S -> C | `StaffPropsOpenEvent` | `targetSerial: uint32`, `entityKind: string`, `title: string`, `entries: Array<{ key, label, valueType, currentValue, editable, minWriteLevel }>` |
+| `0x0364` | C -> S | `StaffPropsMutateIntent` | `targetSerial: uint32`, `propertyKey: string`, `newValue: unknown`, `reason?: string` |
+| `0x0365` | C -> S | `HelpPageSubmitIntent` | `category: HelpPageCategory`, `description: string (10..500)` |
+| `0x0366` | C -> S | `HelpAutoUnstuckIntent` | `confirmFreeze120s: boolean` |
+| `0x0367` | S -> C | `HelpPagePlayerStateEvent` | `ticketId?: string`, `status?: HelpPageStatus`, `category?: string`, `unstuckRemainingToday: uint8`, `cooldownRemainingSec: uint16`, `unreadMessages: Array<{ id, authorName, body, createdAtMs }>` |
+| `0x0368` | C -> S | `HelpPagePlayerReplyIntent` | `ticketId: string`, `message: string (1..500)`, `cancelTicket?: boolean` |
+| `0x0369` | S -> C | `StaffPagesQueueSyncEvent` | `openCount: uint16`, `breachedCount: uint16`, `items: Array<{ ticketId, category, status, priority, playerSerial, playerName, facetId, x, y, z, assignedStaffName?, createdAtMs, slaBreached }>` |
+| `0x036A` | C -> S | `StaffPageActionIntent` | `ticketId: string`, `action: 'CLAIM' \| 'RELEASE' \| 'ESCALATE' \| 'RESOLVE' \| 'GOTO' \| 'BRING' \| 'REPLY' \| 'SQUELCH'`, `payload?: { message?: string, squelchHours?: uint8, reason?: string }` |
+| `0x036B` | S -> C | `StaffPageDetailEvent` | `ticketId: string`, `snapshot: HelpPageContextSnapshotV1`, `messages: Array<{ id, senderRole, senderName, body, createdAtMs }>` |
+| `0x036C` | S -> C | `ShardMaintenanceBroadcastEvent` | `active: boolean`, `shutdownAtMs?: uint64`, `remainingSec?: uint32`, `reason?: string` |
+| `0x036D` | S -> C | `StaffSecurityAlertEvent` | `alertId: string`, `severity: 'WARN' \| 'CRITICAL'`, `ruleCode: string`, `actorName: string`, `summary: string`, `createdAtMs: uint64` |
 
 ### Матрица внутриигровых команд персонала (`AccessLevel 1..6`)
 
@@ -300,9 +300,9 @@ sequenceDiagram
 
 ## Migration Plan
 
-1. **Пакеты домена, правил и протокола**: добавить типы и константы P29 в `@uo3/domain`, парсер команд, политику `PropsWhitelistPolicy`, функции хеш-цепочки и детектора аномалий в `@uo3/rules`, опкоды `0x02E0..0x02EF` в `@uo3/protocol`.
+1. **Пакеты домена, правил и протокола**: добавить типы и константы P29 в `@uo3/domain`, парсер команд, политику `PropsWhitelistPolicy`, функции хеш-цепочки и детектора аномалий в `@uo3/rules`, опкоды `0x0360..0x036F` в `@uo3/protocol`.
 2. **Миграции БД (`@uo3/db`)**: накатить Drizzle-миграцию для создания таблиц `staff_audit_log` (с партициями на текущий и следующий месяц), `audit_chain_checkpoints`, `help_pages`, `help_page_messages`, `admin_sanctions`, `admin_approval_requests` и триггера иммутабельности `prevent_staff_audit_mutation_trg`.
-3. **Игровой сервер (`apps/game-server`)**: зарегистрировать `StaffCommandInterceptor`, `StaffBatchJobRunner`, обработчики `0x02E0..0x02EA` в `IntentHandlerRegistry`, фильтр `StaffHidden` в `StateView` и NATS-консьюмер `AdminPartitionCommandConsumer`.
+3. **Игровой сервер (`apps/game-server`)**: зарегистрировать `StaffCommandInterceptor`, `StaffBatchJobRunner`, обработчики `0x0360..0x036A` в `IntentHandlerRegistry`, фильтр `StaffHidden` в `StateView` и NATS-консьюмер `AdminPartitionCommandConsumer`.
 4. **Административный API (`apps/api`) и веб-консоль (`apps/admin`)**: развернуть модуль `/api/v1/admin/*` с гардами MFA/Step-up/RateLimit и собрать разделы SPA `apps/admin`.
 5. **Игровой клиент (`apps/client`, `@uo3/ui-kit`)**: подключить гампы `HelpRequestGump`, `StaffPropsGump`, `StaffPagesQueueGump` и оверлей статуса персонала.
 

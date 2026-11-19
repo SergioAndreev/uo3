@@ -17,7 +17,7 @@
 - **Веб-консоль персонала и административный API (`admin/admin-console`)**:
   - Защищённый контур `/api/v1/admin/*` в `apps/api` и SPA-интерфейс в `apps/admin` с обязательным MFA (`mfa=true`), ролевым разграничением (`Counselor..Owner`), rate-limiting и периодическим step-up подтверждением TOTP/WebAuthn.
   - Поиск и инспекция карточек аккаунтов, персонажей (статы, 49 навыков, инвентарь, банк `0x1D`, дома, стойла, карма/убийства), домов и спавнеров.
-  - Управление санкциями (бан аккаунта/подсети, mute чата, перевод в `Jail` и освобождение) с мгновенным отзывом сессий через NATS JetStream (`IDENTITY_EVENTS`, P04) и разрывом WS-соединения (`4003`).
+  - Управление санкциями (бан аккаунта/подсети, mute чата, перевод в `Jail` и освобождение) с мгновенным отзывом сессий через NATS JetStream (`IDENTITY_EVENTS`, P04) и разрывом WS-соединения (`4103` `WS_CLOSE_BANNED`).
   - Безопасная маршрутизация мутаций: онлайн-персонажи изменяются только через авторитарную команду в целевую `WorldPartitionRoom`, оффлайн-персонажи — атомарно в PostgreSQL 17 с проверкой `partition_epoch` (P08).
   - Визуализация графа происхождения предметов по `item_ledger`, точечный идемпотентный откат транзакций (`RPO=0`), правило двух рук (`Two-Person Rule`) для массовых компенсаций и опасных операций, дашборд партиций (тик 20 Гц, p50/p95/p99, экономики M1/M2/M3) и оркестрация глобальных объявлений и техработ (`Maintenance Shutdown`).
 - **Система обращений игроков (`admin/help-paging`)**:
@@ -46,7 +46,7 @@
 - **Затрагиваемые приложения и пакеты**:
   - `packages/domain`: типы команд персонала, матрица разрешений `StaffPermissionMatrix`, статусы и категории тикетов `HelpPageStatus`/`HelpPageCategory`, модели записей аудита и правил детекции аномалий.
   - `packages/rules`: чистые валидаторы мутаций белого списка свойств (`PropsWhitelistPolicy`), расчёт безопасных точек `Auto-Unstuck`, каноническая сериализация и проверка хеш-цепочки `SHA-256` журнала аудита, бюджетирование пакетных команд по тикам 20 Гц.
-  - `packages/protocol`: опкоды `0x02E0..0x02EF` для внутриигровых команд персонала, гампов `[props` и `[pages`, уведомлений тикетов помощи и телеметрии персонала; схемы TypeBox.
+  - `packages/protocol`: опкоды `0x0360..0x036F` для внутриигровых команд персонала, гампов `[props` и `[pages`, уведомлений тикетов помощи и телеметрии персонала; схемы TypeBox.
   - `packages/db`: миграции Drizzle ORM для таблиц `staff_audit_log` (partitioned), `audit_chain_checkpoints`, `help_pages`, `help_page_messages`, `admin_sanctions`, `admin_approval_requests`.
   - `apps/game-server`: перехватчик команд `[` в `WorldPartitionRoom`, исполнители команд с интеграцией `CriticalTxCoordinator` (P08) и `TargetCursorManager` (P14), фильтрация `StaffHidden` в `StateView` (P07), обработчики NATS-команд из `apps/api`.
   - `apps/api`: модуль `/api/v1/admin/*` (аккаунты, персонажи, санкции, `item_ledger` rollback, `Two-Person Rule`, тикеты помощи, аудит, техработы), SSE-стрим оперативных событий.
@@ -56,10 +56,10 @@
   - Обязательная прямая зависимость по ROADMAP: **P08** (Persistence, `CriticalTxCoordinator` RPO=0, `item_ledger`, `partition_epoch`).
   - Использует контракты P01 (`AccessLevel 0..6`), P04 (JWT/MFA, `evaluateAccessPolicy`, `IDENTITY_EVENTS`), P06/P07 (`WorldPartitionRoom`, `StateView`, `IntentHandlerRegistry`), P12 (`TeleportSync`, `PartitionHandoffTicket`), P13/P14 (`GumpSessionRegistry`, `TargetCursorManager`), P17/P21 (`item_ledger`, `FAUCET_*`/`SINK_*`), P25 (регионы и безопасные города), P26 (модерация чата и `SpeechRouter`).
 - **Какие фазы разблокируются**:
-  - Подготавливает эксплуатационный контур для **P30** (Observability & Telemetry), **P31** (Anti-Cheat & Security Hardening), **P32** (Dynamic World Partitioning) и **P33** (LiveOps, Backups & DR Drills).
+  - Подготавливает эксплуатационный контур для **P30** (инструменты hot-reload и отката контента в консоли), **P31** (Anti-Cheat & Security Hardening), **P32** (масштабирование мира) и **P33** (наблюдаемость и эксплуатация, бэкапы и DR).
 
 ### Вне скоупа
-- Низкоуровневая инфраструктура сборщиков метрик Prometheus/Grafana/Tempo/Loki и нагрузочное профилирование — реализуется в **P30** (`p30-observability-and-telemetry`).
+- Низкоуровневая инфраструктура сборщиков метрик Prometheus/Grafana/Tempo/Loki и нагрузочное профилирование — реализуется в **P33** (`p33-observability-and-operations`) и **P35** (`p35-load-and-acceptance-testing`).
 - Автоматические эвристики античита для обычных игроков (speedhack-детекторы, пакетный фаззинг, криптографическая защита клиента) — реализуются в **P31** (`p31-security-and-anti-cheat`).
-- Динамическое слияние и разбиение границ партиций под нагрузкой — реализуется в **P32** (`p32-world-partitioning-and-scaling`).
-- Оркестрация резервного копирования WAL/PITR на уровне СУБД и учения аварийного восстановления — реализуются в **P33** (`p33-deployment-and-liveops`).
+- Динамическое слияние и разбиение границ партиций под нагрузкой — реализуется в **P32** (`p32-world-scaling`).
+- Оркестрация резервного копирования WAL/PITR на уровне СУБД и учения аварийного восстановления — реализуются в **P33** (`p33-observability-and-operations`).

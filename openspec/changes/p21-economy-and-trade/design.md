@@ -6,7 +6,7 @@
 - **P07 (`@uo3/protocol`)**: бинарно-компактные сообщения с `uint16` опкодами, валидация `TypeBox`, схемы `@colyseus/schema` v3 и порт `ContainerAccessGrantPort` для динамического предоставления и отзыва прав просмотра/модификации контейнеров.
 - **P08 (`@uo3/db`, `CriticalTxCoordinator`)**: двухконтурное персистентное хранение, где обычное состояние мира сбрасывается каждые 60 с, а критические имущественные операции выполняются синхронно с `RPO=0` в PostgreSQL 17 с обязательной записью в журнал `item_ledger`.
 - **P13 (Инвентарь и контейнеры)**: иерархия контейнеров глубиной до 5 уровней, лимиты `125` предметов и `400.0` камней (`4000` десятых долей камня), стаки до `60000` единиц, двухфазный `Drag-and-Drop` с `BounceBack` и зарезервированный слой экипировки `0x1D` (`Bank`).
-- **P14 (Интерактивный UI, гампы и речь)**: `SpeechRouter` с радиусами слышимости `1/15/18` тайлов и `GumpSessionRegistry` (`0x0260..0x026F`).
+- **P14 (Интерактивный UI, гампы и речь)**: `SpeechRouter` с радиусами слышимости `1/15/18` тайлов и `GumpSessionRegistry` (опкоды P14 `0x0150..0x017F`).
 - **P19 (ИИ NPC, спавнеры и лут)**: жизненный цикл NPC в `WorldPartitionRoom`, таблицы лута (`FAUCET_MONSTER_LOOT`) и профили мирных городских NPC (банкиров и торговцев).
 - **P20 (Добыча ресурсов и базовый крафт)**: потоки сырьевых ресурсов и крафтовых изделий с показателями прочности (`currentHp / maxHp`) и качества (`Exceptional`), поступающих в магазины NPC и на витрины вендоров игроков.
 
@@ -24,9 +24,9 @@
 
 ### Non-Goals
 - Межшардовая торговля и глобальный аукционный дом (противоречит канону UO:R, где торговля привязана к физическим NPC-вендорам в мире).
-- Система заказов ремесленников (`Bulk Order Deeds`) — вынесена в **P22**.
+- Система заказов ремесленников (`Bulk Order Deeds`) — механика после эпохи UO:R, вне скоупа ROADMAP.
 - Строительство домов, права совладельцев дома и арендные контракты вендоров (`Vendor Rental Contract`) — вынесены в **P23** (в P21 используется абстрактный порт `IVendorPlacementPolicy`).
-- Графические дашборды экономики в `apps/admin` — фронтенд админ-панели реализуется в **P31** (в P21 создаются таблицы агрегатов, метрики Prometheus и REST API `/api/v1/admin/economy/*`).
+- Графические дашборды экономики в `apps/admin` — фронтенд админ-панели реализуется в **P29** (инструменты персонала) (в P21 создаются таблицы агрегатов, метрики Prometheus и REST API `/api/v1/admin/economy/*`).
 
 ## Decisions
 
@@ -45,6 +45,7 @@
 
 ### Decision 3: Анти-скам защита окна обмена — сброс обеих галочек + серверный карантин `500 мс` + перевод `virtualGoldOffer`
 - **Выбор**: Любая мутация `ContainerA`, `ContainerB` или числового предложения безналичного банковского золота `virtualGoldOffer` (`0..999999999`) немедленно переводит автомат сессии в состояние `MODIFIED_COOLDOWN`, сбрасывает `acceptedA = false` и `acceptedB = false`, записывает метку `cooldownUntilMs = nowMs + 500` и рассылает пакет `SecureTradeStateSync` (`0x0272`). Любой пакет `SecureTradeConfirmRequest` (`0x0271`) с `accepted = true`, пришедший при `nowMs < cooldownUntilMs`, отклоняется с `ERR_TRADE_CONFIRM_COOLDOWN`.
+- **Флаг эпохи**: перевод `virtualGoldOffer` — механика после UO:R; доступен только при флаге `tradeWindowBankGold` профиля эпохи (ADR-010), в профиле UO:R по умолчанию выключен (`ERR_FEATURE_DISABLED`).
 - **Обоснование**: Классический вид мошенничества в MMO — быстро убрать дорогой предмет или уменьшить сумму золота за долю секунды до того, как партнёр кликнет по галочке подтверждения. Серверный карантин `500 мс` (10 тиков симуляции по 50 мс) гарантирует, что клиент партнёра успеет отрисовать новое состояние лотка и заблокировать чекбокс до того, как сервер примет подтверждение. Поддержка `virtualGoldOffer` (прямой перевод из банка в банк в окне обмена) избавляет от необходимости выпускать десятки чеков при сделках свыше `1000000` золота.
 - **Отвергнутые альтернативы**:
   - *Двухшаговое окно подтверждения (отдельное модальное окно после галочек)*: замедляет мелкие обмены и не соответствует классическому гампу UO:R.
@@ -126,6 +127,7 @@ flowchart TD
    - Константы: `GOLD_ITEM_DEF_ID = 0x0EED`, `BANK_CHECK_ITEM_DEF_ID = 0x14F0`, `BANK_CHECK_HUE = 0x0034`, `GOLD_UNIT_WEIGHT_TENTHS = 0.2`, `GOLD_MAX_STACK = 60000`, `BANK_MAX_ITEMS = 125`, `BANK_MAX_WEIGHT_TENTHS = 4000`, `BANK_INTERACT_RANGE = 6`, `BANK_AUTO_DEBIT_THRESHOLD = 2000`, `BANK_CHECK_MIN_WORTH = 5000`, `BANK_CHECK_MAX_WORTH = 1000000`, `SECURE_TRADE_RANGE = 2`, `SECURE_TRADE_COOLDOWN_MS = 500`, `SECURE_TRADE_TIMEOUT_MS = 180000`, `NPC_VENDOR_RANGE = 4`, `NPC_RESTOCK_INTERVAL_MS = 1800000`, `PLAYER_VENDOR_RANGE = 3`, `PLAYER_VENDOR_WAGE_INTERVAL_MS = 7200000`, `PLAYER_VENDOR_BASE_WAGE = 20`, `PLAYER_VENDOR_VALUATION_DIVISOR = 500`.
    - Перечисления `EconomyFlowCategory` (`FAUCET_*`, `SINK_*`, `TRANSFER_*`), `SecureTradeCancelReason`, коды ошибок `ERR_BANK_*`, `ERR_TRADE_*`, `ERR_VENDOR_*`, `ERR_ECONOMY_*`.
    - Интерфейс порта `IVendorPlacementPolicy` (реализация по умолчанию в P21 проверяет рыночные зоны `MarketZone`, в P23 расширяется проверкой публичных домов).
+   - Реализация порта `IBankingService`, объявленного в P19 (`npc/npc-speech-and-services`): `BankingService` подменяет реализацию по умолчанию (`ERR_SERVICE_UNAVAILABLE`) и обслуживает `balance`/`withdraw`/`check`; открытие `BankBox` по `"bank"` и отзыв доступа на дистанции `> 6` тайлов остаются за банкиром P19, требование `economy/currency-and-banking` фиксирует тот же контракт для финансовых операций.
 2. **`packages/rules/src/economy/*`**:
    - `calcGoldStackWeightTenths(amount: number): number` — возвращает `Math.ceil(amount * 0.2)`.
    - `planCurrencySpend(params: CurrencySpendInput): CurrencySpendPlan` — чистая функция выбора стаков монет и чеков из рюкзака/банка с расчётом сдачи.

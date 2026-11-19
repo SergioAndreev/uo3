@@ -32,7 +32,7 @@
 ## Decisions
 
 ### D1. Компактные числовые `uint16` wire-опкоды + символьный реестр `namespace.action` + предкомпилированный TypeBox
-- **Выбор:** Каждое сообщение протокола имеет каноническое символьное имя (`move.walk_req`, `world.double_click`, `time.ping`) и неизменяемый в рамках мажорной версии `uint16` wire-опкод (`0x0001..0x0FFF` — client intents, `0x1000..0x1FFF` — server immediate events/responses), сгруппированный по доменным диапазонам с шагом `0x0100`. Поверх встроенной бинарной сериализации Colyseus (MessagePack) каждый опкод валидируется предкомпилированным `TypeCompiler.Compile(schema)` с `additionalProperties: false` и проверкой глубины/размера сырого фрейма.
+- **Выбор:** Каждое сообщение протокола имеет каноническое символьное имя (`move.walk_req`, `world.double_click`, `time.ping`) и неизменяемый в рамках мажорной версии `uint16` wire-опкод из нормативного реестра [docs/PROTOCOL_REGISTRY.md](../../../docs/PROTOCOL_REGISTRY.md) (единое пространство `0x0001..0x0FFF` для обоих направлений, блоки закреплены за фазами-владельцами). P07 определяет собственные сообщения **только** в своём блоке `0x0001..0x001F` и поставляет механизм каталога (регистрация, метаданные, валидаторы); опкоды и схемы доменных намерений/событий (движение, предметы, бой, магия, гампы, речь, эффекты, команды персонала) назначают фазы-владельцы в своих блоках. До их реализации тесты P07 используют тестовые фикстуры-намерения из `packages/test-kit`, регистрируемые только в тестовом каталоге. Поверх встроенной бинарной сериализации Colyseus (MessagePack) каждый опкод валидируется предкомпилированным `TypeCompiler.Compile(schema)` с `additionalProperties: false` и проверкой глубины/размера сырого фрейма.
 - **Обоснование:** Передача `uint16` вместо строки `"world.double_click"` экономит 14–26 байт на каждом высокочастотном кадре (`move.walk_req`, `time.ping`, `event.damage_number`), а предкомпилированный TypeBox проверяет структуру за ~1–3 мкс (укладываясь в бюджет `p99 ≤ 30 мс` при 500+ клиентах) и одновременно генерирует JSON Schema для контрактных тестов, документации и фаззера P31.
 - **Отвергнутые альтернативы:**
   - *Строковые типы сообщений Colyseus (`"move.walk_req"`):* лишний сетевой трафик на 20 Гц и отсутствие жёсткого числового индекса для компактных метрик.
@@ -42,7 +42,7 @@
 
 ### D2. Двухэтапное подключение: `onAuth` (тикет P05) + обязательное рукопожатие `session.hello` / `session.welcome`
 - **Выбор:** Проверка одноразового тикета (`VerifiedGameTicketClaims`, P05) происходит в `onAuth` (P06) до выделения игрового слота; сразу после `onJoin` сессия переходит в состояние `awaiting_hello` с таймером `5 000 мс` (на колесе таймеров P06). Клиент обязан отправить `session.hello` с `protocolVersion`, `clientBuild`, `clientAssetFingerprint` (P03) и опциональным `knownRulesetDigest`. Сервер валидирует semver-совместимость, вызывает сверку `WorldDataVersionSchema` (P03), отправляет `session.welcome` с авторитарным `ClientRulesetSnapshot` + `rulesetDigest` (P01) + `worldDataVersion` + `serverTick` + `capabilities`, и только после этого переводит сессию в `active` и прикрепляет `StateView`.
-- **Обоснование:** `onAuth` не должен перегружаться большим payload отпечатков карты/патчей и должен оставаться быстрым гейтом безопасности; явный `session.hello`/`session.welcome` позволяет вернуть структурированное предупреждение `PATCH_DIFF_WARNING` (отсутствующие кастомные патчи шарда) или подробную ошибку `PROTO_VERSION_UNSUPPORTED` / `PROTO_WORLD_DATA_INCOMPATIBLE` с подсказкой обновления до закрытия WebSocket кодом `4002`–`4004`.
+- **Обоснование:** `onAuth` не должен перегружаться большим payload отпечатков карты/патчей и должен оставаться быстрым гейтом безопасности; явный `session.hello`/`session.welcome` позволяет вернуть структурированное предупреждение `PATCH_DIFF_WARNING` (отсутствующие кастомные патчи шарда) или подробную ошибку `PROTO_VERSION_UNSUPPORTED` / `PROTO_WORLD_DATA_INCOMPATIBLE` с подсказкой обновления до закрытия WebSocket кодом `4111` (`WS_CLOSE_PROTOCOL_VERSION_MISMATCH`), `4129` (`WS_CLOSE_HANDSHAKE_TIMEOUT`) или `4107` (`WS_CLOSE_WORLD_DATA_MISMATCH`) по реестру протокола.
 - **Отвергнутые альтернативы:**
   - *Передача всех версий только в HTTP-заголовках тикета P05:* не защищает от расхождения версии карты между `apps/api` и конкретным подом `apps/game-server` во время rolling-деплоя.
   - *Немедленный стрим всего состояния комнаты до рукопожатия:* тратит трафик на несовместимых клиентов и позволяет старому клиенту упасть при декодировании новой схемы.
@@ -85,7 +85,7 @@
   - `P1` (`20 Гц → 10 Гц`): чужие мобайлы `≤ 12` тайлов, активные боевые/групповые/гильдейские цели.
   - `P2` (`10 Гц → 5 Гц`): мобайлы `13..18` тайлов, предметы мира `≤ 12` тайлов.
   - `P3` (`4 Гц → 2 Гц`): предметы мира `13..18` тайлов, фоновые обновления мульти/метаданных.
-  Каждой отложенной грязной сущности начисляется возраст голодания; при достижении `500 мс` её эффективный приоритет принудительно повышается до `P0` (starvation protection). Дополнительно для каждого клиента ведутся скользящие счётчики байт (`1 с` и `10 с`) относительно бюджетов (`16 KiB/s` steady / `48 KiB/s` burst на 2 с после входа или телепорта / `64 KiB/s` ceiling) и инспекция `ws.getBufferedAmount()` (`64 KiB` soft / `256 KiB` hard за `5 с` / `512 KiB` instant disconnect `4010`).
+  Каждой отложенной грязной сущности начисляется возраст голодания; при достижении `500 мс` её эффективный приоритет принудительно повышается до `P0` (starvation protection). Дополнительно для каждого клиента ведутся скользящие счётчики байт (`1 с` и `10 с`) относительно бюджетов (`16 KiB/s` steady / `48 KiB/s` burst на 2 с после входа или телепорта / `64 KiB/s` ceiling) и инспекция `ws.getBufferedAmount()` (`64 KiB` soft / `256 KiB` hard за `5 с` / `512 KiB` instant disconnect `4130` `WS_CLOSE_SLOW_CONSUMER`).
   **Ключевая тонкость с общими проекциями `@colyseus/schema`:** поскольку поля одного `ReplicatedMobile` общие для всех наблюдателей, частотная деградация для сущности выбирается по **высшему** запрошенному приоритету среди её текущих наблюдателей (близкий наблюдатель получает `20 Гц`, а удалённые наблюдатели с перегруженным буфером защищаются поклиентской фильтрацией транзиентных событий, поклиентским бюджетом `StateView.add` на новых входах, а при превышении лимитов — адаптивным уменьшением эффективного `clientAoiCap` / поклиентским `SlowConsumerGuard`). Это сохраняет общие проекции `O(1)` по памяти и одновременно защищает каждый отдельный WebSocket-канал!
 - **Обоснование:** Сочетает минимальную память общих `@colyseus/schema`-проекций с реальной защитой канала каждого клиента от перегрузки в толпе и от DoS медленными сокетами.
 - **Отвергнутые альтернативы:**
@@ -94,7 +94,7 @@
 - **Соответствие ADR:** ADR-005, ADR-012.
 
 ### D8. Немедленный `time.ping`/`time.pong` в обход тика, статистический фильтр и верифицируемый серверный RTT
-- **Выбор:** Обработка `time.ping` перехватывается на уровне сетевого адаптера комнаты (`TimeSyncResponder`) синхронно при приёме фрейма — минуя 50 мс очередь тика — после проверки размера, TypeBox-схемы и rate-limit (`2/с`, burst `6`). Сервер читает `GameClock.nowMonotonicMs()` (P01), фиксирует `serverRecvMs`, `serverTick`, `serverTickStartMs`, `serverTickLoadPct`, `serverTickOverrun`, `serverSendMs` и немедленно шлёт `time.pong`. На клиенте чистый изоморфный `ClockSyncEstimator` (в `packages/protocol`) поддерживает burst `5 × 200 мс` при старте/пробуждении, адаптивный период `1 / 2 / 5 с`, окно `16` замеров с отсевом верхних `25%` выбросов, EWMA (`α = 0.2` для RTT, `α = 0.125` для jitter), монотонное подтягивание `slew ≤ 2%` (до `5%` при `151..500 мс`, hard snap при `> 500 мс`), расчёт `interpolationDelayMs = clamp(100 + 2 * jitterMs, 100, 300)` и классификатор `good/fair/poor/critical` с гистерезисом повышения `3 000 мс`. Для серверной оценки `sessionRttMs` (для допусков движения P12) сервер периодически вкладывает одноразовый `serverProbeNonce` в `time.pong` / `session.heartbeat_challenge` и измеряет интервал от собственной отправки до возврата эха на сервере (потолок `500 мс`), полностью игнорируя клиентские часы.
+- **Выбор:** Обработка `time.ping` перехватывается на уровне сетевого адаптера комнаты (`TimeSyncResponder`) синхронно при приёме фрейма — минуя 50 мс очередь тика — после проверки размера, TypeBox-схемы и rate-limit (`2/с`, burst `6`). Сервер читает `GameClock.nowMonotonicMs()` (P01), фиксирует `serverRecvMs`, `serverTick`, `serverTickStartMs`, `serverTickLoadPct`, `serverTickOverrun`, `serverSendMs` и немедленно шлёт `time.pong`. На клиенте чистый изоморфный `ClockSyncEstimator` (в `packages/protocol`) поддерживает burst `5 × 200 мс` при старте/пробуждении, адаптивный период `1 / 2 / 5 с`, окно `16` замеров с отсевом верхних `25%` выбросов, EWMA (`α = 0.2` для RTT, `α = 0.125` для jitter), монотонное подтягивание `slew ≤ 2%` (до `5%` при `151..500 мс`, hard snap при `> 500 мс`), расчёт `interpolationDelayMs = clamp(2 * tickIntervalMs + 2 * jitterMs, 100, 300)` и классификатор `good/fair/poor/critical` с гистерезисом повышения `3 000 мс`. Для серверной оценки `sessionRttMs` (для допусков движения P12) сервер периодически вкладывает одноразовый `serverProbeNonce` в `time.pong` (или отдельный `time.server_probe`) и измеряет интервал от собственной отправки до возврата эха на сервере (потолок `500 мс`), полностью игнорируя клиентские часы.
 - **Обоснование:** Обход тика убирает `0..50 мс` искусственной пилы из RTT; монотонное подтягивание исключает сбои анимаций и кулдаунов; серверный nonce-RTT защищает от подделки высокого пинга читерами для расширения анти-спидхак окон в P12.
 - **Отвергнутые альтернативы:**
   - *Обработка `time.ping` внутри 20 Гц тика:* вносит `25 мс` среднего смещения и до `50 мс` ложного джиттера.
@@ -116,8 +116,8 @@
 |---|---|---|
 | `packages/protocol` | `src/version/protocol-version.ts`, `src/version/compatibility.ts` | Semver `PROTOCOL_VERSION`, `MIN_SUPPORTED_PROTOCOL_VERSION`, проверка совместимости |
 | `packages/protocol` | `src/opcodes/opcodes.ts`, `src/opcodes/catalog.ts` | Реестр `uint16` опкодов (`ClientOpcode`, `ServerOpcode`), метаданные комнаты, `minAccessLevel`, категории rate-limit, флагов состояния |
-| `packages/protocol` | `src/errors/error-codes.ts`, `src/errors/ws-close-codes.ts`, `src/errors/error-envelope.schema.ts` | Реестр ошибок `PROTO_*`, `CMD_*`, `NET_*`, WebSocket close codes `4000..4019`, TypeBox-схема `CmdErrorSchema` |
-| `packages/protocol` | `src/intents/*.schema.ts`, `src/events/*.schema.ts`, `src/validators/compiled-validators.ts` | TypeBox-схемы всех intents и transient events (`session`, `time`, `move`, `world`, `item`, `combat`, `skill`, `magic`, `social`, `gump`, `staff`, `client`), предкомпилированные `TypeCompiler`-валидаторы и проверка глубины/размера |
+| `packages/protocol` | `src/errors/error-codes.ts`, `src/errors/ws-close-codes.ts`, `src/errors/error-envelope.schema.ts` | Реестр ошибок `PROTO_*`, `CMD_*`, `NET_*`, подмножество кодов закрытия WebSocket `4100..4199` из `docs/PROTOCOL_REGISTRY.md` (единый модуль, общий с P06), TypeBox-схема `CmdErrorSchema` |
+| `packages/protocol` | `src/intents/*.schema.ts`, `src/events/*.schema.ts`, `src/validators/compiled-validators.ts` | TypeBox-схемы собственных сообщений P07 (`session`, `time`, `cmd`, `state`, `client` — блок `0x0001..0x001F`), механизм регистрации схем фаз-владельцев, предкомпилированные `TypeCompiler`-валидаторы и проверка глубины/размера |
 | `packages/protocol` | `src/state/world-partition.state.ts`, `src/state/shard-hub.state.ts`, `src/state/replicated-mobile.schema.ts`, `src/state/replicated-item.schema.ts`, `src/state/replicated-private.schema.ts`, `src/state/flags.ts` | Классы `@colyseus/schema` v3 (`@type`, `@view()`), битовые маски `MobileStatusFlag` и `WorldItemFlag`, вспомогательные кодеки |
 | `packages/protocol` | `src/time/clock-sync-estimator.ts`, `src/time/quality-classifier.ts`, `src/time/interpolation-delay.ts` | Чистые изоморфные алгоритмы оценки RTT/jitter/offset, отсева выбросов, монотонного slewing, адаптивной интерполяции и 4-уровневой классификации качества связи |
 | `packages/config` | `src/env/netcode-server.schema.ts`, `src/env/netcode-client.schema.ts` | TypeBox env-конфиги `NETCODE_*` (сервер) и `VITE_NETCODE_*` (клиент) |
@@ -132,26 +132,40 @@
 
 ### 2. Каталог `uint16` опкодов, схемы сообщений и реестр ошибок (`packages/protocol`)
 
-#### Распределение диапазонов опкодов (`uint16`)
+#### Распределение опкодов (`uint16`, по `docs/PROTOCOL_REGISTRY.md`)
 
-| Диапазон | Направление | Пространство имён | Примеры канонических имён и опкодов | Комната | Категория rate-limit |
-|---|---|---|---|---|---|
-| `0x0001–0x00FF` | Client → Server | `session.*` | `0x0001 session.hello`, `0x0002 session.ack_ready`, `0x0003 session.logout_req` | `both` | `session` (`2/с`, burst `4`) |
-| `0x0100–0x01FF` | Client → Server | `time.*` | `0x0101 time.ping`, `0x0102 time.server_probe_ack` | `both` | `time` (`2/с`, burst `6`, bypass tick) |
-| `0x0200–0x02FF` | Client → Server | `move.*` | `0x0201 move.walk_req`, `0x0202 move.turn_req`, `0x0203 move.resync_req` | `world` | `move` (`12/с`, burst `6`) |
-| `0x0300–0x03FF` | Client → Server | `world.*` | `0x0301 world.single_click`, `0x0302 world.double_click`, `0x0303 world.target_resp`, `0x0304 world.target_cancel` | `world` | `world` (`10/с`, burst `15`) |
-| `0x0400–0x04FF` | Client → Server | `item.*` | `0x0401 item.pick_up`, `0x0402 item.drop_item`, `0x0403 item.equip_item`, `0x0404 item.open_container`, `0x0405 item.close_container` | `world` | `world` (`10/с`, burst `15`) |
-| `0x0500–0x05FF` | Client → Server | `combat.*` | `0x0501 combat.set_war_mode`, `0x0502 combat.attack_req` | `world` | `combat` (`8/с`, burst `10`) |
-| `0x0600–0x06FF` | Client → Server | `skill.*` | `0x0601 skill.use_skill`, `0x0602 skill.set_skill_lock`, `0x0603 skill.set_stat_lock` | `world` | `world` (`10/с`, burst `15`) |
-| `0x0700–0x07FF` | Client → Server | `magic.*` | `0x0701 magic.cast_spell` | `world` | `combat` (`8/с`, burst `10`) |
-| `0x0800–0x08FF` | Client → Server | `social.*` | `0x0801 social.speech_say` (`world`), `0x0802 social.emote` (`world`), `0x0810 social.hub_chat_send` (`hub`), `0x0811 social.party_action` (`hub`), `0x0812 social.guild_action` (`hub`) | `world` / `hub` | `social` (`3/с`, burst `5`) |
-| `0x0900–0x09FF` | Client → Server | `gump.*` | `0x0901 gump.response` (до `64 KiB`), `0x0902 gump.close` | `world` | `gump` (`6/с`, burst `10`) |
-| `0x0A00–0x0AFF` | Client → Server | `staff.*` | `0x0A01 staff.gm_command` (`minAccessLevel = Counselor`, до `64 KiB`) | `both` | `staff` (`10/с`, burst `20`) |
-| `0x0B00–0x0BFF` | Client → Server | `client.*` | `0x0B01 client.set_aoi_preference`, `0x0B02 client.ping_report` (диагностика) | `world` | `client` (`2/с`, burst `4`) |
-| `0x1000–0x10FF` | Server → Client | `session.*` / `cmd.*` | `0x1001 session.welcome`, `0x1002 cmd.error`, `0x1003 cmd.ok`, `0x1004 container.closed` | `both` | — |
-| `0x1100–0x11FF` | Server → Client | `time.*` | `0x1101 time.pong`, `0x1102 time.server_probe` | `both` | — |
-| `0x1200–0x12FF` | Server → Client | `move.*` | `0x1201 move.walk_ack`, `0x1202 move.walk_deny`, `0x1203 move.teleport_sync` | `world` | — |
-| `0x1300–0x13FF` | Server → Client | `event.*` / `state.*` | `0x1301 event.damage_number`, `0x1302 event.sound_effect`, `0x1303 event.visual_effect`, `0x1304 event.mobile_animation`, `0x1305 event.overhead_text`, `0x1306 event.system_message`, `0x1307 state.notoriety_delta` | `world` | — |
+Собственные сообщения P07 (блок `0x0001..0x001F`; `0x000F..0x001F` — резерв P07):
+
+| Опкод | Имя | Направление | Комната | Категория rate-limit |
+|---|---|---|---|---|
+| `0x0001` | `session.hello` | Client → Server | `both` | `session` (`2/с`, burst `4`) |
+| `0x0002` | `session.welcome` | Server → Client | `both` | — |
+| `0x0003` | `session.ack_ready` | Client → Server | `both` | `session` |
+| `0x0004` | `time.ping` | Client → Server | `both` | `time` (`2/с`, burst `6`, bypass tick) |
+| `0x0005` | `time.pong` | Server → Client | `both` | — |
+| `0x0006` | `time.server_probe` | Server → Client | `both` | — |
+| `0x0007` | `time.server_probe_ack` | Client → Server | `both` | `time` |
+| `0x0008` | `cmd.error` (ErrorEnvelope) | Server → Client | `both` | — |
+| `0x0009` | `cmd.ok` | Server → Client | `both` | — |
+| `0x000A` | `state.notoriety_delta` | Server → Client | `world` | — |
+| `0x000B` | `event.system_message` | Server → Client | `both` | — |
+| `0x000C` | `state.resync_req` (полная перестройка AOI) | Client → Server | `world` | `session` |
+| `0x000D` | `client.set_aoi_preference` | Client → Server | `world` | `client` (`2/с`, burst `4`) |
+| `0x000E` | `client.ping_report` (диагностика) | Client → Server | `world` | `client` |
+
+Выход из мира (`SafeLogout`) и `world:ready`/объявления хаба — опкоды P06 (`0x0020..0x003F`). Символьные имена доменных сообщений, на которые ссылаются спецификации P07, и блоки фаз-владельцев (точные номера внутри блока назначает владелец; P07 их не определяет):
+
+| Символьные имена в P07 | Фаза-владелец и блок | Категория rate-limit P07 |
+|---|---|---|
+| `move.walk_req` ≙ `0x0101 WalkRequest`, `move.walk_ack` ≙ `0x0102 WalkAck`, `move.walk_deny` ≙ `0x0103 WalkDeny`, `move.teleport_sync` ≙ `0x0104 TeleportSync`, `move.resync_req` ≙ `0x0107 MovementResyncRequest` | P12 `0x0100..0x011F` | `move` (`12/с`, burst `6`) |
+| `world.single_click`, `world.double_click`, `item.pick_up`, `item.drop_item`, `item.equip_item`, `item.open_container`, `item.close_container`, `container.closed` | P13 `0x0120..0x014F` | `world` (`10/с`, burst `15`) |
+| `world.target_resp`, `world.target_cancel`, `gump.response` (до `64 KiB`), `gump.close`, `social.speech_say`, `social.emote`, `event.overhead_text` | P14 `0x0150..0x017F` | `world` / `gump` (`6/с`, burst `10`) / `social` (`3/с`, burst `5`) |
+| `skill.use_skill`, `skill.set_skill_lock`, `skill.set_stat_lock` | P15 `0x0180..0x019F` | `world` |
+| `combat.set_war_mode`, `combat.attack_req`, `event.damage_number` | P16 `0x01A0..0x01CF` | `combat` (`8/с`, burst `10`) |
+| `magic.cast_spell` | P18 `0x01F0..0x021F` | `combat` |
+| `social.hub_chat_send`, `social.party_action`, `social.guild_action` | P26 `0x02F0..0x031F` | `social` |
+| `event.sound_effect`, `event.visual_effect`, `event.mobile_animation` | P28 `0x0340..0x035F` | — |
+| `staff.gm_command` (`minAccessLevel = Counselor`, до `64 KiB`) | P29 `0x0360..0x037F` | `staff` (`10/с`, burst `20`) |
 
 #### Ключевые TypeBox-контракты сообщений (`packages/protocol`)
 
@@ -169,7 +183,7 @@ export const SessionHelloSchema = Type.Object({
   preferredUpdateRange: Type.Optional(Type.Integer({ minimum: 12, maximum: 24 })),
 }, { additionalProperties: false });
 
-// 0x1001 session.welcome
+// 0x0002 session.welcome
 export const SessionWelcomeSchema = Type.Object({
   negotiatedProtocolVersion: Type.String(),
   serverProtocolVersion: Type.String(),
@@ -186,36 +200,10 @@ export const SessionWelcomeSchema = Type.Object({
   enabledNamespaces: Type.Array(Type.String(), { maxItems: 32 }),
 }, { additionalProperties: false });
 
-// 0x0201 move.walk_req
-export const MoveWalkReqSchema = Type.Object({
-  requestId: RequestIdField,
-  seq: Type.Integer({ minimum: 0, maximum: 255 }),
-  direction: Type.Integer({ minimum: 0, maximum: 0x87 }), // дополнительная проверка: (dir & ~0x87) === 0
-  clientMonotonicMs: Type.Number({ minimum: 0, maximum: 1e15 }),
-}, { additionalProperties: false });
+// move.walk_req / walk_ack / walk_deny — схемы и опкоды определяет P12 (0x0101..0x0103);
+// P07 фиксирует только инварианты: seq 0..255, direction 0..7 | 0x80, окно <= 4 неподтверждённых шагов.
 
-// 0x1201 move.walk_ack & 0x1202 move.walk_deny
-export const MoveWalkAckSchema = Type.Object({
-  seq: Type.Integer({ minimum: 0, maximum: 255 }),
-  x: Type.Integer({ minimum: 0, maximum: 16383 }),
-  y: Type.Integer({ minimum: 0, maximum: 16383 }),
-  z: Type.Integer({ minimum: -128, maximum: 127 }),
-  direction: Type.Integer({ minimum: 0, maximum: 0x87 }),
-  stamina: Type.Integer({ minimum: 0, maximum: 65535 }),
-  serverTick: Type.Integer({ minimum: 0 }),
-}, { additionalProperties: false });
-
-export const MoveWalkDenySchema = Type.Object({
-  seq: Type.Integer({ minimum: 0, maximum: 255 }),
-  x: Type.Integer({ minimum: 0, maximum: 16383 }),
-  y: Type.Integer({ minimum: 0, maximum: 16383 }),
-  z: Type.Integer({ minimum: -128, maximum: 127 }),
-  direction: Type.Integer({ minimum: 0, maximum: 7 }),
-  reasonCode: Type.String({ maxLength: 64 }),
-  serverTick: Type.Integer({ minimum: 0 }),
-}, { additionalProperties: false });
-
-// 0x0101 time.ping & 0x1101 time.pong
+// 0x0004 time.ping & 0x0005 time.pong
 export const TimePingSchema = Type.Object({
   seq: Type.Integer({ minimum: 1, maximum: 0xFFFFFFFF }),
   clientSendMs: Type.Number({ minimum: 0, maximum: 1e15 }),
@@ -234,12 +222,12 @@ export const TimePongSchema = Type.Object({
   serverProbeNonce: Type.Optional(Type.Integer({ minimum: 1, maximum: 0xFFFFFFFF })),
 }, { additionalProperties: false });
 
-// 0x1002 cmd.error
+// 0x0008 cmd.error
 export const CmdErrorSchema = Type.Object({
   requestId: RequestIdField,
   opcode: Type.Integer({ minimum: 0, maximum: 0xFFFF }),
   code: Type.String({ maxLength: 64 }),
-  numericCode: Type.Integer({ minimum: 1000, maximum: 9999 }),
+  numericCode: Type.Integer({ minimum: 1000, maximum: 3999 }),
   retryable: Type.Boolean(),
   retryAfterMs: Type.Optional(Type.Integer({ minimum: 0, maximum: 600000 })),
   details: Type.Optional(Type.Record(Type.String(), Type.Union([Type.String(), Type.Number(), Type.Boolean()]))),
@@ -248,27 +236,29 @@ export const CmdErrorSchema = Type.Object({
 
 #### Реестр кодов ошибок протокола и WebSocket close codes
 
-| Символьный код | Числовой | WS Close | Retryable | Назначение |
+Числовые коды ошибок конверта `cmd.error` (`1000..3999`) — отдельное пространство, не пересекающееся с кодами закрытия WebSocket; коды закрытия, имена констант и поведение реконнекта нормативно берутся из `docs/PROTOCOL_REGISTRY.md` §2. Флаг `retryable` для ошибок, закрывающих соединение, MUST совпадать с колонкой «Реконнект» реестра.
+
+| Символьный код | Числовой | WS Close (реестр) | Retryable | Назначение |
 |---|---|---|---|---|
-| `PROTO_VERSION_UNSUPPORTED` | `4002` | `4002` | `false` | Несовместимый semver протокола клиента (`updateRequired = true`) |
-| `PROTO_HANDSHAKE_TIMEOUT` | `4003` | `4003` | `true` | Отсутствует `session.hello` в течение `5 000 мс` |
-| `PROTO_WORLD_DATA_INCOMPATIBLE` | `4004` | `4004` | `false` | Критическое несовпадение базовой карты/тайлдаты |
-| `PROTO_HANDSHAKE_REQUIRED` | `4101` | — | `false` | Игровое намерение отправлено до завершения `session.welcome` |
-| `PROTO_UNKNOWN_OPCODE` | `4102` | — | `false` | Неизвестный `uint16` код операции |
-| `PROTO_WRONG_ROOM_TYPE` | `4103` | — | `false` | Намерение отправлено не в ту комнату (`world` vs `hub`) |
-| `PROTO_INVALID_PAYLOAD` | `4104` | — | `false` | Нарушение TypeBox-схемы, глубины `> 6`, неизвестные поля |
-| `PROTO_FRAME_TOO_LARGE` | `4105` | — | `false` | Превышение лимита фрейма (`16 KiB` / `64 KiB`) |
-| `PROTO_RATE_LIMIT_EXCEEDED` | `4008` | `4008` | `true` | `≥ 50` отказов `CMD_RATE_LIMITED` за `10 с` (разрыв) |
-| `PROTO_MALFORMED_FLOOD` | `4009` | `4009` | `false` | `≥ 20` битых/невалидных фреймов за `10 с` (разрыв) |
-| `CMD_RATE_LIMITED` | `4290` | — | `true` | Превышен token-bucket категории (возвращается с `retryAfterMs`) |
-| `CMD_QUEUE_OVERFLOW` | `4291` | — | `true` | Превышена очередь `32` намерений клиента в текущем тике |
-| `CMD_WALK_WINDOW_EXCEEDED` | `4292` | — | `true` | Попытка отправить > `4` неподтверждённых шагов |
-| `CMD_FORBIDDEN_ACCESS_LEVEL` | `4301` | — | `false` | Недостаточный `AccessLevel` для команды |
-| `CMD_INVALID_ENTITY_STATE` | `4302` | — | `false` | Состояние персонажа (например, призрак) запрещает команду |
-| `CMD_HANDLER_UNAVAILABLE` | `5010` | — | `false` | Подсистема (фаза) ещё не зарегистрировала обработчик |
-| `CMD_INTERNAL_ERROR` | `5000` | — | `true` | Перехваченный внутренний сбой обработчика (без утечки стека) |
-| `NET_SLOW_CONSUMER` | `4010` | `4010` | `true` | Переполнение исходящего буфера отправки (`> 256 KiB` 5 с или `> 512 KiB`) |
-| `NET_HEARTBEAT_TIMEOUT` | `4011` | `4011` | `true` | Нет клиентской активности/пингов свыше `30 000 мс` |
+| `PROTO_VERSION_UNSUPPORTED` | `1001` | `4111` `WS_CLOSE_PROTOCOL_VERSION_MISMATCH` | `false` | Несовместимый semver протокола клиента (`updateRequired = true`) |
+| `PROTO_HANDSHAKE_TIMEOUT` | `1002` | `4129` `WS_CLOSE_HANDSHAKE_TIMEOUT` | `true` | Отсутствует `session.hello` в течение `5 000 мс` |
+| `PROTO_WORLD_DATA_INCOMPATIBLE` | `1003` | `4107` `WS_CLOSE_WORLD_DATA_MISMATCH` | `false` | Критическое несовпадение базовой карты/тайлдаты |
+| `PROTO_HANDSHAKE_REQUIRED` | `1004` | — | `false` | Игровое намерение отправлено до завершения `session.welcome` |
+| `PROTO_UNKNOWN_OPCODE` | `1005` | — | `false` | Неизвестный `uint16` код операции |
+| `PROTO_WRONG_ROOM_TYPE` | `1006` | — | `false` | Намерение отправлено не в ту комнату (`world` vs `hub`) |
+| `PROTO_INVALID_PAYLOAD` | `1007` | — | `false` | Нарушение TypeBox-схемы, глубины `> 6`, неизвестные поля |
+| `PROTO_FRAME_TOO_LARGE` | `1008` | — | `false` | Превышение лимита фрейма (`16 KiB` / `64 KiB`) |
+| `PROTO_RATE_LIMIT_EXCEEDED` | `1009` | `4108` `WS_CLOSE_RATE_LIMIT_EXCEEDED` | `true` | `≥ 50` отказов `CMD_RATE_LIMITED` за `10 с` (разрыв) |
+| `PROTO_MALFORMED_FLOOD` | `1010` | `4100` `WS_CLOSE_PROTOCOL_ERROR` | `false` | `≥ 20` битых/невалидных фреймов за `10 с` (разрыв) |
+| `CMD_RATE_LIMITED` | `2001` | — | `true` | Превышен token-bucket категории (возвращается с `retryAfterMs`) |
+| `CMD_QUEUE_OVERFLOW` | `2002` | — | `true` | Превышена очередь `32` намерений клиента в текущем тике |
+| `CMD_WALK_WINDOW_EXCEEDED` | `2003` | — | `true` | Попытка отправить > `4` неподтверждённых шагов |
+| `CMD_FORBIDDEN_ACCESS_LEVEL` | `2004` | — | `false` | Недостаточный `AccessLevel` для команды |
+| `CMD_INVALID_ENTITY_STATE` | `2005` | — | `false` | Состояние персонажа (например, призрак) запрещает команду |
+| `CMD_HANDLER_UNAVAILABLE` | `2006` | — | `false` | Подсистема (фаза) ещё не зарегистрировала обработчик |
+| `CMD_INTERNAL_ERROR` | `2007` | — | `true` | Перехваченный внутренний сбой обработчика (без утечки стека) |
+| `NET_SLOW_CONSUMER` | `3001` | `4130` `WS_CLOSE_SLOW_CONSUMER` | `true` | Переполнение исходящего буфера отправки (`> 256 KiB` 5 с или `> 512 KiB`) |
+| `NET_HEARTBEAT_TIMEOUT` | `3002` | `4131` `WS_CLOSE_HEARTBEAT_TIMEOUT` | `true` | Нет клиентской активности/пингов свыше `30 000 мс` |
 
 ### 3. Схемы состояния `@colyseus/schema` v3 (`packages/protocol/src/state/*`)
 
@@ -358,7 +348,8 @@ export class WorldPartitionState extends Schema {
   @type("string") shardId: string = "";
   @type("string") partitionId: string = "";
   @type("uint8") facetId: number = 0;
-  @type("uint32") serverTick: number = 0;
+  @type("uint32") serverTick: number = 0;       // P06
+  @type("uint16") onlineCount: number = 0;      // P06
   @type("uint32") gameTimeMinutes: number = 0;
   @type("uint8") globalLightLevel: number = 0;   // 0..26
   @type("uint8") season: number = 0;
@@ -372,14 +363,15 @@ export class WorldPartitionState extends Schema {
   @view() @type({ map: ReplicatedPlayerPrivateState }) privateStates = new MapSchema<ReplicatedPlayerPrivateState>();
 }
 
-// Корневое состояние ShardHubRoom (без мировых сущностей)
+// Корневое состояние ShardHubRoom (без мировых сущностей): поля P06 сохраняются без изменений,
+// P07 переносит класс в packages/protocol и добавляет protocolVersion
 export class ShardHubState extends Schema {
   @type("string") shardId: string = "";
-  @type("string") shardStatus: string = "online";
-  @type("uint32") onlinePlayers: number = 0;
+  @type("string") shardStatus: string = "normal";   // normal | draining | maintenance (P06)
+  @type("uint32") visibleOnlineCount: number = 0;   // P06, без скрытого персонала
+  @type("string") motd: string = "";                // P06
+  @type([StickyAnnouncementSchema]) stickyAnnouncements = new ArraySchema<StickyAnnouncementSchema>(); // P06
   @type("string") protocolVersion: string = "";
-  @type("string") activeAnnouncement: string = "";
-  @type("uint32") announcementRevision: number = 0;
 }
 ```
 
@@ -404,19 +396,19 @@ sequenceDiagram
   W-->>C: "onJoin (status = awaiting_hello, timer = 5000 ms)"
   C->>W: "0x0001 session.hello (protocolVersion, assetFingerprint)"
   W->>W: "Проверка semver + rulesetDigest (P01) + WorldDataVersion (P03)"
-  W-->>C: "0x1001 session.welcome (rulesetSnapshot, worldCompatibility, serverTick)"
+  W-->>C: "0x0002 session.welcome (rulesetSnapshot, worldCompatibility, serverTick)"
   W->>A: "attachClientView + initial AOI population (burst 48 KiB/s)"
   A-->>C: "Начальный бинарный снимок StateView (self + privateState + AOI)"
 
   par "Калибровка часов (5 x 200 ms burst, bypass 50 ms tick)"
-    C->>T: "0x0101 time.ping (seq=1, clientSendMs)"
-    T-->>C: "0x1101 time.pong (serverRecvMs, serverSendMs, serverTick, loadPct)"
+    C->>T: "0x0004 time.ping (seq=1, clientSendMs)"
+    T-->>C: "0x0005 time.pong (serverRecvMs, serverSendMs, serverTick, loadPct)"
   and "Игровое намерение (в тик 20 Hz)"
-    C->>D: "0x0201 move.walk_req (seq=12, dir=0x82)"
+    C->>D: "0x0101 move.walk_req (P12) (seq=12, dir=0x82)"
     D->>D: "Frame/TypeBox/ACL/RateLimit -> TickIntentQueue"
     Note over D,A: "Граница 50 ms тика симуляции"
     D->>A: "Обработчик шага обновляет (x,y,z) -> SectorDelta AOI + dirty projection"
-    D-->>C: "0x1201 move.walk_ack (немедленно, seq=12)"
+    D-->>C: "0x0102 move.walk_ack (P12) (немедленно, seq=12)"
     A-->>C: "Дельта-патч StateView (20 Hz, только изменённые поля)"
   end
 ```
@@ -432,19 +424,19 @@ flowchart TD
   OP -- "Да" --> TB{"TypeCompiler.Check + глубина <= 6?"}
   TB -- "Нет" --> ERR_TB["cmd.error PROTO_INVALID_PAYLOAD + strike"]
   TB -- "Да" --> RL{"Token-bucket категории + лимит страйков?"}
-  RL -- "Нет" --> ERR_RL["cmd.error CMD_RATE_LIMITED / close 4008-4009"]
+  RL -- "Нет" --> ERR_RL["cmd.error CMD_RATE_LIMITED / close 4108 или 4100"]
   RL -- "Да" --> PING{"Это time.ping / server_probe_ack?"}
   PING -- "Да" --> BYPASS["TimeSyncResponder (мгновенный ответ без тика)"]
   PING -- "Нет" --> ACL{"Handshake готов + AccessLevel + EntityState?"}
   ACL -- "Нет" --> ERR_ACL["cmd.error HANDSHAKE_REQUIRED / FORBIDDEN / INVALID_STATE"]
-  ACL -- "Да" --> Q["TickIntentQueue (<= 32/клиент, порядок tickArrivalSeq)"]
+  ACL -- "Да" --> Q["TickIntentQueue (<= 32/клиент, порядок enqueuedTick, sessionOrder, sequence из P06)"]
   Q --> EXEC["Исполнение в тике 20 Hz -> мутация сущностей и dirty-битов"]
   EXEC --> AOI["StateViewAoiManager (дельта секторов 16x16, R=18/31, H=2, скрытность, контейнеры, cap 512/1024)"]
   AOI --> PRIO["PriorityBandwidthScheduler (P0..P3, aging <= 500 ms, бюджет 16/48 KiB/s)"]
   PRIO --> GUARD{"SlowConsumerGuard (bufferedAmount)"}
   GUARD -- "Норма" --> PATCH["Коалесценция в Schema + broadcastPatch (20 Hz) + Transient Events"]
   GUARD -- "> 64 KiB soft" --> DEGRADE["Сброс косметики P2/P3 + деградация частот"]
-  GUARD -- "> 256 KiB 5s или > 512 KiB" --> KICK["WS close 4010 (NET_SLOW_CONSUMER)"]
+  GUARD -- "> 256 KiB 5s или > 512 KiB" --> KICK["WS close 4130 (WS_CLOSE_SLOW_CONSUMER)"]
 ```
 
 #### Диаграмма 3: Конечный автомат качества связи и синхронизации часов клиента
@@ -519,7 +511,7 @@ stateDiagram-v2
     - `0` (норма): `bytes1s <= steady` и `bufferedAmount < 65 536`
     - `1` (лёгкая деградация): `bytes1s > steady` → деградация `P3`
     - `2` (умеренная деградация): `bytes1s > 1.5 * steady` или `bufferedAmount >= 65 536` → деградация `P2`/`P3` + сброс косметических `event.visual_effect`/`event.sound_effect`
-    - `3` (критическое давление): `bufferedAmount >= 262 144` → старт таймера `slowConsumerTimerMs`; при `>= 5 000 мс` или `bufferedAmount >= 524 288` → `client.leave(4010, "NET_SLOW_CONSUMER")`.
+    - `3` (критическое давление): `bufferedAmount >= 262 144` → старт таймера `slowConsumerTimerMs`; при `>= 5 000 мс` или `bufferedAmount >= 524 288` → `client.leave(4130, "NET_SLOW_CONSUMER")` (`WS_CLOSE_SLOW_CONSUMER`).
 
 #### 5.3. Математика синхронизации часов, RTT, джиттера и интерполяции (`packages/protocol/src/time/*`)
 
@@ -549,7 +541,7 @@ stateDiagram-v2
    - При `targetInterpMs < currentInterpMs`: плавное сужение не быстрее `10 мс/с` (`maxDrop = (dt / 1000) * 10`).
 6. **Серверный верифицируемый `sessionRttMs`:**
    - Раз в `5 с` (или в каждый 2-й `time.pong`) сервер добавляет одноразовый `serverProbeNonce` и сохраняет `sentAtMs = GameClock.nowMonotonicMs()`.
-   - Клиент немедленно отвечает `0x0102 time.server_probe_ack(nonce)`.
+   - Клиент немедленно отвечает `0x0007 time.server_probe_ack(nonce)`.
    - Сервер вычисляет `measuredRtt = clamp(GameClock.nowMonotonicMs() - sentAtMs, 0, 500)` и обновляет `sessionSmoothedRttMs = 0.8 * sessionSmoothedRttMs + 0.2 * measuredRtt` (с аналогичным `sessionJitterMs`). Любой поддельный `nonce` или просроченный ответ (`> 3 000 мс`) игнорируется.
 
 ### 6. Конфигурация (`packages/config`) и метрики наблюдаемости
@@ -580,7 +572,7 @@ stateDiagram-v2
 - **[Параллельная разработка P06 и P07 может дать мелкие расхождения в именах внутренних интерфейсов комнаты]** → P07 определяет минимальные адаптерные порты (`RuntimeRoomPort`, `SectorIndexPort`, `EntityRegistryPort`, `SimulationTickHook`), которые легко связываются с конкретными сервисами P06 тонким слоем адаптера в `NetcodeModule` без переписывания ядра P07.
 - **[Задержка GC на клиенте или фоновый троттлинг таймеров браузера (Chrome/Safari background tabs)]** → Детектор сна вкладки (`dt > 2 000 мс` + `visibilitychange`) отбрасывает предсонные зонды без искажения `lossRatio` и `smoothedRttMs`, а сразу после пробуждения запускает быстрый `5 × 200 мс` burst.
 - **[Атака «завышения пинга» со стороны читера для ослабления проверок движения P12]** → Серверная оценка `sessionRttMs` строится исключительно по серверным монотонным меткам времени через одноразовый `serverProbeNonce` и жёстко ограничена потолком `500 мс`.
-- **[Высокая стоимость проверки глубины JSON/MsgPack и валидации на атаке огромными вложенными объектами]** → Первичная проверка `rawByteLength <= limit` выполняется до десериализации фрейма, а итеративный счётчик глубины `<= 6` и `TypeCompiler` завершаются fail-fast на первом нарушении и накручивают strike-счётчик до разрыва `4009`.
+- **[Высокая стоимость проверки глубины JSON/MsgPack и валидации на атаке огромными вложенными объектами]** → Первичная проверка `rawByteLength <= limit` выполняется до десериализации фрейма, а итеративный счётчик глубины `<= 6` и `TypeCompiler` завершаются fail-fast на первом нарушении и накручивают strike-счётчик до разрыва `4100` (`WS_CLOSE_PROTOCOL_ERROR`).
 - **[Расширение каталога intents в фазах P12–P29 может нарушить обратную совместимость]** → Политика неизменяемости `uint16` опкодов и обязательных полей в рамках одной мажорной версии закрепляется автоматическим контрактным snapshot-тестом реестра опкодов и JSON Schema в CI.
 
 ## Migration Plan
@@ -593,7 +585,7 @@ stateDiagram-v2
    - Этап 4: Сквозные интеграционные и стресс-тесты (симуляция толпы, скрытности, медленных сокетов, потерь сети и скачков часов).
 3. **Обратная совместимость и откат:**
    - `PROTOCOL_VERSION` стартует с `"1.0.0"` (`MIN_SUPPORTED_PROTOCOL_VERSION = "1.0.0"`).
-   - При последующем добавлении новых intents в P12–P29 минорная версия инкрементируется (`1.1.0`, `1.2.0`...), при этом старые клиенты совместимы на уровне существующих опкодов, а несовместимые изменения требуют bump мажорной версии с явным отказом `4002`.
+   - При последующем добавлении новых intents в P12–P29 минорная версия инкрементируется (`1.1.0`, `1.2.0`...), при этом старые клиенты совместимы на уровне существующих опкодов, а несовместимые изменения требуют bump мажорной версии с явным отказом `4111` (`WS_CLOSE_PROTOCOL_VERSION_MISMATCH`).
    - Откат P07 безопасен и сводится к откату релиза `apps/game-server` и `apps/client` к P06, поскольку схема БД и форматы кэша P03/P05 не затрагиваются.
 
 ## Open Questions
