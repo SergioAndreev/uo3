@@ -3,7 +3,7 @@
 Этот репозиторий — **техническое задание** (spec-driven, OpenSpec) на веб-MMORPG в духе Ultima Online. Код реализации появляется только через цикл OpenSpec.
 
 ## Перед началом работы
-1. Прочитай [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (ADR и константы), [docs/ROADMAP.md](docs/ROADMAP.md) (фазы и реестр capability), [docs/GLOSSARY.md](docs/GLOSSARY.md).
+1. Прочитай [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (ADR и константы), [docs/ROADMAP.md](docs/ROADMAP.md) (фазы и реестр capability), [docs/GLOSSARY.md](docs/GLOSSARY.md) и [docs/PROTOCOL_REGISTRY.md](docs/PROTOCOL_REGISTRY.md) (единый реестр опкодов и WS-кодов).
 2. Работай строго по одной фазе: `openspec/changes/pNN-*`. Не начинай фазу, пока не заархивированы её зависимости из ROADMAP.
 3. Сверься со статусом: `openspec list`, `openspec status --change <id>`.
 
