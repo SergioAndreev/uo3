@@ -1,0 +1,46 @@
+schema: spec-driven
+
+context: |
+  Language: Russian
+  All artifacts must be written in Russian.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+
+  Проект UO3: браузерная MMORPG в духе Ultima Online эпохи Renaissance (UO:R) — клиент и авторитарный сервер.
+  Репозиторий содержит ТОЛЬКО техническое задание (OpenSpec); код пишется позже ИИ-агентами по фазам.
+  Обязательные документы-контракты: docs/ARCHITECTURE.md (ADR, стек, константы), docs/ROADMAP.md (фазы P00–P36,
+  реестр capability — одна capability принадлежит одной фазе), docs/GLOSSARY.md.
+
+  Стек (зафиксирован): TypeScript strict ESM, Node 22, pnpm + Turborepo монорепо.
+  Клиент apps/client: React 19, Vite 6, Three.js + @react-three/fiber + drei (WebGL2, опц. WebGPU), Zustand, TanStack Query,
+  Web Workers, OPFS. Гампы — React DOM-оверлей; серверные гампы — декларативная JSON-разметка.
+  Сервер: apps/api — NestJS 11 (REST + OpenAPI: identity, characters, shards, game tickets, admin API);
+  apps/game-server — NestJS application context + Colyseus 0.16 (@colyseus/schema 3 + StateView для AOI),
+  комнаты WorldPartitionRoom (партиция фасета) и ShardHubRoom (чат/пати/гильдии/объявления).
+  Данные: PostgreSQL 17 + Drizzle ORM, Valkey (presence/сессии/rate-limit), NATS JetStream (межпартиционная шина).
+  Пакеты: domain, rules (детерминированные формулы + профиль эпохи), protocol (intents + схемы, TypeBox), uo-formats
+  (изоморфные парсеры MUL/UOP), content (YAML + JSON Schema), db, ui-kit, config, test-kit.
+  Ассеты: «принеси свой клиент» — проприетарные файлы UO не распространяются; для разработки/CI — синтетический мир и CC0-заглушки.
+  Мир в памяти сервера, инкрементальный flush каждые 60 с, критические транзакции синхронно, item ledger.
+  Движение тайловое с sequence 0–255, клиентским предсказанием и ack/deny сервера. Тик 20 Гц, AOI 18 тайлов.
+  Тесты: Vitest, Playwright, симуляционный харнес (фейковые часы, сидируемый RNG), apps/bot-client для нагрузки.
+
+rules:
+  proposal:
+    - Название capability и их пути брать ТОЛЬКО из реестра docs/ROADMAP.md для своей фазы; не создавать capability других фаз
+    - В разделе Impact перечислить затрагиваемые apps/* и packages/*, зависимости от предыдущих фаз и что разблокируется для следующих
+    - Явно указать, что вне скоупа фазы (со ссылкой на фазу, где это будет сделано)
+  specs:
+    - Каждая capability — отдельный файл specs/<capability-path>/spec.md с разделом ## Purpose (не короче 2 предложений) и ## ADDED Requirements
+    - Минимум 6 требований на capability, у каждого минимум 2 сценария (основной + граничный/ошибочный)
+    - Описание требования не длиннее 500 символов, одно поведение на требование
+    - Использовать числовые значения из docs/ARCHITECTURE.md (раздел констант) и формулировать проверяемые критерии (тайминги, лимиты, коды ошибок)
+    - Не упоминать имена классов и библиотеки — только наблюдаемое поведение
+  design:
+    - Разделы Context, Goals / Non-Goals, Decisions (с альтернативами), Risks / Trade-offs, Migration Plan, Open Questions (только отложимые)
+    - Описать модули и пакеты, модели данных (таблицы/схемы состояния/сообщения), потоки (mermaid-диаграммы sequence/flowchart), алгоритмы и формулы
+    - Решения должны соответствовать ADR из docs/ARCHITECTURE.md; отклонения запрещены без явного обоснования
+  tasks:
+    - Максимальная детализация — не менее 12 групп задач и не менее 80 задач на фазу; задача выполнима агентом за одну сессию (≤ 4 часов)
+    - "Формат строго `- [ ] N.M Описание — проверка: <как проверить>`"
+    - Каждая группа несёт свои тесты и документацию; финальная группа — только интеграционная проверка и демо вехи
+    - "Ссылаться на требования спецификаций в формате (req: <capability-path> / <имя требования>) там, где задача их реализует"
