@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+set -e
+pnpm exec lint-staged
+pnpm exec tsx scripts/check-assets.ts --staged
+pnpm exec tsx scripts/check-secrets.ts --staged

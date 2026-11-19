@@ -1,0 +1,35 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build & cache artifacts
+dist
+build
+.turbo
+*.tsbuildinfo
+
+# Test & coverage outputs
+coverage
+test-results
+junit.xml
+
+# Environment files (keep templates tracked)
+.env
+.env.local
+.env.*.local
+!.env.example
+!**/.env.example
+
+# Local proprietary Ultima Online client assets (ADR-002 — never commit)
+.uo-client/
+local-assets/
+*.mul
+*.uop
+*.idx
+
+# OS & editor artifacts
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+pnpm-debug.log*

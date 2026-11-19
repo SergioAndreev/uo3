@@ -1,0 +1,35 @@
+{
+  "uid": "uo3-local-health",
+  "title": "uo3-local-health",
+  "tags": ["uo3", "local", "health"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Scrape Targets Up",
+      "datasource": { "type": "prometheus", "uid": "uo3-prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "targets": [{ "expr": "sum(up)", "refId": "A" }]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Prometheus Scrape Duration",
+      "datasource": { "type": "prometheus", "uid": "uo3-prometheus" },
+      "gridPos": { "h": 6, "w": 16, "x": 8, "y": 0 },
+      "targets": [{ "expr": "scrape_duration_seconds", "refId": "A" }]
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "Local OTel Logs (Loki)",
+      "datasource": { "type": "loki", "uid": "uo3-loki" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 6 },
+      "targets": [{ "expr": "{service_name=~\".+\"}", "refId": "A" }]
+    }
+  ]
+}

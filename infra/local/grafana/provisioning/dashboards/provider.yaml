@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: "UO3 Local Dashboards"
+    orgId: 1
+    folder: "UO3"
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

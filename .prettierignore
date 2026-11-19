@@ -1,0 +1,15 @@
+node_modules
+dist
+build
+.turbo
+coverage
+test-results
+pnpm-lock.yaml
+openspec
+docs
+.agents
+.claude
+.gemini
+AGENTS.md
+*.tsbuildinfo
+packages/db/drizzle

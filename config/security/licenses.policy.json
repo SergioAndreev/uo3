@@ -1,0 +1,38 @@
+{
+  "$schema": "./licenses.policy.schema.json",
+  "allowedSpdx": [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "0BSD",
+    "CC0-1.0",
+    "Unlicense",
+    "MPL-2.0",
+    "Zlib",
+    "BlueOak-1.0.0",
+    "Python-2.0"
+  ],
+  "deniedPatterns": ["GPL", "AGPL", "LGPL", "SSPL", "UNLICENSED", "UNKNOWN"],
+  "exceptions": [
+    {
+      "package": "@csstools/color-helpers",
+      "license": "MIT-0",
+      "reason": "Permissive MIT No Attribution license; transitive devDependency of jsdom",
+      "approvedBy": "p00-platform-audit"
+    },
+    {
+      "package": "caniuse-lite",
+      "license": "CC-BY-4.0",
+      "reason": "Standard browser compatibility dataset; transitive devDependency of Vite/browserslist",
+      "approvedBy": "p00-platform-audit"
+    },
+    {
+      "package": "spawndamnit",
+      "license": "Unknown",
+      "reason": "Verified MIT LICENSE file in package root; missing license field in package.json (transitive devDependency of @changesets/cli)",
+      "approvedBy": "p00-platform-audit"
+    }
+  ]
+}

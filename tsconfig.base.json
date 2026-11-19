@@ -1,0 +1,4 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "@uo3/config/tsconfig/base.json"
+}

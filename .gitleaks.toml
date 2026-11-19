@@ -1,0 +1,33 @@
+title = "UO3 Secrets Scanner Configuration"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "uo3-pem-private-key"
+description = "PEM Private Key material"
+regex = '''-----BEGIN ([A-Z0-9 ]+ )?PRIVATE KEY-----'''
+
+[[rules]]
+id = "uo3-aws-access-key"
+description = "AWS Access Key ID"
+regex = '''\b(AKIA|ASIA)[0-9A-Z]{16}\b'''
+
+[[rules]]
+id = "uo3-github-token"
+description = "GitHub Personal or Fine-Grained Token"
+regex = '''\b(ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,})\b'''
+
+[[rules]]
+id = "uo3-google-api-key"
+description = "Google API Key"
+regex = '''\bAIza[0-9A-Za-z\-_]{35}\b'''
+
+[allowlist]
+description = "Allow documented local dev placeholders in .env.example templates and test fixtures"
+paths = [
+  '''(^|/)\.env\.example$''',
+]
+regexes = [
+  '''CHANGE_ME_LOCAL_DEV_ONLY''',
+]

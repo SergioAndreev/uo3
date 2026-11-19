@@ -1,0 +1,98 @@
+name: Nightly Full Verification
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  TURBO_TELEMETRY_DISABLED: "1"
+  OPENSPEC_TELEMETRY: "0"
+
+jobs:
+  nightly-full:
+    name: Nightly Full Build, Tests & Security Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17.2-alpine
+        env:
+          POSTGRES_USER: uo3
+          POSTGRES_PASSWORD: CHANGE_ME_LOCAL_DEV_ONLY
+          POSTGRES_DB: uo3_dev
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd="pg_isready -U uo3 -d uo3_dev"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+
+      valkey:
+        image: valkey/valkey:8.0.2-alpine
+        ports:
+          - "6379:6379"
+        options: >-
+          --health-cmd="valkey-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=12
+
+      nats:
+        image: nats:2.10.25-alpine
+        ports:
+          - "4222:4222"
+          - "8222:8222"
+        options: >-
+          --health-cmd="wget -qO- http://127.0.0.1:8222/healthz || exit 1"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=12
+    env:
+      DATABASE_URL: postgresql://uo3:CHANGE_ME_LOCAL_DEV_ONLY@127.0.0.1:5432/uo3_dev
+      TEST_DATABASE_URL: postgresql://uo3:CHANGE_ME_LOCAL_DEV_ONLY@127.0.0.1:5432/uo3_test
+      VALKEY_URL: redis://127.0.0.1:6379
+      NATS_URL: nats://127.0.0.1:4222
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup workspace
+        uses: ./.github/actions/setup-workspace
+        with:
+          turbo-token: ${{ secrets.TURBO_TOKEN }}
+
+      - name: Run full monorepo verification without affected filtering
+        run: |
+          pnpm lint
+          pnpm format:check
+          pnpm typecheck
+          pnpm check:boundaries
+          pnpm check:workspace-manifests
+          pnpm check:env
+          pnpm check:assets
+          pnpm check:secrets
+          pnpm check:licenses
+          pnpm check:audit
+          pnpm check:ci-integrity
+          pnpm build
+          pnpm test
+          pnpm test:coverage
+          pnpm --filter @uo3/db exec node --input-type=module -e '
+            import pg from "pg";
+            const c = new pg.Client({ connectionString: process.env.DATABASE_URL });
+            await c.connect();
+            const exists = await c.query("SELECT 1 FROM pg_database WHERE datname = $1", ["uo3_test"]);
+            if (exists.rowCount === 0) {
+              await c.query("CREATE DATABASE uo3_test");
+            }
+            await c.end();
+          '
+          pnpm db:migrate
+          pnpm db:seed
+          pnpm test:integration

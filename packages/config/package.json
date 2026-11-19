@@ -1,0 +1,78 @@
+{
+  "name": "@uo3/config",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0 <23.0.0"
+  },
+  "exports": {
+    "./tsconfig/base.json": "./tsconfig/base.json",
+    "./tsconfig/isomorphic.json": "./tsconfig/isomorphic.json",
+    "./tsconfig/node.json": "./tsconfig/node.json",
+    "./tsconfig/nestjs.json": "./tsconfig/nestjs.json",
+    "./tsconfig/react.json": "./tsconfig/react.json",
+    "./eslint/base": {
+      "types": "./dist/eslint/base.d.ts",
+      "import": "./dist/eslint/base.js"
+    },
+    "./eslint/browser": {
+      "types": "./dist/eslint/browser.d.ts",
+      "import": "./dist/eslint/browser.js"
+    },
+    "./eslint/server": {
+      "types": "./dist/eslint/server.d.ts",
+      "import": "./dist/eslint/server.js"
+    },
+    "./eslint/boundaries": {
+      "types": "./dist/eslint/boundaries.d.ts",
+      "import": "./dist/eslint/boundaries.js"
+    },
+    "./prettier": {
+      "types": "./dist/prettier/index.d.ts",
+      "import": "./dist/prettier/index.js"
+    },
+    "./vitest/node": {
+      "types": "./dist/vitest/node.d.ts",
+      "import": "./dist/vitest/node.js"
+    },
+    "./vitest/browser": {
+      "types": "./dist/vitest/browser.d.ts",
+      "import": "./dist/vitest/browser.js"
+    },
+    "./env/shared": {
+      "types": "./dist/env/shared/index.d.ts",
+      "import": "./dist/env/shared/index.js"
+    },
+    "./env/server": {
+      "types": "./dist/env/server/index.d.ts",
+      "import": "./dist/env/server/index.js"
+    },
+    "./env/client": {
+      "types": "./dist/env/client/index.d.ts",
+      "import": "./dist/env/client/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "echo \"No integration tests in @uo3/config\""
+  },
+  "dependencies": {
+    "@eslint/js": "catalog:",
+    "@sinclair/typebox": "catalog:",
+    "eslint-plugin-boundaries": "catalog:",
+    "typescript-eslint": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "eslint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "timezone": "UTC",
+  "labels": ["dependencies"],
+  "minimumReleaseAge": "3 days",
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "rangeStrategy": "pin",
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"],
+    "minimumReleaseAge": null
+  },
+  "packageRules": [
+    {
+      "description": "Group TypeScript, ESLint, Prettier, Vitest and build tooling minor/patch updates",
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchPackageNames": [
+        "typescript",
+        "vitest",
+        "@vitest/*",
+        "eslint",
+        "@eslint/*",
+        "typescript-eslint",
+        "eslint-plugin-*",
+        "prettier",
+        "tsx",
+        "turbo",
+        "dependency-cruiser"
+      ],
+      "groupName": "tooling-typescript"
+    },
+    {
+      "description": "Group NestJS and Colyseus server stack minor/patch updates",
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchPackageNames": [
+        "@nestjs/*",
+        "@colyseus/*",
+        "colyseus",
+        "drizzle-orm",
+        "drizzle-kit",
+        "pg",
+        "ioredis",
+        "nats"
+      ],
+      "groupName": "server-stack"
+    },
+    {
+      "description": "Group React, Vite and Three.js client stack minor/patch updates",
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchPackageNames": [
+        "react",
+        "react-dom",
+        "@types/react",
+        "@types/react-dom",
+        "vite",
+        "@vitejs/*",
+        "three",
+        "@react-three/*"
+      ],
+      "groupName": "client-stack"
+    },
+    {
+      "description": "Pin and group Docker base image updates",
+      "matchManagers": ["docker-compose", "dockerfile"],
+      "pinDigests": true,
+      "groupName": "docker-images"
+    },
+    {
+      "description": "Group GitHub Actions digest updates",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions"
+    },
+    {
+      "description": "Separate major updates with breaking-update label for explicit review",
+      "matchUpdateTypes": ["major"],
+      "addLabels": ["breaking-update"],
+      "dependencyDashboardApproval": true
+    }
+  ]
+}

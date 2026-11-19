@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UO3 SPDX License Policy",
+  "type": "object",
+  "required": ["allowedSpdx", "deniedPatterns", "exceptions"],
+  "additionalProperties": true,
+  "properties": {
+    "$schema": { "type": "string" },
+    "allowedSpdx": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "deniedPatterns": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["package", "license", "reason", "approvedBy"],
+        "additionalProperties": false,
+        "properties": {
+          "package": { "type": "string", "minLength": 1 },
+          "license": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 },
+          "approvedBy": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

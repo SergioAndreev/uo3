@@ -1,0 +1,46 @@
+{
+  "name": "@uo3/game-server",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0 <23.0.0"
+  },
+  "scripts": {
+    "build": "tsc --build tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@colyseus/core": "0.16.5",
+    "@colyseus/schema": "3.0.76",
+    "@colyseus/ws-transport": "0.16.5",
+    "@nestjs/common": "11.2.11",
+    "@nestjs/core": "11.2.11",
+    "@uo3/config": "workspace:*",
+    "@uo3/content": "workspace:*",
+    "@uo3/db": "workspace:*",
+    "@uo3/domain": "workspace:*",
+    "@uo3/protocol": "workspace:*",
+    "@uo3/rules": "workspace:*",
+    "@uo3/uo-formats": "workspace:*",
+    "ioredis": "5.11.1",
+    "nats": "2.29.3",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@uo3/test-kit": "workspace:*",
+    "@vitest/coverage-v8": "catalog:",
+    "eslint": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

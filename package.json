@@ -1,0 +1,73 @@
+{
+  "name": "@uo3/root",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=22.0.0 <23.0.0",
+    "pnpm": ">=9.0.0 <10.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "eslint . && turbo run lint",
+    "test": "vitest run --project unit",
+    "test:coverage": "turbo run test:coverage",
+    "test:integration": "turbo run test:integration",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check:boundaries": "depcruise --config .dependency-cruiser.mjs apps packages",
+    "check:workspace-manifests": "tsx scripts/check-workspace-manifests.ts",
+    "check:env": "turbo run //#env:parity",
+    "env:parity": "tsx scripts/check-env.ts",
+    "check:assets": "tsx scripts/check-assets.ts --all",
+    "check:secrets": "tsx scripts/check-secrets.ts --all",
+    "check:licenses": "tsx scripts/check-licenses.ts",
+    "check:audit": "tsx scripts/check-audit.ts",
+    "check:changeset": "tsx scripts/check-changeset.ts",
+    "check:ci-integrity": "tsx scripts/check-ci-integrity.ts",
+    "db:migrate": "pnpm --filter @uo3/db db:migrate",
+    "db:seed": "pnpm --filter @uo3/db db:seed",
+    "dev": "turbo run dev --filter=@uo3/api --filter=@uo3/game-server --filter=@uo3/client --filter=@uo3/admin",
+    "bootstrap": "tsx scripts/bootstrap.ts",
+    "doctor": "tsx scripts/doctor.ts",
+    "env:reset": "tsx scripts/env-reset.ts",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs,json,md,yaml,yml}": [
+      "prettier --write"
+    ],
+    "*.{ts,tsx,mts,mjs}": [
+      "eslint --no-warn-ignored"
+    ]
+  },
+  "devDependencies": {
+    "@changesets/cli": "2.31.1",
+    "@commitlint/cli": "19.8.1",
+    "@commitlint/config-conventional": "19.8.1",
+    "@types/node": "catalog:",
+    "@uo3/config": "workspace:*",
+    "@vitest/coverage-v8": "catalog:",
+    "dependency-cruiser": "16.10.4",
+    "eslint": "catalog:",
+    "husky": "9.1.7",
+    "lint-staged": "15.5.2",
+    "prettier": "catalog:",
+    "tsx": "catalog:",
+    "turbo": "2.11.13",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "yaml": "catalog:"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ],
+    "overrides": {
+      "handlebars": ">=4.7.10",
+      "nanoid@^3.0.0": ">=3.3.20"
+    }
+  }
+}
