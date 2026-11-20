@@ -447,6 +447,9 @@ importers:
       typescript-eslint:
         specifier: 'catalog:'
         version: 8.73.0(eslint@9.39.5(jiti@2.6.1))(typescript@5.9.3)
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.1
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -533,6 +536,10 @@ importers:
         version: 3.2.7(@types/node@22.20.5)(jiti@2.6.1)(jsdom@25.0.1)(tsx@4.23.15)(yaml@2.9.1)
 
   packages/domain:
+    dependencies:
+      '@sinclair/typebox':
+        specifier: 'catalog:'
+        version: 0.34.52
     devDependencies:
       '@uo3/config':
         specifier: workspace:*
@@ -574,6 +581,9 @@ importers:
 
   packages/rules:
     dependencies:
+      '@sinclair/typebox':
+        specifier: 'catalog:'
+        version: 0.34.52
       '@uo3/domain':
         specifier: workspace:*
         version: link:../domain

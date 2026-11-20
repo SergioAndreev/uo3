@@ -13,6 +13,18 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./clock": {
+      "types": "./dist/clock/index.d.ts",
+      "import": "./dist/clock/index.js"
+    },
+    "./rng": {
+      "types": "./dist/rng/index.d.ts",
+      "import": "./dist/rng/index.js"
+    },
+    "./fixtures": {
+      "types": "./dist/fixtures/index.d.ts",
+      "import": "./dist/fixtures/index.js"
     }
   },
   "scripts": {

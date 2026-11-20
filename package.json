@@ -33,6 +33,7 @@
     "bootstrap": "tsx scripts/bootstrap.ts",
     "doctor": "tsx scripts/doctor.ts",
     "env:reset": "tsx scripts/env-reset.ts",
+    "demo:p01": "tsx scripts/demo-p01.ts",
     "prepare": "husky"
   },
   "lint-staged": {

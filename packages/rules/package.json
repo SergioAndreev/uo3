@@ -10,6 +10,30 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./schema": {
+      "types": "./dist/schema/index.d.ts",
+      "import": "./dist/schema/index.js"
+    },
+    "./profiles": {
+      "types": "./dist/profiles/index.d.ts",
+      "import": "./dist/profiles/index.js"
+    },
+    "./resolver": {
+      "types": "./dist/resolver/index.d.ts",
+      "import": "./dist/resolver/index.js"
+    },
+    "./digest": {
+      "types": "./dist/digest/index.d.ts",
+      "import": "./dist/digest/index.js"
+    },
+    "./projection": {
+      "types": "./dist/projection/index.d.ts",
+      "import": "./dist/projection/index.js"
+    },
+    "./formulas": {
+      "types": "./dist/formulas/index.d.ts",
+      "import": "./dist/formulas/index.js"
     }
   },
   "scripts": {
@@ -21,6 +45,7 @@
     "test:integration": "echo \"No integration tests in @uo3/rules\""
   },
   "dependencies": {
+    "@sinclair/typebox": "catalog:",
     "@uo3/domain": "workspace:*"
   },
   "devDependencies": {

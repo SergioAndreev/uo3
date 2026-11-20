@@ -65,7 +65,8 @@
     "@eslint/js": "catalog:",
     "@sinclair/typebox": "catalog:",
     "eslint-plugin-boundaries": "catalog:",
-    "typescript-eslint": "catalog:"
+    "typescript-eslint": "catalog:",
+    "yaml": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

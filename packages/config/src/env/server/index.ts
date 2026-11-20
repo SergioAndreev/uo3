@@ -7,6 +7,7 @@ export {
   type LoadServerConfigOptions,
 } from "./loader.js";
 export { checkProductionGuards, isDevPlaceholder } from "./prod-guards.js";
+export { loadRawShardRulesetFile } from "./ruleset-file.js";
 export { resolveSecretFiles, type SecretFileResolution } from "./secret-files.js";
 export {
   ApiEnvSchema,

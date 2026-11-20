@@ -125,6 +125,16 @@ export const GameServerEnvSchema = Type.Object(
       default: "local-dev",
       description: "Идентификатор шарда",
     }),
+    SHARD_RULESET_PRESET: Type.String({
+      minLength: 1,
+      default: "uor",
+      description: "Базовый пресет правил эпохи шарда (uor, uor-felucca-only, uor-dev-fast)",
+    }),
+    SHARD_RULESET_FILE: Type.Optional(
+      Type.String({
+        description: "Путь к YAML-файлу переопределений правил шарда (shard-ruleset.yaml)",
+      }),
+    ),
     SHUTDOWN_TIMEOUT_MS: PositiveTimeoutMsSchema(15000, "Таймаут graceful shutdown (мс)"),
     OTEL_EXPORTER_OTLP_ENDPOINT: Type.Optional(
       HttpUrlSchema({ description: "HTTP-эндпоинт OpenTelemetry OTLP exporter" }),

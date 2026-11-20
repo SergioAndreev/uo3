@@ -186,6 +186,52 @@ export function createBoundariesConfig(): Linter.Config[] {
       },
     },
     {
+      name: "uo3/domain-rules-determinism",
+      files: ["packages/domain/src/**/*.ts", "packages/rules/src/**/*.ts"],
+      ignores: [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "packages/domain/src/runtime/system-clock.ts",
+      ],
+      rules: {
+        "no-restricted-properties": [
+          "error",
+          {
+            object: "Math",
+            property: "random",
+            message:
+              "Math.random() is forbidden in deterministic core packages (@uo3/domain, @uo3/rules); inject SeededRng.",
+          },
+          {
+            object: "Date",
+            property: "now",
+            message:
+              "Date.now() is forbidden in deterministic core packages (@uo3/domain, @uo3/rules); inject GameClock.",
+          },
+          {
+            object: "performance",
+            property: "now",
+            message:
+              "performance.now() is forbidden in deterministic core packages (@uo3/domain, @uo3/rules); inject GameClock.",
+          },
+          {
+            object: "process",
+            property: "env",
+            message:
+              "process.env is forbidden in pure isomorphic packages (@uo3/domain, @uo3/rules).",
+          },
+        ],
+        "no-restricted-syntax": [
+          "error",
+          {
+            selector: "NewExpression[callee.name='Date'][arguments.length=0]",
+            message:
+              "new Date() without arguments is non-deterministic in @uo3/domain and @uo3/rules; inject GameClock.",
+          },
+        ],
+      },
+    },
+    {
       name: "uo3/cli-and-bot-db-isolation",
       files: ["apps/bot-client/src/**/*.ts", "apps/asset-tool/src/**/*.ts"],
       ignores: ["**/*.test.ts", "**/*.integration.test.ts"],

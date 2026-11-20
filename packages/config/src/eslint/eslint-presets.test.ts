@@ -67,4 +67,35 @@ describe("ESLint 9 flat config presets", () => {
     const ruleIds = results[0]?.messages.map((m) => m.ruleId) ?? [];
     expect(ruleIds).toContain("no-restricted-imports");
   });
+
+  it("blocks non-deterministic APIs in @uo3/domain and @uo3/rules while exempting system-clock.ts", async () => {
+    const eslint = createLinter();
+    const badCode = [
+      "export function bad(): number {",
+      "  const a = Math.random();",
+      "  const b = Date.now();",
+      "  const c = new Date().getTime();",
+      "  const d = performance.now();",
+      "  return a + b + c + d;",
+      "}",
+    ].join("\n");
+
+    const domainRes = await eslint.lintText(badCode, {
+      filePath: "packages/domain/src/identity/bad-nondet.ts",
+    });
+    const domainRules = domainRes[0]?.messages.map((m) => m.ruleId) ?? [];
+    expect(domainRules).toContain("no-restricted-properties");
+    expect(domainRules).toContain("no-restricted-syntax");
+
+    const rulesRes = await eslint.lintText("export const r = Math.random();\n", {
+      filePath: "packages/rules/src/formulas/bad-rand.ts",
+    });
+    expect(rulesRes[0]?.messages.map((m) => m.ruleId)).toContain("no-restricted-properties");
+
+    const clockRes = await eslint.lintText(
+      "export function readWall(): number { return Date.now() + performance.now(); }\n",
+      { filePath: "packages/domain/src/runtime/system-clock.ts" },
+    );
+    expect(clockRes[0]?.errorCount).toBe(0);
+  });
 });

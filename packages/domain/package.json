@@ -10,6 +10,26 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./errors": {
+      "types": "./dist/errors/index.d.ts",
+      "import": "./dist/errors/index.js"
+    },
+    "./identity": {
+      "types": "./dist/identity/index.d.ts",
+      "import": "./dist/identity/index.js"
+    },
+    "./coordinates": {
+      "types": "./dist/coordinates/index.d.ts",
+      "import": "./dist/coordinates/index.js"
+    },
+    "./enums": {
+      "types": "./dist/enums/index.d.ts",
+      "import": "./dist/enums/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "import": "./dist/runtime/index.js"
     }
   },
   "scripts": {
@@ -20,7 +40,9 @@
     "test:coverage": "vitest run --coverage",
     "test:integration": "echo \"No integration tests in @uo3/domain\""
   },
-  "dependencies": {},
+  "dependencies": {
+    "@sinclair/typebox": "catalog:"
+  },
   "devDependencies": {
     "@uo3/config": "workspace:*",
     "@vitest/coverage-v8": "catalog:",
