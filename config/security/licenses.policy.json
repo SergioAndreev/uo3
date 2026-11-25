@@ -24,6 +24,11 @@
       "package": "@csstools/color-helpers",
       "license": "MIT-0",
       "reason": "MIT без требования указания авторства, только тесты (jsdom)"
+    },
+    {
+      "package": "spawndamnit",
+      "license": "Unknown",
+      "reason": "Файл LICENSE — текст MIT, в package.json только ссылка на него; dev-зависимость @changesets/cli. Одобрено владельцем 2026-11-25"
     }
   ]
 }

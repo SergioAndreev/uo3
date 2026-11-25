@@ -1,0 +1,272 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TURBO_TELEMETRY_DISABLED: '1'
+  OPENSPEC_TELEMETRY: '0'
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      full: ${{ steps.scope.outputs.full }}
+      filter: ${{ steps.scope.outputs.filter }}
+      paths: ${{ steps.scope.outputs.paths }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+      - id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node --experimental-strip-types scripts/ci-scope.ts >> "$GITHUB_OUTPUT"
+
+  lint:
+    needs: detect-changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      FILTER: ${{ needs.detect-changes.outputs.filter }}
+      PATHS: ${{ needs.detect-changes.outputs.paths }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-workspace
+        with:
+          turbo-token: ${{ secrets.TURBO_TOKEN }}
+          turbo-team: ${{ secrets.TURBO_TEAM }}
+          turbo-api: ${{ secrets.TURBO_API }}
+      - run: pnpm turbo run build --filter=@duskmarch/config
+      - if: env.PATHS != ''
+        run: pnpm eslint --max-warnings 0 --no-warn-ignored --no-error-on-unmatched-pattern $PATHS
+      - if: always()
+        run: pnpm format:check
+      - if: always()
+        run: pnpm check:boundaries
+      - if: always()
+        run: pnpm check:workspace-manifests
+
+  typecheck:
+    needs: detect-changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      FILTER: ${{ needs.detect-changes.outputs.filter }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-workspace
+        with:
+          turbo-token: ${{ secrets.TURBO_TOKEN }}
+          turbo-team: ${{ secrets.TURBO_TEAM }}
+          turbo-api: ${{ secrets.TURBO_API }}
+      - run: pnpm turbo run typecheck $FILTER
+      - run: pnpm turbo run build --filter=@duskmarch/db && pnpm tsc -p tsconfig.json
+
+  test:
+    needs: detect-changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      FILTER: ${{ needs.detect-changes.outputs.filter }}
+    services:
+      postgres:
+        image: postgres:17.2-alpine
+        env:
+          POSTGRES_USER: duskmarch
+          POSTGRES_PASSWORD: CHANGE_ME_LOCAL_DEV_ONLY
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U duskmarch"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      valkey:
+        image: valkey/valkey:8.0.2-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      nats:
+        image: nats:2.10.25-alpine
+        ports: ['4222:4222', '8222:8222']
+        options: >-
+          --health-cmd "wget -qO- http://127.0.0.1:8222/healthz"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-workspace
+        with:
+          turbo-token: ${{ secrets.TURBO_TOKEN }}
+          turbo-team: ${{ secrets.TURBO_TEAM }}
+          turbo-api: ${{ secrets.TURBO_API }}
+      - name: gitleaks
+        run: |
+          curl -fsSLo /tmp/gitleaks.tgz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tgz' | sha256sum -c
+          sudo tar -xzf /tmp/gitleaks.tgz -C /usr/local/bin gitleaks
+      # Сервисам GitHub нельзя передать файлы репозитория: настраиваем после старта.
+      - name: Базы данных и JetStream
+        env:
+          POSTGRES: ${{ job.services.postgres.id }}
+          NATS: ${{ job.services.nats.id }}
+        run: |
+          docker exec -i "$POSTGRES" psql -v ON_ERROR_STOP=1 -U duskmarch -d postgres < infra/local/postgres/init-dbs.sql
+          docker cp infra/local/nats/nats.conf "$NATS:/etc/nats/nats-server.conf"
+          docker restart "$NATS"
+          timeout 60 sh -c 'until curl -fs http://127.0.0.1:8222/healthz; do sleep 1; done'
+          curl -fs http://127.0.0.1:8222/jsz | grep -q /data/jetstream
+      - run: cp .env.example .env && for d in apps/*/; do cp "$d.env.example" "$d.env"; done
+      - run: pnpm turbo run build --filter=@duskmarch/db
+      - run: pnpm db:migrate
+      - name: Модульные тесты и покрытие
+        run: |
+          pnpm turbo run test $FILTER
+          pnpm vitest run --project unit scripts infra --no-file-parallelism --reporter=default --reporter=junit --reporter=json --outputFile.junit=reports/junit.xml --outputFile.json=reports/vitest.json
+      - name: Интеграционные тесты
+        if: always()
+        run: pnpm turbo run test:integration $FILTER
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: test-reports
+          retention-days: ${{ github.ref == 'refs/heads/main' && 30 || 14 }}
+          if-no-files-found: error
+          path: |
+            reports/**
+            apps/*/reports/**
+            packages/*/reports/**
+            apps/*/coverage/**
+            packages/*/coverage/**
+
+  build:
+    needs: detect-changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      FILTER: ${{ needs.detect-changes.outputs.filter }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-workspace
+        with:
+          turbo-token: ${{ secrets.TURBO_TOKEN }}
+          turbo-team: ${{ secrets.TURBO_TEAM }}
+          turbo-api: ${{ secrets.TURBO_API }}
+      - run: pnpm turbo run build $FILTER
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bundle-stats
+          retention-days: ${{ github.ref == 'refs/heads/main' && 30 || 14 }}
+          if-no-files-found: ignore
+          path: |
+            apps/client/dist/bundle-stats.json
+            apps/admin/dist/bundle-stats.json
+
+  quality-gates:
+    needs: detect-changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-workspace
+        with:
+          turbo-token: ${{ secrets.TURBO_TOKEN }}
+          turbo-team: ${{ secrets.TURBO_TEAM }}
+          turbo-api: ${{ secrets.TURBO_API }}
+      - name: gitleaks
+        run: |
+          curl -fsSLo /tmp/gitleaks.tgz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tgz' | sha256sum -c
+          sudo tar -xzf /tmp/gitleaks.tgz -C /usr/local/bin gitleaks
+      - name: Conventional Commits
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pnpm exec commitlint --from "$BASE_SHA" --to "$HEAD_SHA"
+          printf '%s\n' "$TITLE" | pnpm exec commitlint
+      - name: Changeset
+        if: always() && github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: pnpm check:changeset "$BASE_SHA"
+      - if: always()
+        run: pnpm check:assets
+      - if: always()
+        run: pnpm check:secrets
+      - if: always()
+        run: pnpm check:licenses
+      - if: always()
+        run: pnpm check:audit
+      - if: always()
+        run: pnpm check:env
+      - if: always()
+        run: pnpm check:ci-integrity
+      - name: Renovate
+        if: always()
+        env:
+          npm_config_ignore_scripts: 'true'
+        run: pnpm --package=renovate@41.173.1 dlx renovate-config-validator --strict renovate.json
+      - name: OpenSpec
+        if: always() && github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git diff --name-only "$BASE_SHA...HEAD" -- openspec/changes | cut -d/ -f3 | sort -u | while read -r id; do
+            if [ -f "openspec/changes/$id/proposal.md" ]; then
+              pnpm dlx @fission-ai/openspec@1.14.1 validate "$id" --strict --no-interactive < /dev/null || exit 1
+            fi
+          done
+
+  ci-required:
+    name: ci-required
+    needs: [lint, typecheck, test, build, quality-gates]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - env:
+          LINT: ${{ needs.lint.result }}
+          TYPECHECK: ${{ needs.typecheck.result }}
+          TEST: ${{ needs.test.result }}
+          BUILD: ${{ needs.build.result }}
+          QUALITY_GATES: ${{ needs.quality-gates.result }}
+        run: |
+          for result in "$LINT" "$TYPECHECK" "$TEST" "$BUILD" "$QUALITY_GATES"; do
+            echo "$result"
+            if [ "$result" != success ]; then failed=1; fi
+          done
+          exit "${failed:-0}"
