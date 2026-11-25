@@ -1,0 +1,23 @@
+{
+  "name": "@duskmarch/bot-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@duskmarch/config": "workspace:*",
+    "@duskmarch/domain": "workspace:*",
+    "@duskmarch/protocol": "workspace:*",
+    "@duskmarch/rules": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

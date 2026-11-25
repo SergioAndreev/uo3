@@ -1,0 +1,30 @@
+{
+  "name": "@duskmarch/test-kit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@duskmarch/asset-formats": "workspace:*",
+    "@duskmarch/config": "workspace:*",
+    "@duskmarch/content": "workspace:*",
+    "@duskmarch/domain": "workspace:*",
+    "@duskmarch/protocol": "workspace:*",
+    "@duskmarch/rules": "workspace:*"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

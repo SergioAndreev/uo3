@@ -5,23 +5,23 @@ context: |
   All artifacts must be written in Russian.
   Keep OpenSpec structural headings and SHALL/MUST keywords in English.
 
-  Проект UO3: браузерная MMORPG в духе Ultima Online эпохи Renaissance (UO:R) — клиент и авторитарный сервер.
-  Репозиторий содержит ТОЛЬКО техническое задание (OpenSpec); код пишется позже ИИ-агентами по фазам.
+  Проект Duskmarch: оригинальная браузерная sandbox-MMORPG — клиент и авторитарный сервер. Концепция docs/CONCEPT.md имеет приоритет.
+  Код создаётся по фазам OpenSpec.
   Обязательные документы-контракты: docs/ARCHITECTURE.md (ADR, стек, константы), docs/ROADMAP.md (фазы P00–P36,
   реестр capability — одна capability принадлежит одной фазе), docs/GLOSSARY.md.
 
   Стек (зафиксирован): TypeScript strict ESM, Node 22, pnpm + Turborepo монорепо.
   Клиент apps/client: React 19, Vite 6, Three.js + @react-three/fiber + drei (WebGL2, опц. WebGPU), Zustand, TanStack Query,
-  Web Workers, OPFS. Гампы — React DOM-оверлей; серверные гампы — декларативная JSON-разметка.
+  Web Workers, OPFS. Панели — React DOM-оверлей; серверные панели — декларативная JSON-разметка.
   Сервер: apps/api — NestJS 11 (REST + OpenAPI: identity, characters, shards, game tickets, admin API);
   apps/game-server — NestJS application context + Colyseus 0.16 (@colyseus/schema 3 + StateView для AOI),
-  комнаты WorldPartitionRoom (партиция фасета) и ShardHubRoom (чат/пати/гильдии/объявления).
+  комнаты WorldPartitionRoom (партиция плана) и ShardHubRoom (чат/пати/гильдии/объявления).
   Данные: PostgreSQL 17 + Drizzle ORM, Valkey (presence/сессии/rate-limit), NATS JetStream (межпартиционная шина).
-  Пакеты: domain, rules (детерминированные формулы + профиль эпохи), protocol (intents + схемы, TypeBox), uo-formats
-  (изоморфные парсеры MUL/UOP), content (YAML + JSON Schema), db, ui-kit, config, test-kit.
-  Ассеты: «принеси свой клиент» — проприетарные файлы UO не распространяются; для разработки/CI — синтетический мир и CC0-заглушки.
+  Пакеты: domain, rules (детерминированные формулы + профиль правил), protocol (intents + схемы, TypeBox), asset-formats
+  (собственный формат пакетов), content (YAML + JSON Schema), db, ui-kit, config, test-kit.
+  Ассеты: собственные, CC0, CC-BY или синтетические; файлы других игр не поддерживаются.
   Мир в памяти сервера, инкрементальный flush каждые 60 с, критические транзакции синхронно, item ledger.
-  Движение тайловое с sequence 0–255, клиентским предсказанием и ack/deny сервера. Тик 20 Гц, AOI 18 тайлов.
+  Движение тайловое с sequence 0–255, клиентским предсказанием и ack/deny сервера. Тик 20 Гц, AOI 20 клеток.
   Тесты: Vitest, Playwright, симуляционный харнес (фейковые часы, сидируемый RNG), apps/bot-client для нагрузки.
 
 rules:

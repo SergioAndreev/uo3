@@ -1,0 +1,23 @@
+{
+  "name": "@duskmarch/asset-tool",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@duskmarch/asset-formats": "workspace:*",
+    "@duskmarch/config": "workspace:*",
+    "@duskmarch/content": "workspace:*",
+    "@duskmarch/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

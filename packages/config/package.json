@@ -1,0 +1,47 @@
+{
+  "name": "@duskmarch/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./tsconfig/*": "./tsconfig/*",
+    "./eslint/*": {
+      "types": "./dist/eslint/*.d.ts",
+      "import": "./dist/eslint/*.js"
+    },
+    "./prettier": {
+      "types": "./dist/prettier/index.d.ts",
+      "import": "./dist/prettier/index.js"
+    },
+    "./vitest/*": {
+      "types": "./dist/vitest/*.d.ts",
+      "import": "./dist/vitest/*.js"
+    },
+    "./env/*": {
+      "types": "./dist/env/*.d.ts",
+      "import": "./dist/env/*.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@eslint/js": "catalog:",
+    "eslint-import-resolver-typescript": "4.4.4",
+    "eslint-plugin-boundaries": "5.4.0",
+    "typescript-eslint": "8.74.0"
+  },
+  "peerDependencies": {
+    "eslint": "^9.0.0",
+    "vitest": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

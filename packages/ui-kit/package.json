@@ -1,0 +1,33 @@
+{
+  "name": "@duskmarch/ui-kit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@duskmarch/config": "workspace:*",
+    "@duskmarch/domain": "workspace:*",
+    "@duskmarch/protocol": "workspace:*",
+    "react": "19.1.10"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/react": "19.1.10",
+    "@types/react-dom": "19.1.7",
+    "@vitest/coverage-v8": "catalog:",
+    "jsdom": "26.1.0",
+    "react-dom": "19.1.10",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

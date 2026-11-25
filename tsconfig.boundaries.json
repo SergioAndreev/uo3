@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@duskmarch/config/*": ["packages/config/src/*"],
+      "@duskmarch/*": ["packages/*/src"]
+    }
+  },
+  "include": ["apps/*/src", "packages/*/src"]
+}

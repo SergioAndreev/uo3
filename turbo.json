@@ -1,0 +1,28 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "globalDependencies": ["tsconfig.base.json"],
+  "globalEnv": ["NODE_ENV", "CI"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "src/**",
+        "tsconfig*.json",
+        "package.json",
+        "vite.config.ts",
+        "index.html",
+        "tsconfig/**"
+      ],
+      "outputs": ["dist/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**", "tsconfig*.json", "package.json", "tsconfig/**"],
+      "outputs": []
+    },
+    "lint": { "dependsOn": ["^build"], "outputs": [] },
+    "test": { "dependsOn": ["^build"], "outputs": ["coverage/**", "reports/**"] },
+    "test:integration": { "dependsOn": ["^build"], "cache": false },
+    "dev": { "dependsOn": ["^build"], "cache": false, "persistent": true }
+  }
+}

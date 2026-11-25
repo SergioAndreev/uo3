@@ -1,8 +1,10 @@
-# Дорожная карта UO3 — фазы, вехи и реестр capability
+# Дорожная карта Duskmarch — фазы, вехи и реестр capability
 
 > Каждая фаза = одно OpenSpec-изменение `openspec/changes/<id>/` (proposal → specs → design → tasks).
 > **Реестр capability ниже — контракт между фазами**: одна capability принадлежит ровно одной фазе. Если фаза затрагивает чужую capability, она ссылается на неё в тексте, а не дублирует требования.
 > Архитектура и сквозные решения — [ARCHITECTURE.md](ARCHITECTURE.md), термины — [GLOSSARY.md](GLOSSARY.md).
+
+> **Внимание:** описания P01–P36 ниже ещё не прошли ревизию под [CONCEPT.md](CONCEPT.md) (§6); до ревизии фазы не реализуются.
 
 ## Вехи (milestones)
 

@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+reports
+.turbo
+pnpm-lock.yaml
+openspec
+docs
+.agents
+.claude
+.gemini
+AGENTS.md

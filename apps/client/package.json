@@ -1,0 +1,25 @@
+{
+  "name": "@duskmarch/client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@duskmarch/asset-formats": "workspace:*",
+    "@duskmarch/config": "workspace:*",
+    "@duskmarch/content": "workspace:*",
+    "@duskmarch/domain": "workspace:*",
+    "@duskmarch/protocol": "workspace:*",
+    "@duskmarch/rules": "workspace:*",
+    "@duskmarch/ui-kit": "workspace:*"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

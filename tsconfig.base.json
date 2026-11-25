@@ -1,0 +1,4 @@
+{
+  "extends": "@duskmarch/config/tsconfig/base.json",
+  "include": ["scripts/**/*.ts", "vitest.workspace.ts"]
+}

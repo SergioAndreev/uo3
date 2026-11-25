@@ -1,0 +1,42 @@
+{
+  "name": "duskmarch",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0 <23.0.0"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck && tsc -p tsconfig.json",
+    "test": "turbo run test && vitest run --project unit scripts --no-file-parallelism",
+    "lint": "turbo run build --filter=@duskmarch/config && eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "format:check": "turbo run build --filter=@duskmarch/config && prettier --check .",
+    "check:boundaries": "depcruise --config .dependency-cruiser.mjs apps packages",
+    "check:workspace-manifests": "tsx scripts/check-workspace-manifests.ts",
+    "check:node": "tsx scripts/check-node-version.ts",
+    "dev": "turbo run dev",
+    "bootstrap": "sh scripts/bootstrap.sh",
+    "doctor": "tsx scripts/doctor.ts",
+    "env:reset": "tsx scripts/env-reset.ts"
+  },
+  "devDependencies": {
+    "@duskmarch/config": "workspace:*",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "dependency-cruiser": "16.10.4",
+    "eslint": "catalog:",
+    "prettier": "catalog:",
+    "tsx": "catalog:",
+    "turbo": "2.11.13",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
