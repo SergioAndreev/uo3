@@ -1,4 +1,7 @@
-import { defineConfig } from 'vitest/config';
-import { nodePreset } from '@duskmarch/config/vitest/node';
+import { mergeConfig } from 'vitest/config';
+import { browserPreset } from '@duskmarch/config/vitest/browser';
 
-export default defineConfig(nodePreset('default'));
+// main.tsx — точка входа; проверяется сборкой.
+export default mergeConfig(browserPreset('default'), {
+  test: { coverage: { exclude: ['src/main.tsx'] } },
+});

@@ -55,7 +55,7 @@ export const ApiEnvSchema = Type.Object({
     createSecretSchema({ 'x-crypto-key': true, description: 'Ключи Ed25519 (формат задаёт P04)' }),
   ),
   CORS_ALLOWED_ORIGINS: CsvList({
-    default: ['http://localhost:5173'],
+    default: ['http://localhost:5273'],
     description: 'Разрешённые origin через запятую',
   }),
   CORS_ALLOW_CREDENTIALS: Flag({ default: true, description: 'Разрешить cookie в CORS' }),

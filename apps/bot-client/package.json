@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc --build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --coverage"
+    "test": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@duskmarch/config": "workspace:*",
@@ -17,7 +18,11 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
+    "tsx": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "bin": {
+    "duskmarch-bot-client": "./dist/index.js"
   }
 }

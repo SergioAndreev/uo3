@@ -69,7 +69,7 @@ console.log(redactConfig(ApiEnvSchema, config));
 | `API_HOST` | Адрес HTTP API | `127.0.0.1` |  |
 | `API_PORT` | Порт HTTP API | `3001` |  |
 | `IDENTITY_JWT_SIGNING_KEYS_JSON` | Ключи Ed25519 (формат задаёт P04) | — | да |
-| `CORS_ALLOWED_ORIGINS` | Разрешённые origin через запятую | `http://localhost:5173` |  |
+| `CORS_ALLOWED_ORIGINS` | Разрешённые origin через запятую | `http://localhost:5273` |  |
 | `CORS_ALLOW_CREDENTIALS` | Разрешить cookie в CORS | `true` |  |
 | `ENABLE_SWAGGER` | Публиковать OpenAPI UI | `false` |  |
 

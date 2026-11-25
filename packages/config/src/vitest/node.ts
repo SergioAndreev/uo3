@@ -8,6 +8,8 @@ export function nodePreset(tier: CoverageTier = 'default'): ViteUserConfig {
       include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
       exclude: ['**/*.integration.test.ts', '**/node_modules/**', '**/dist/**'],
       testTimeout: 60_000,
+      maxWorkers: 2,
+      minWorkers: 1,
       reporters: ['default', 'junit', 'json'],
       outputFile: { junit: 'reports/junit.xml', json: 'reports/vitest.json' },
       coverage: {

@@ -27,14 +27,14 @@
   "scripts": {
     "build": "turbo run build",
     "typecheck": "turbo run typecheck && tsc -p tsconfig.json",
-    "test": "turbo run test --concurrency=2 && vitest run --project unit scripts infra --no-file-parallelism",
+    "test": "turbo run test && vitest run --project unit scripts infra --no-file-parallelism",
     "lint": "turbo run build --filter=@duskmarch/config && eslint . --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "turbo run build --filter=@duskmarch/config && prettier --check .",
     "check:boundaries": "depcruise --config .dependency-cruiser.mjs apps packages",
     "check:workspace-manifests": "tsx scripts/check-workspace-manifests.ts",
     "check:node": "tsx scripts/check-node-version.ts",
-    "dev": "turbo run dev",
+    "dev": "turbo run dev --filter=@duskmarch/api --filter=@duskmarch/game-server --filter=@duskmarch/client --filter=@duskmarch/admin",
     "bootstrap": "sh scripts/bootstrap.sh",
     "doctor": "turbo run build --filter=@duskmarch/db && tsx scripts/doctor.ts",
     "env:reset": "turbo run build --filter=@duskmarch/db && tsx scripts/env-reset.ts",
@@ -43,7 +43,7 @@
     "db:generate": "turbo run build --filter=@duskmarch/db^... && pnpm --filter @duskmarch/db db:generate",
     "db:migrate": "turbo run build --filter=@duskmarch/db^... && pnpm --filter @duskmarch/db db:migrate",
     "db:seed": "turbo run build --filter=@duskmarch/db^... && pnpm --filter @duskmarch/db db:seed",
-    "test:integration": "turbo run test:integration --concurrency=1 && vitest run --project integration infra scripts --no-file-parallelism --passWithNoTests"
+    "test:integration": "turbo run test:integration && vitest run --project integration infra scripts --no-file-parallelism --passWithNoTests"
   },
   "devDependencies": {
     "@duskmarch/config": "workspace:*",
