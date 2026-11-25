@@ -5,7 +5,6 @@
 '@duskmarch/bot-client': minor
 '@duskmarch/client': minor
 '@duskmarch/game-server': minor
-'@duskmarch/README.md': minor
 '@duskmarch/asset-formats': minor
 '@duskmarch/config': minor
 '@duskmarch/content': minor

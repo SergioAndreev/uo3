@@ -32,7 +32,8 @@
   },
   "scripts": {
     "build": "turbo run build",
-    "typecheck": "turbo run typecheck && tsc -p tsconfig.json",
+    "typecheck": "turbo run typecheck typecheck:root",
+    "typecheck:root": "tsc -p tsconfig.json",
     "test": "turbo run test && vitest run --project unit scripts infra --no-file-parallelism",
     "lint": "turbo run build --filter=@duskmarch/config && eslint . --max-warnings 0",
     "format": "prettier --write .",
@@ -40,7 +41,7 @@
     "check:boundaries": "depcruise --config .dependency-cruiser.mjs apps packages",
     "check:workspace-manifests": "tsx scripts/check-workspace-manifests.ts",
     "check:node": "tsx scripts/check-node-version.ts",
-    "dev": "turbo run dev --filter=@duskmarch/api --filter=@duskmarch/game-server --filter=@duskmarch/client --filter=@duskmarch/admin",
+    "dev": "turbo run dev --concurrency=6 --filter=@duskmarch/api --filter=@duskmarch/game-server --filter=@duskmarch/client --filter=@duskmarch/admin",
     "bootstrap": "sh scripts/bootstrap.sh",
     "doctor": "turbo run build --filter=@duskmarch/db && tsx scripts/doctor.ts",
     "env:reset": "turbo run build --filter=@duskmarch/db && tsx scripts/env-reset.ts",

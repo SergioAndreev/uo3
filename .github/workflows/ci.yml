@@ -82,7 +82,7 @@ jobs:
           turbo-team: ${{ secrets.TURBO_TEAM }}
           turbo-api: ${{ secrets.TURBO_API }}
       - run: pnpm turbo run typecheck $FILTER
-      - run: pnpm turbo run build --filter=@duskmarch/db && pnpm tsc -p tsconfig.json
+      - run: pnpm turbo run //#typecheck:root
 
   test:
     needs: detect-changes
