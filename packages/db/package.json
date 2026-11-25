@@ -7,6 +7,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./infra": {
+      "types": "./dist/infra.d.ts",
+      "import": "./dist/infra.js"
     }
   },
   "scripts": {
@@ -21,7 +25,9 @@
   "dependencies": {
     "@duskmarch/config": "workspace:*",
     "@duskmarch/domain": "workspace:*",
+    "@nats-io/transport-node": "3.5.0",
     "drizzle-orm": "0.45.4",
+    "iovalkey": "0.4.0",
     "pg": "8.23.1"
   },
   "devDependencies": {

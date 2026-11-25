@@ -292,6 +292,8 @@ sequenceDiagram
 
 - **Индексы:** первичный ключ `platform_env_metadata_pkey (key)`.
 - **Идемпотентный `seed` (`packages/db/src/seed.ts`):** выполняет `INSERT ... ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, description = EXCLUDED.description` в рамках транзакции для фиксированных записей (`seed.version = "p00-v1"`, `shard.default = { id: "local-dev", name: "Duskmarch Local Dev", ruleset: "duskmarch" }`, `world.synthetic_ready = false`). Повторный прогон не создаёт дубликатов и не меняет число строк.
+- **Общие подключения серверов (`@duskmarch/db/infra`):** фабрика клиентов PostgreSQL, Valkey и NATS с пробами готовности; общая для `api` и `game-server`, чтобы приложения не импортировали друг друга. Недоступная зависимость не мешает старту: её показывает `/readyz`.
+- **Команда диагностики** запускается как `pnpm run doctor`: имя `pnpm doctor` занято встроенной командой pnpm.
 - **Учёт миграций:** стандартная таблица `drizzle.__drizzle_migrations` с SHA-256 хэшами SQL-миграций.
 
 #### 2.4 Каркасы приложений (`apps/*`) и пакетов-заглушек (`packages/*`)

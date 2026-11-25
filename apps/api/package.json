@@ -6,7 +6,11 @@
   "scripts": {
     "build": "tsc --build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --coverage"
+    "test": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js"
   },
   "dependencies": {
     "@duskmarch/config": "workspace:*",
@@ -14,11 +18,18 @@
     "@duskmarch/db": "workspace:*",
     "@duskmarch/domain": "workspace:*",
     "@duskmarch/protocol": "workspace:*",
-    "@duskmarch/rules": "workspace:*"
+    "@duskmarch/rules": "workspace:*",
+    "@nestjs/common": "11.2.12",
+    "@nestjs/core": "11.2.12",
+    "@nestjs/platform-express": "11.2.12",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
   },
   "devDependencies": {
+    "@sinclair/typebox": "catalog:",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
+    "tsx": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

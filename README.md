@@ -12,6 +12,13 @@
 
 Node.js 22 и pnpm 9 (версия закреплена в `package.json`), Docker с Compose v2. Установка: `pnpm install --frozen-lockfile`.
 
+## Быстрый старт за 10 минут
+
+1. `pnpm bootstrap` — зависимости, `.env`, контейнеры, миграции, стартовые данные. Если порт занят, задайте свой в `.env` и повторите.
+2. `pnpm run doctor` — проверка окружения. `run` обязателен: `pnpm doctor` — встроенная команда pnpm.
+3. `pnpm dev` — приложения в режиме разработки.
+4. `pnpm env:reset --yes` — пересоздать локальные базы; данные удаляются.
+
 ## Команды
 
 | Команда                                                 | Назначение                                             |
@@ -27,7 +34,7 @@ Node.js 22 и pnpm 9 (версия закреплена в `package.json`), Dock
 | `pnpm db:generate` / `pnpm db:migrate` / `pnpm db:seed` | миграции и стартовые данные                            |
 | `pnpm check:node`                                       | версия Node.js                                         |
 | `pnpm dev`                                              | режим разработки (P00, группа 10 — ещё не реализовано) |
-| `pnpm bootstrap` / `pnpm doctor` / `pnpm env:reset`     | окружение (P00, группа 8 — ещё не реализовано)         |
+| `pnpm bootstrap` / `pnpm doctor` / `pnpm env:reset`     | подготовка, диагностика и сброс окружения              |
 
 ## Статус
 

@@ -10,7 +10,19 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild"
-    ]
+    ],
+    "peerDependencyRules": {
+      "ignoreMissing": [
+        "@pm2/io"
+      ]
+    },
+    "packageExtensions": {
+      "@nestjs/platform-express": {
+        "peerDependencies": {
+          "rxjs": "*"
+        }
+      }
+    }
   },
   "scripts": {
     "build": "turbo run build",
@@ -24,8 +36,8 @@
     "check:node": "tsx scripts/check-node-version.ts",
     "dev": "turbo run dev",
     "bootstrap": "sh scripts/bootstrap.sh",
-    "doctor": "tsx scripts/doctor.ts",
-    "env:reset": "tsx scripts/env-reset.ts",
+    "doctor": "turbo run build --filter=@duskmarch/db && tsx scripts/doctor.ts",
+    "env:reset": "turbo run build --filter=@duskmarch/db && tsx scripts/env-reset.ts",
     "check:env": "turbo run //#check:env:run",
     "check:env:run": "tsx scripts/check-env.ts",
     "db:generate": "turbo run build --filter=@duskmarch/db^... && pnpm --filter @duskmarch/db db:generate",
@@ -35,6 +47,7 @@
   },
   "devDependencies": {
     "@duskmarch/config": "workspace:*",
+    "@duskmarch/db": "workspace:*",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "dependency-cruiser": "16.10.4",
