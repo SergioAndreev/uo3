@@ -1,0 +1,4 @@
+pnpm exec turbo run build --filter=@duskmarch/config --output-logs=errors-only
+pnpm exec lint-staged
+pnpm check:assets --staged
+pnpm check:secrets --staged

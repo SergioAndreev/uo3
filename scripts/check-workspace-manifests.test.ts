@@ -42,3 +42,8 @@ it('замечает отсутствующий модуль и tsconfig', () =>
   expect(errors).toContain('apps/admin: нет package.json');
   expect(errors).toContain('packages/db: нет tsconfig.json');
 });
+
+it('требует белый список lifecycle-скриптов', () => {
+  patch('.', { pnpm: {} });
+  expect(checkWorkspaceManifests(root).join()).toContain('onlyBuiltDependencies');
+});

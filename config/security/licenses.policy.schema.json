@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "type": "object",
+  "required": ["allowedSpdx", "deniedPatterns", "exceptions"],
+  "properties": {
+    "allowedSpdx": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "deniedPatterns": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["package", "license", "reason"],
+        "properties": {
+          "package": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "license": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "minLength": 10,
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

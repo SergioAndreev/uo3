@@ -1,0 +1,29 @@
+{
+  "allowedSpdx": [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "0BSD",
+    "CC0-1.0",
+    "Unlicense",
+    "MPL-2.0",
+    "Zlib",
+    "BlueOak-1.0.0",
+    "Python-2.0"
+  ],
+  "deniedPatterns": ["GPL", "AGPL", "LGPL", "SSPL", "UNLICENSED", "UNKNOWN"],
+  "exceptions": [
+    {
+      "package": "caniuse-lite",
+      "license": "CC-BY-4.0",
+      "reason": "Данные о браузерах, нужны только при сборке, в бандл не попадают"
+    },
+    {
+      "package": "@csstools/color-helpers",
+      "license": "MIT-0",
+      "reason": "MIT без требования указания авторства, только тесты (jsdom)"
+    }
+  ]
+}

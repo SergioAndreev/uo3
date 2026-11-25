@@ -35,6 +35,9 @@ Node.js 22 и pnpm 9 (версия закреплена в `package.json`), Dock
 | `pnpm check:node`                                       | версия Node.js                                          |
 | `pnpm dev`                                              | api :3001, game-server :2567, client :5273, admin :5274 |
 | `pnpm bootstrap` / `pnpm doctor` / `pnpm env:reset`     | подготовка, диагностика и сброс окружения               |
+| `pnpm check:assets` / `pnpm check:secrets`              | лицензии ассетов / утечки секретов                      |
+| `pnpm check:licenses` / `pnpm check:audit`              | лицензии и уязвимости зависимостей                      |
+| `pnpm check:changeset`                                  | наличие changeset                                       |
 
 ## Статус
 

@@ -10,6 +10,7 @@ beforeEach(() => {
   for (const f of ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.npmrc']) {
     cpSync(f, join(root, f));
   }
+  cpSync('patches', join(root, 'patches'), { recursive: true });
   for (const dir of ['apps', 'packages']) {
     cpSync(dir, join(root, dir), {
       recursive: true,

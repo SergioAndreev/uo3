@@ -33,11 +33,16 @@ export function checkWorkspaceManifests(root: string): string[] {
   const rootManifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
     engines?: { node?: string };
     packageManager?: string;
+    pnpm?: { onlyBuiltDependencies?: string[] };
   };
   if (rootManifest.engines?.node !== '>=22.0.0 <23.0.0')
     errors.push('корень: неверный engines.node');
   if (!/^pnpm@9\.\d+\.\d+/.test(rootManifest.packageManager ?? '')) {
     errors.push('корень: packageManager должен фиксировать точную версию pnpm 9');
+  }
+
+  if (!rootManifest.pnpm?.onlyBuiltDependencies?.length) {
+    errors.push('корень: нужен белый список pnpm.onlyBuiltDependencies');
   }
 
   for (const group of ['apps', 'packages'] as const) {

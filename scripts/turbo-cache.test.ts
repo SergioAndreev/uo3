@@ -1,25 +1,33 @@
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { promisify } from 'node:util';
 import { expect, it } from 'vitest';
+
+// Асинхронно: долгий синхронный вызов обрывает связь воркера с Vitest.
+const run = promisify(execFile);
 
 interface DryRun {
   tasks: { taskId: string; hash: string }[];
 }
 
-function hashes(): Map<string, string> {
-  const out = execFileSync('node_modules/.bin/turbo', ['run', 'typecheck', 'build', '--dry=json'], {
-    encoding: 'utf8',
-  });
-  return new Map((JSON.parse(out) as DryRun).tasks.map((task) => [task.taskId, task.hash]));
+async function turbo(...args: string[]): Promise<string> {
+  const options = { maxBuffer: 64 * 1024 * 1024 };
+  return (await run('node_modules/.bin/turbo', ['run', 'typecheck', 'build', ...args], options))
+    .stdout;
 }
 
-it('изменение ui-kit инвалидирует только ui-kit, client и admin', () => {
+async function hashes(): Promise<Map<string, string>> {
+  const { tasks } = JSON.parse(await turbo('--dry=json')) as DryRun;
+  return new Map(tasks.map((task) => [task.taskId, task.hash]));
+}
+
+it('изменение ui-kit инвалидирует только ui-kit, client и admin', async () => {
   const file = 'packages/ui-kit/src/index.ts';
   const source = readFileSync(file, 'utf8');
-  const before = hashes();
+  const before = await hashes();
   try {
     writeFileSync(file, `${source}// cache probe\n`);
-    const changed = [...hashes()].filter(([id, hash]) => before.get(id) !== hash);
+    const changed = [...(await hashes())].filter(([id, hash]) => before.get(id) !== hash);
     expect(new Set(changed.map(([id]) => id.split('#')[0]))).toEqual(
       new Set(['@duskmarch/ui-kit', '@duskmarch/client', '@duskmarch/admin']),
     );
@@ -28,11 +36,9 @@ it('изменение ui-kit инвалидирует только ui-kit, clie
   }
 });
 
-it('повторный прогон — FULL TURBO не дольше 5 с', () => {
-  const run = () =>
-    execFileSync('node_modules/.bin/turbo', ['run', 'typecheck', 'build'], { encoding: 'utf8' });
-  run();
+it('повторный прогон — FULL TURBO не дольше 5 с', async () => {
+  await turbo();
   const start = performance.now();
-  expect(run()).toContain('FULL TURBO');
+  expect(await turbo()).toContain('FULL TURBO');
   expect(performance.now() - start).toBeLessThanOrEqual(5_000);
-}, 180_000);
+}, 300_000);

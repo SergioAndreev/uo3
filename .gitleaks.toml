@@ -1,0 +1,18 @@
+title = "Duskmarch"
+
+# Встроенный набор: PEM, GitHub, AWS, Discord, Google и высокоэнтропийные строки.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "uri-password"
+description = "Пароль в строке подключения"
+regex = '''(?i)\b(?:postgres(?:ql)?|rediss?|nats|tls|amqps?|mongodb(?:\+srv)?)://[^\s:/@'"`]+:([^\s@'"`]{6,})@'''
+secretGroup = 1
+
+  [rules.allowlist]
+  # Маркер шаблонов, подстановки, маска и примеры с паролем из спецификации конфигурации.
+  regexes = ['''CHANGE_ME_''', '''\$\{''', '''\[REDACTED\]''', '''s3cr3t''']
+
+[allowlist]
+paths = ['''pnpm-lock\.yaml$''']

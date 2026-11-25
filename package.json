@@ -22,6 +22,12 @@
           "rxjs": "*"
         }
       }
+    },
+    "patchedDependencies": {
+      "@colyseus/core@0.16.26": "patches/@colyseus__core@0.16.26.patch"
+    },
+    "overrides": {
+      "@colyseus/core>nanoid": "3.3.20"
     }
   },
   "scripts": {
@@ -43,20 +49,42 @@
     "db:generate": "turbo run build --filter=@duskmarch/db^... && pnpm --filter @duskmarch/db db:generate",
     "db:migrate": "turbo run build --filter=@duskmarch/db^... && pnpm --filter @duskmarch/db db:migrate",
     "db:seed": "turbo run build --filter=@duskmarch/db^... && pnpm --filter @duskmarch/db db:seed",
-    "test:integration": "turbo run test:integration && vitest run --project integration infra scripts --no-file-parallelism --passWithNoTests"
+    "test:integration": "turbo run test:integration && vitest run --project integration infra scripts --no-file-parallelism --passWithNoTests",
+    "check:changeset": "tsx scripts/check-changeset.ts",
+    "check:assets": "tsx scripts/check-assets.ts",
+    "check:secrets": "tsx scripts/check-secrets.ts",
+    "check:licenses": "tsx scripts/check-licenses.ts",
+    "check:audit": "tsx scripts/check-audit.ts",
+    "check:ci-integrity": "tsx scripts/check-ci-integrity.ts",
+    "prepare": "husky",
+    "commitlint": "commitlint",
+    "test:coverage": "turbo run test:coverage"
   },
   "devDependencies": {
+    "@changesets/cli": "2.31.1",
+    "@commitlint/cli": "20.5.3",
+    "@commitlint/config-conventional": "20.5.3",
     "@duskmarch/config": "workspace:*",
     "@duskmarch/db": "workspace:*",
+    "@sinclair/typebox": "catalog:",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "dependency-cruiser": "16.10.4",
     "eslint": "catalog:",
+    "husky": "9.1.7",
+    "lint-staged": "16.4.0",
     "prettier": "catalog:",
     "tsx": "catalog:",
     "turbo": "2.11.13",
     "typescript": "catalog:",
     "vitest": "catalog:",
     "yaml": "2.9.1"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,mjs}": [
+      "eslint --max-warnings 0 --no-warn-ignored",
+      "prettier --check"
+    ],
+    "*.{json,yml,yaml,css,html}": "prettier --check"
   }
 }
