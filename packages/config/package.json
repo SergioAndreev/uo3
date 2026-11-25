@@ -18,16 +18,18 @@
       "import": "./dist/vitest/*.js"
     },
     "./env/*": {
-      "types": "./dist/env/*.d.ts",
-      "import": "./dist/env/*.js"
+      "types": "./dist/env/*/index.d.ts",
+      "import": "./dist/env/*/index.js"
     }
   },
   "scripts": {
     "build": "tsc --build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --coverage"
+    "test": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@sinclair/typebox": "catalog:",
     "@eslint/js": "catalog:",
     "eslint-import-resolver-typescript": "4.4.4",
     "eslint-plugin-boundaries": "5.4.0",
@@ -41,6 +43,7 @@
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "eslint": "catalog:",
+    "tsx": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

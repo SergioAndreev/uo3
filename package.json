@@ -15,7 +15,7 @@
   "scripts": {
     "build": "turbo run build",
     "typecheck": "turbo run typecheck && tsc -p tsconfig.json",
-    "test": "turbo run test && vitest run --project unit scripts --no-file-parallelism",
+    "test": "turbo run test --concurrency=2 && vitest run --project unit scripts infra --no-file-parallelism",
     "lint": "turbo run build --filter=@duskmarch/config && eslint . --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "turbo run build --filter=@duskmarch/config && prettier --check .",
@@ -25,7 +25,13 @@
     "dev": "turbo run dev",
     "bootstrap": "sh scripts/bootstrap.sh",
     "doctor": "tsx scripts/doctor.ts",
-    "env:reset": "tsx scripts/env-reset.ts"
+    "env:reset": "tsx scripts/env-reset.ts",
+    "check:env": "turbo run //#check:env:run",
+    "check:env:run": "tsx scripts/check-env.ts",
+    "db:generate": "turbo run build --filter=@duskmarch/db^... && pnpm --filter @duskmarch/db db:generate",
+    "db:migrate": "turbo run build --filter=@duskmarch/db^... && pnpm --filter @duskmarch/db db:migrate",
+    "db:seed": "turbo run build --filter=@duskmarch/db^... && pnpm --filter @duskmarch/db db:seed",
+    "test:integration": "turbo run test:integration --concurrency=1 && vitest run --project integration infra scripts --no-file-parallelism --passWithNoTests"
   },
   "devDependencies": {
     "@duskmarch/config": "workspace:*",
@@ -37,6 +43,7 @@
     "tsx": "catalog:",
     "turbo": "2.11.13",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "yaml": "2.9.1"
   }
 }

@@ -315,12 +315,13 @@ sequenceDiagram
 | `postgres` | `core` | `postgres:17.2-alpine` | `${PG_PORT:-5432}:5432` | `pg_isready -U ${PG_USER:-duskmarch} -d duskmarch_dev` (5s) | `duskmarch_pg_data` |
 | `valkey` | `core` | `valkey/valkey:8.0.2-alpine` | `${VALKEY_PORT:-6379}:6379` | `valkey-cli ping` (5s) | `duskmarch_valkey_data` |
 | `nats` | `core` | `nats:2.10.25-alpine` | `${NATS_PORT:-4222}:4222`, `${NATS_MONITOR_PORT:-8222}:8222` | `wget -qO- http://127.0.0.1:8222/healthz` (5s) | `duskmarch_nats_data` |
-| `otel-collector` | `observability` | `otel/opentelemetry-collector-contrib:0.118.0` | `${OTEL_GRPC_PORT:-4317}:4317`, `${OTEL_HTTP_PORT:-4318}:4318` | `wget -qO- http://127.0.0.1:13133/` (10s) | — |
+| `otel-collector` | `observability` | `otel/opentelemetry-collector-contrib:0.118.0` | `${OTEL_GRPC_PORT:-4317}:4317`, `${OTEL_HTTP_PORT:-4318}:4318` | `/otelcol-contrib validate` (10s; в образе нет оболочки и wget) | — |
 | `prometheus` | `observability` | `prom/prometheus:v3.1.0` | `${PROMETHEUS_PORT:-9090}:9090` | `wget -qO- http://127.0.0.1:9090/-/ready` (10s) | `duskmarch_prom_data` |
 | `loki` | `observability` | `grafana/loki:3.3.2` | `${LOKI_PORT:-3100}:3100` | `wget -qO- http://127.0.0.1:3100/ready` (10s) | `duskmarch_loki_data` |
 | `tempo` | `observability` | `grafana/tempo:2.7.0` | `${TEMPO_PORT:-3200}:3200` | `wget -qO- http://127.0.0.1:3200/ready` (10s) | `duskmarch_tempo_data` |
 | `grafana` | `observability` | `grafana/grafana:11.4.0` | `${GRAFANA_PORT:-3000}:3000` | `wget -qO- http://127.0.0.1:3000/api/health` (10s) | `duskmarch_grafana_data` |
 
+- **Изоляция на хосте:** порты публикуются только на `127.0.0.1`, у каждого сервиса задан `mem_limit`, чтобы стенд не вытеснял другие процессы.
 - **Конфигурация NATS (`infra/local/nats/nats.conf`):** `jetstream { store_dir: "/data/jetstream", max_mem: 256M, max_file: 1G }`, `http_port: 8222`.
 - **Провижининг Grafana (`infra/local/grafana/provisioning/`):**
   - `datasources/datasources.yaml` — авторегистрация `Prometheus` (`http://prometheus:9090`), `Loki` (`http://loki:3100`), `Tempo` (`http://tempo:3200`) с корреляцией `tracesToLogsV2` и `derivedFields` по `traceId`.

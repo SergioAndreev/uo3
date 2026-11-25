@@ -20,9 +20,27 @@
       "inputs": ["src/**", "tsconfig*.json", "package.json", "tsconfig/**"],
       "outputs": []
     },
-    "lint": { "dependsOn": ["^build"], "outputs": [] },
-    "test": { "dependsOn": ["^build"], "outputs": ["coverage/**", "reports/**"] },
-    "test:integration": { "dependsOn": ["^build"], "cache": false },
-    "dev": { "dependsOn": ["^build"], "cache": false, "persistent": true }
+    "lint": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**", "reports/**"]
+    },
+    "test:integration": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
+    },
+    "//#check:env:run": {
+      "dependsOn": ["@duskmarch/config#build"],
+      "inputs": [".env.example", "apps/*/.env.example", "scripts/check-env.ts"],
+      "outputs": []
+    }
   }
 }

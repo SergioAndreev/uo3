@@ -1,5 +1,5 @@
 {
   "extends": "@duskmarch/config/tsconfig/node.json",
   "compilerOptions": { "noEmit": true, "composite": false, "incremental": false },
-  "include": ["scripts/**/*.ts", "vitest.workspace.ts"]
+  "include": ["scripts/**/*.ts", "infra/**/*.ts", "vitest.workspace.ts"]
 }

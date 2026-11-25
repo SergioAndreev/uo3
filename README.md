@@ -14,18 +14,20 @@ Node.js 22 и pnpm 9 (версия закреплена в `package.json`), Dock
 
 ## Команды
 
-| Команда                                             | Назначение                                             |
-| --------------------------------------------------- | ------------------------------------------------------ |
-| `pnpm build`                                        | сборка всех модулей                                    |
-| `pnpm typecheck`                                    | проверка типов                                         |
-| `pnpm test`                                         | модульные тесты                                        |
-| `pnpm lint`                                         | статический анализ                                     |
-| `pnpm format` / `pnpm format:check`                 | форматирование / его проверка                          |
-| `pnpm check:boundaries`                             | границы импорта и циклы                                |
-| `pnpm check:workspace-manifests`                    | манифесты 15 модулей                                   |
-| `pnpm check:node`                                   | версия Node.js                                         |
-| `pnpm dev`                                          | режим разработки (P00, группа 10 — ещё не реализовано) |
-| `pnpm bootstrap` / `pnpm doctor` / `pnpm env:reset` | окружение (P00, группа 8 — ещё не реализовано)         |
+| Команда                                                 | Назначение                                             |
+| ------------------------------------------------------- | ------------------------------------------------------ |
+| `pnpm build`                                            | сборка всех модулей                                    |
+| `pnpm typecheck`                                        | проверка типов                                         |
+| `pnpm test`                                             | модульные тесты                                        |
+| `pnpm lint`                                             | статический анализ                                     |
+| `pnpm format` / `pnpm format:check`                     | форматирование / его проверка                          |
+| `pnpm check:boundaries`                                 | границы импорта и циклы                                |
+| `pnpm check:workspace-manifests`                        | манифесты 15 модулей                                   |
+| `pnpm check:env`                                        | соответствие `.env.example` схемам                     |
+| `pnpm db:generate` / `pnpm db:migrate` / `pnpm db:seed` | миграции и стартовые данные                            |
+| `pnpm check:node`                                       | версия Node.js                                         |
+| `pnpm dev`                                              | режим разработки (P00, группа 10 — ещё не реализовано) |
+| `pnpm bootstrap` / `pnpm doctor` / `pnpm env:reset`     | окружение (P00, группа 8 — ещё не реализовано)         |
 
 ## Статус
 

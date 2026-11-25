@@ -1,0 +1,163 @@
+name: ${COMPOSE_PROJECT_NAME:-duskmarch}
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: 10m, max-file: '3' }
+
+services:
+  postgres:
+    image: postgres:17.2-alpine
+    profiles: [core]
+    mem_limit: 384m
+    logging: *logging
+    environment:
+      POSTGRES_USER: ${PG_USER:-duskmarch}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-CHANGE_ME_LOCAL_DEV_ONLY}
+      POSTGRES_DB: postgres
+    ports: ['127.0.0.1:${PG_PORT:-5432}:5432']
+    volumes:
+      - duskmarch_pg_data:/var/lib/postgresql/data
+      - ./infra/local/postgres/init-dbs.sql:/docker-entrypoint-initdb.d/init-dbs.sql:ro
+    healthcheck:
+      # TCP: сервер фазы инициализации слушает только сокет и не должен считаться готовым.
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d duskmarch_dev']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [duskmarch-net]
+
+  valkey:
+    image: valkey/valkey:8.0.2-alpine
+    profiles: [core]
+    mem_limit: 128m
+    logging: *logging
+    command: ['valkey-server', '--appendonly', 'yes']
+    ports: ['127.0.0.1:${VALKEY_PORT:-6379}:6379']
+    volumes: ['duskmarch_valkey_data:/data']
+    healthcheck:
+      test: ['CMD', 'valkey-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [duskmarch-net]
+
+  nats:
+    image: nats:2.10.25-alpine
+    profiles: [core]
+    mem_limit: 384m
+    logging: *logging
+    command: ['-c', '/etc/nats/nats.conf']
+    ports:
+      - '127.0.0.1:${NATS_PORT:-4222}:4222'
+      - '127.0.0.1:${NATS_MONITOR_PORT:-8222}:8222'
+    volumes:
+      - duskmarch_nats_data:/data
+      - ./infra/local/nats/nats.conf:/etc/nats/nats.conf:ro
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8222/healthz']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [duskmarch-net]
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.118.0
+    profiles: [observability]
+    mem_limit: 128m
+    logging: *logging
+    command: ['--config=/etc/otel/config.yaml']
+    ports:
+      - '127.0.0.1:${OTEL_GRPC_PORT:-4317}:4317'
+      - '127.0.0.1:${OTEL_HTTP_PORT:-4318}:4318'
+    volumes:
+      - ./infra/local/otel/otel-collector-config.yaml:/etc/otel/config.yaml:ro
+    # Образ не содержит оболочки: бинарник проверяет конфигурацию сам.
+    healthcheck:
+      test: ['CMD', '/otelcol-contrib', 'validate', '--config=/etc/otel/config.yaml']
+      interval: 10s
+      timeout: 5s
+      retries: 9
+    networks: [duskmarch-net]
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    profiles: [observability]
+    mem_limit: 192m
+    logging: *logging
+    ports: ['127.0.0.1:${PROMETHEUS_PORT:-9090}:9090']
+    volumes:
+      - duskmarch_prom_data:/prometheus
+      - ./infra/local/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:9090/-/ready']
+      interval: 10s
+      timeout: 5s
+      retries: 9
+    networks: [duskmarch-net]
+
+  loki:
+    image: grafana/loki:3.3.2
+    profiles: [observability]
+    mem_limit: 192m
+    logging: *logging
+    command: ['-config.file=/etc/loki/config.yaml']
+    ports: ['127.0.0.1:${LOKI_PORT:-3100}:3100']
+    volumes:
+      - duskmarch_loki_data:/loki
+      - ./infra/local/loki/loki-config.yaml:/etc/loki/config.yaml:ro
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3100/ready']
+      interval: 10s
+      timeout: 5s
+      retries: 9
+    networks: [duskmarch-net]
+
+  tempo:
+    image: grafana/tempo:2.7.0
+    profiles: [observability]
+    mem_limit: 160m
+    logging: *logging
+    command: ['-config.file=/etc/tempo/config.yaml']
+    ports: ['127.0.0.1:${TEMPO_PORT:-3200}:3200']
+    volumes:
+      - duskmarch_tempo_data:/var/tempo
+      - ./infra/local/tempo/tempo-config.yaml:/etc/tempo/config.yaml:ro
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3200/ready']
+      interval: 10s
+      timeout: 5s
+      retries: 9
+    networks: [duskmarch-net]
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    profiles: [observability]
+    mem_limit: 256m
+    logging: *logging
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: 'true'
+      GF_ANALYTICS_REPORTING_ENABLED: 'false'
+    ports: ['127.0.0.1:${GRAFANA_PORT:-3000}:3000']
+    volumes:
+      - duskmarch_grafana_data:/var/lib/grafana
+      - ./infra/local/grafana/provisioning:/etc/grafana/provisioning:ro
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/api/health']
+      interval: 10s
+      timeout: 5s
+      retries: 9
+    networks: [duskmarch-net]
+
+networks:
+  duskmarch-net: {}
+
+volumes:
+  duskmarch_pg_data: {}
+  duskmarch_valkey_data: {}
+  duskmarch_nats_data: {}
+  duskmarch_prom_data: {}
+  duskmarch_loki_data: {}
+  duskmarch_tempo_data: {}
+  duskmarch_grafana_data: {}

@@ -1,6 +1,6 @@
 import { defineWorkspace } from 'vitest/config';
 
-const roots = ['apps/*/src', 'packages/*/src', 'scripts'];
+const roots = ['apps/*/src', 'packages/*/src', 'scripts', 'infra'];
 const at = (suffix: string): string[] => roots.map((root) => `${root}/**/*${suffix}`);
 
 export default defineWorkspace([

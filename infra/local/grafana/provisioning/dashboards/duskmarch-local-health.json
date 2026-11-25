@@ -1,0 +1,32 @@
+{
+  "uid": "duskmarch-local-health",
+  "title": "duskmarch-local-health",
+  "schemaVersion": 40,
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Доступность целей",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [{ "refId": "A", "expr": "up" }]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Принятые трейсы OTel",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [{ "refId": "A", "expr": "sum(rate(otelcol_receiver_accepted_spans[5m]))" }]
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "Логи",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "x": 0, "y": 8, "w": 24, "h": 10 },
+      "targets": [{ "refId": "A", "expr": "{service_name=~\".+\"}" }]
+    }
+  ]
+}
