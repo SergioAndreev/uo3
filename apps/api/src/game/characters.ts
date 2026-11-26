@@ -127,7 +127,12 @@ export class CharacterService {
         maxCount: profile.creation.maxStartSkills,
         available: [...skills],
       },
-      backgrounds: BACKGROUNDS.filter((b) => b.skills.every((s) => skills.has(s.skill))),
+      // Предыстории рассчитаны на пул standard: на шарде с другим пулом они не предлагаются.
+      backgrounds: BACKGROUNDS.filter(
+        (b) =>
+          creationStatViolations(profile, b.stats).length === 0 &&
+          startSkillViolations(profile, b.skills).length === 0,
+      ),
       appearance: {
         builds: ['lean', 'average', 'sturdy'],
         faces: 8,
@@ -224,7 +229,13 @@ export class CharacterService {
     let background: string | null = null;
     if (input.background !== undefined) {
       const preset = BACKGROUNDS.find((b) => b.key === input.background);
-      if (!preset) throw new IdentityError('CHAR_INVALID_BACKGROUND', 'неизвестная предыстория');
+      if (
+        !preset ||
+        creationStatViolations(profile, preset.stats).length > 0 ||
+        startSkillViolations(profile, preset.skills).length > 0
+      ) {
+        throw new IdentityError('CHAR_INVALID_BACKGROUND', 'предыстория недоступна на шарде');
+      }
       stats = { ...preset.stats };
       skills = preset.skills.map((s) => ({ ...s }));
       background = preset.key;

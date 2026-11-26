@@ -74,13 +74,25 @@ export async function gameHarness() {
     game.characters.create(
       principal,
       shard,
-      {
-        name,
-        background: 'resonant',
-        appearance: { ...APPEARANCE },
-        startCity: shard === 'ember' ? 'lad' : 'proving-camp',
-        ...over,
-      },
+      shard === 'local-dev'
+        ? {
+            name,
+            stats: { might: 30, finesse: 30, will: 30 },
+            skills: [
+              { skill: 'edge', tenths: 1000 },
+              { skill: 'archery', tenths: 1000 },
+            ],
+            appearance: { ...APPEARANCE },
+            startCity: 'proving-camp',
+            ...over,
+          }
+        : {
+            name,
+            background: 'resonant',
+            appearance: { ...APPEARANCE },
+            startCity: 'lad',
+            ...over,
+          },
       undefined,
       { ip: '1.1.1.1', userAgent: 't' },
     );

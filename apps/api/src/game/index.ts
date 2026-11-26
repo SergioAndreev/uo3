@@ -23,6 +23,9 @@ export function createGameServices(
   live: LivePort,
   guards: DeletionGuard[] = [],
 ): GameServices {
+  identity.staff.onBanned((accountId) =>
+    live.revoke('account', accountId, identity.identity.now()),
+  );
   const shards = new ShardService(identity.identity, store, live, identity.staff);
   const characters = new CharacterService(
     identity.identity,

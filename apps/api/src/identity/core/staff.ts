@@ -20,6 +20,13 @@ const PERMANENT_BAN_CACHE_MS = 400 * DAY;
 
 /** identity/access-levels и баны персонала. */
 export class StaffService {
+  private readonly banListeners: ((accountId: string) => Promise<void>)[] = [];
+
+  /** Подписка других подсистем на бан (P05 отзывает игровые билеты). */
+  onBanned(listener: (accountId: string) => Promise<void>): void {
+    this.banListeners.push(listener);
+  }
+
   constructor(
     private readonly id: Identity,
     private readonly auth: AuthService,
@@ -181,6 +188,7 @@ export class StaffService {
       return ids;
     });
     await this.id.markRevoked(revoked);
+    for (const listener of this.banListeners) await listener(targetId);
     await this.id.kv.set(
       bannedKey(targetId),
       banId,
