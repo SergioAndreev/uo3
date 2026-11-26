@@ -90,8 +90,11 @@ export function harness(
   };
 
   /** Зарегистрированный и подтверждённый аккаунт. */
+  let seeded = 0;
   const activeAccount = async (email: string, level: AccessLevel = 'player') => {
-    await services.registration.register({ email, password: PASSWORD, ...docs }, META);
+    // Свой адрес на каждую регистрацию стенда: лимит IP проверяют отдельные тесты.
+    const ip = `192.0.2.${seeded++ % 250}`;
+    await services.registration.register({ email, password: PASSWORD, ...docs }, { ...META, ip });
     await flush();
     await services.registration.verify(mail.lastToken(email) ?? '');
     const account = await store.findAccountByEmail(email);

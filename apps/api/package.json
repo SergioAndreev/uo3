@@ -10,7 +10,8 @@
     "test:coverage": "vitest run --coverage",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "dev": "tsx watch src/main.ts",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "identity:bootstrap-owner": "tsx src/cli/bootstrap-owner.ts"
   },
   "dependencies": {
     "@duskmarch/config": "workspace:*",
