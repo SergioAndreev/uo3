@@ -79,6 +79,9 @@ export const GameServerEnvSchema = Type.Object({
   SHARD_RULESET_FILE: Type.Optional(
     Text({ description: 'Файл переопределения правил шарда (JSON или YAML)' }),
   ),
+  WORLD_PACK_DIR: Type.Optional(
+    Text({ description: 'Каталог пакета мира; без него вне production — синтетический proving' }),
+  ),
 });
 
 export const AssetToolEnvSchema = Type.Object({

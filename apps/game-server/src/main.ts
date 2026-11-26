@@ -24,9 +24,27 @@ console.log(
   }),
 );
 
+const { loadWorld } = await import('./world.js');
+const world = loadWorld(config);
+if (!world.ok) {
+  console.error(`Мир не загружен:\n${world.errors.map((e) => `  - ${e}`).join('\n')}`);
+  process.exit(78);
+}
+console.log(
+  JSON.stringify({
+    msg: 'game-server: мир',
+    realm: world.store.realm.key,
+    version: world.version,
+    source: world.source,
+  }),
+);
+
 // Фреймворки загружаются только после проверки конфигурации.
 const { startGameHost } = await import('./game-host.js');
-const host = await startGameHost(config);
+const host = await startGameHost(config, {
+  realm: world.store.realm.key,
+  version: world.version,
+});
 console.log(JSON.stringify({ msg: 'game-server: запущен', port: host.gamePort }));
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {

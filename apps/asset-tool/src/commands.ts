@@ -3,6 +3,9 @@ import { dirname, join, relative, sep } from 'node:path';
 import {
   CELLS_PER_CHUNK,
   ChunkFormatError,
+  RealmStore,
+  SYNTHETIC_CATALOG,
+  lineOfSight,
   decodeChunk,
   generateSyntheticPack,
   packFingerprint,
@@ -221,4 +224,55 @@ export function fingerprint(dir: string): CommandResult {
   const manifest = loadManifest(dir);
   const value = packFingerprint(manifest);
   return { ok: true, lines: [value], data: { id: manifest.id, fingerprint: value } };
+}
+
+const parsePoint = (value: string, name: string): { x: number; y: number } => {
+  const match = /^(\d+),(\d+)$/.exec(value);
+  if (!match) throw new UsageError(`${name}: ожидается x,y`);
+  return { x: Number(match[1]), y: Number(match[2]) };
+};
+
+/** Опоры, потолок и размещение в клетке; при `to` — линия видимости с трассировкой. */
+export function query(dir: string, at: string, to?: string): CommandResult {
+  const manifest = loadManifest(dir);
+  const store = RealmStore.fromPack(
+    manifest,
+    (path) => {
+      const file = join(dir, path);
+      return existsSync(file) ? new Uint8Array(readFileSync(file)) : undefined;
+    },
+    SYNTHETIC_CATALOG,
+  );
+  const a = parsePoint(at, '--at');
+  if (!store.inside(a.x, a.y)) throw new UsageError(`клетка (${a.x}, ${a.y}) вне плана`);
+  const surfaces = store.surfaces(a.x, a.y);
+  const h = surfaces[0] ?? store.cell(a.x, a.y)?.h ?? 0;
+  const data: Record<string, unknown> = {
+    realm: store.realm.key,
+    version: store.version(),
+    at: a,
+    cell: store.cell(a.x, a.y),
+    surfaces,
+    ceiling: store.ceiling(a.x, a.y, h) ?? null,
+    placeable: store.canPlace(a.x, a.y, h, { height: 7 }),
+  };
+  const lines = [
+    `План ${store.realm.key}, клетка (${a.x}, ${a.y}): опоры [${surfaces.join(', ')}], потолок ${data['ceiling'] ?? 'нет'}, герой ${data['placeable'] ? 'помещается' : 'не помещается'}`,
+  ];
+  if (to) {
+    const b = parsePoint(to, '--to');
+    const sight = lineOfSight(
+      store,
+      { ...a, h },
+      { ...b, h: store.surfaces(b.x, b.y)[0] ?? store.cell(b.x, b.y)?.h ?? 0 },
+      { trace: true },
+    );
+    data['sight'] = sight;
+    lines.push(
+      sight.visible
+        ? `Цель (${b.x}, ${b.y}) видна`
+        : `Цель (${b.x}, ${b.y}) не видна: ${sight.reason}${sight.blockedAt ? ` в (${sight.blockedAt.x}, ${sight.blockedAt.y})` : ''}`,
+    );
+  }
+  return { ok: true, lines, data };
 }

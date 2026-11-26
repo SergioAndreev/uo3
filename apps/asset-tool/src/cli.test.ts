@@ -148,3 +148,22 @@ it('повреждение, которое ловит только декоде�
   );
   expect((await run('validate-pack', out)).output).toContain('ОШИБКА CHUNK_VERSION');
 });
+
+it('query: опоры, потолок и линия видимости', async () => {
+  const out = join(root, 'query');
+  await run('generate-world', '--preset', 'proving', '--out', out);
+  const low = (await run('query', out, '--at', '12,4', '--json')).json();
+  expect(low).toMatchObject({ realm: 'proving', surfaces: [0, 9], ceiling: 6, placeable: false });
+  const wall = (await run('query', out, '--at', '18,4', '--to', '22,4', '--json')).json();
+  expect(wall['sight']).toMatchObject({
+    visible: false,
+    reason: 'cell',
+    blockedAt: { x: 20, y: 4 },
+  });
+  expect((await run('query', out, '--at', '18,6', '--to', '22,6')).output).toContain('видна');
+  expect((await run('query', out, '--at', '18,4', '--to', '22,4')).output).toContain(
+    'не видна: cell',
+  );
+  expect((await run('query', out, '--at', 'x')).code).toBe(2);
+  expect((await run('query', out, '--at', '99,99')).code).toBe(2);
+});

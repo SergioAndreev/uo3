@@ -5,6 +5,7 @@ import {
   fingerprint,
   generateWorld,
   inspectChunk,
+  query,
   radar,
   validatePack,
   type CommandResult,
@@ -19,6 +20,7 @@ export const HELP = [
   '  generate-world --preset proving|field --seed <n> --out <каталог> [--force]',
   '  radar <каталог> --out <файл.png>              превью плана',
   '  fingerprint <каталог>                         отпечаток пакета',
+  '  query <каталог> --at x,y [--to x,y]          опоры, потолок и линия видимости',
   '  check-env                                     проверить окружение',
   '  --version, --help',
   'Флаг --json выводит один JSON-объект.',
@@ -90,6 +92,15 @@ export async function runCli(args: readonly string[], log = console.log): Promis
       case 'radar':
         result = radar(need(target, '<каталог>'), need(options.get('--out'), '--out'));
         break;
+      case 'query': {
+        const to = options.get('--to');
+        result = query(
+          need(target, '<каталог>'),
+          need(options.get('--at'), '--at'),
+          typeof to === 'string' ? to : undefined,
+        );
+        break;
+      }
       case 'fingerprint':
         result = fingerprint(need(target, '<каталог>'));
         break;
