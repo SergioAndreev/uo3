@@ -11,6 +11,10 @@
     "./identity": {
       "types": "./dist/identity/index.d.ts",
       "import": "./dist/identity/index.js"
+    },
+    "./state": {
+      "types": "./dist/state/index.d.ts",
+      "import": "./dist/state/index.js"
     }
   },
   "scripts": {
@@ -19,6 +23,7 @@
     "test": "vitest run --coverage"
   },
   "dependencies": {
+    "@colyseus/schema": "3.0.76",
     "@duskmarch/domain": "workspace:*",
     "@sinclair/typebox": "catalog:"
   },
