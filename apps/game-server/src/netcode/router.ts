@@ -15,6 +15,7 @@ import {
 } from '@duskmarch/protocol';
 import { cmdError, handshake, type HandshakeConfig } from './handshake.js';
 import { RateLimiter, SlidingCounter } from './rate-limit.js';
+import { ServerRtt, answerPing, type TickStats } from './time-sync.js';
 
 /** Предел намерений одной сессии в очереди одного тика. */
 export const QUEUE_PER_TICK = 32;
@@ -58,6 +59,7 @@ export class NetSession {
   queuedCount = 0;
   sequence = 0;
   violations = 0;
+  readonly rtt = new ServerRtt();
   lastInboundMs: number;
   readonly openedMs: number;
 
@@ -101,6 +103,8 @@ export interface IntentRouterOptions {
   now: () => number;
   catalog?: Catalog;
   log?: (level: 'warn' | 'error', msg: string, data: Record<string, unknown>) => void;
+  /** Состояние тика для `time.pong`. */
+  tickStats?: () => TickStats;
 }
 
 const requestIdOf = (payload: unknown): number | null => {
@@ -189,6 +193,10 @@ export class IntentRouter {
       session.ports.send(NETCODE_OPCODES['session.welcome'], result.welcome);
       return;
     }
+    if (opcode === NETCODE_OPCODES['time.ping']) {
+      this.ping(session, payload);
+      return;
+    }
     if (opcode === NETCODE_OPCODES['session.hello']) {
       this.violation(session, 'PROTO_INVALID_PAYLOAD', opcode, payload, {
         reason: 'повторное рукопожатие',
@@ -249,6 +257,34 @@ export class IntentRouter {
       sequence: session.sequence++,
       apply: (ctx) => this.run(session, spec, handler, value, payload, ctx),
     });
+  }
+
+  /** `time.ping` — сразу, вне очереди тика; частота — категория `time`. */
+  private ping(session: NetSession, payload: unknown): void {
+    const recv = this.o.now();
+    const stats = this.o.tickStats?.() ?? {
+      tick: this.o.tick(),
+      tickStartMs: recv,
+      tickIntervalMs: this.o.handshake.tickIntervalMs,
+      loadPct: 0,
+      overrun: false,
+    };
+    const result = answerPing(payload, recv, stats, this.o.now);
+    const opcode = NETCODE_OPCODES['time.ping'];
+    if (!result.ok) {
+      this.violation(session, result.error, opcode, payload);
+      return;
+    }
+    const rate = session.limiter.take('time', recv);
+    if (!rate.ok) {
+      if (session.refusals.hit(recv) >= REFUSAL_LIMIT) {
+        session.close(NETCODE_CLOSE.RATE_LIMIT_EXCEEDED, 'PROTO_RATE_LIMIT_EXCEEDED');
+        return;
+      }
+      session.error('CMD_RATE_LIMITED', { opcode, retryAfterMs: rate.retryAfterMs });
+      return;
+    }
+    session.ports.send(NETCODE_OPCODES['time.pong'], result.pong);
   }
 
   private run(

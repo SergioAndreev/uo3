@@ -32,7 +32,10 @@ export const SessionWelcome = Type.Object({
 export type SessionWelcome = Static<typeof SessionWelcome>;
 
 export const TimePing = Type.Object(
-  { seq: Type.Integer({ minimum: 0, maximum: 0xffff_ffff }), clientSendMs: Type.Number() },
+  {
+    seq: Type.Integer({ minimum: 0, maximum: 0xffff_ffff }),
+    clientSendMs: Type.Number({ minimum: 0 }),
+  },
   { additionalProperties: false },
 );
 export type TimePing = Static<typeof TimePing>;

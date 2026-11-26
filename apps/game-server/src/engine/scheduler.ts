@@ -61,6 +61,8 @@ export class Scheduler {
   errors = 0;
   droppedMs = 0;
   paused = false;
+  /** Монотонное время начала последнего тика, мс (`perfNow`). */
+  lastTickStartedMs = 0;
   private timer: NodeJS.Timeout | undefined;
   private readonly o: Required<Omit<SchedulerOptions, 'onError' | 'onDrift' | 'onStatus'>> &
     Pick<SchedulerOptions, 'onError' | 'onDrift' | 'onStatus'>;
@@ -146,6 +148,7 @@ export class Scheduler {
   /** Один тик: шесть фаз в каноническом порядке. */
   step(): TickContext {
     const started = this.o.perfNow();
+    this.lastTickStartedMs = started;
     const { tick, due, background } = this.wheel.advance();
     const ctx: TickContext = Object.freeze({ tick, timeMs: tick * this.tickMs });
     const batch = this.queue
