@@ -12,6 +12,7 @@ export default mergeConfig(nodePreset('default'), {
         'src/host/infra-ports.ts',
         'src/host/boot.ts',
         'src/persistence/timer-store.ts',
+        'src/persistence/flush-store.ts',
       ],
     },
   },
