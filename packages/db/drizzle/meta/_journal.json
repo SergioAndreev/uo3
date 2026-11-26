@@ -29,6 +29,13 @@
       "when": 1795708193709,
       "tag": "0003_hero_runtime",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795724770351,
+      "tag": "0004_world_persistence",
+      "breakpoints": true
     }
   ]
 }

@@ -49,6 +49,10 @@ export const shardEntitySequences = pgTable('shard_entity_sequences', {
     .primaryKey()
     .references(() => shards.id, { onDelete: 'cascade' }),
   nextHero: integer('next_hero').notNull().default(1),
+  /** Следующие номера блоков аренды P08 по видам. */
+  nextCreature: integer('next_creature').notNull().default(1),
+  nextItem: integer('next_item').notNull().default(1),
+  nextStructure: integer('next_structure').notNull().default(1),
 });
 
 export const characters = pgTable(
@@ -87,6 +91,8 @@ export const characters = pgTable(
     verve: integer('verve'),
     resonance: integer('resonance'),
     playtimeSeconds: integer('playtime_seconds').notNull().default(0),
+    /** Стартовый набор P05 выдан критической транзакцией P08. */
+    starterLoadoutGranted: boolean('starter_loadout_granted').notNull().default(false),
   },
   (t) => [
     uniqueIndex('characters_name_live_idx')
