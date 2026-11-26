@@ -72,6 +72,13 @@ export const GameServerEnvSchema = Type.Object({
     pattern: '^[a-z0-9-]+$',
     description: 'Идентификатор шарда',
   }),
+  SHARD_RULESET_PRESET: Type.Union([Type.Literal('standard'), Type.Literal('proving')], {
+    default: 'standard',
+    description: 'Пресет профиля правил шарда',
+  }),
+  SHARD_RULESET_FILE: Type.Optional(
+    Text({ description: 'Файл переопределения правил шарда (JSON или YAML)' }),
+  ),
 });
 
 export const AssetToolEnvSchema = Type.Object({

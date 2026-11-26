@@ -418,6 +418,9 @@ importers:
       '@sinclair/typebox':
         specifier: 'catalog:'
         version: 0.34.52
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
     devDependencies:
       '@eslint/js':
         specifier: 'catalog:'
@@ -519,6 +522,10 @@ importers:
         version: 3.2.7(@types/node@22.20.6)(jiti@2.6.1)(jsdom@26.1.0)(tsx@4.23.15)(yaml@2.9.1)
 
   packages/domain:
+    dependencies:
+      '@sinclair/typebox':
+        specifier: 'catalog:'
+        version: 0.34.52
     devDependencies:
       '@duskmarch/config':
         specifier: workspace:*
@@ -557,6 +564,9 @@ importers:
       '@duskmarch/domain':
         specifier: workspace:*
         version: link:../domain
+      '@sinclair/typebox':
+        specifier: 'catalog:'
+        version: 0.34.52
     devDependencies:
       '@duskmarch/config':
         specifier: workspace:*

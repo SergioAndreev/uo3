@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, it } from 'vitest';
@@ -15,6 +15,28 @@ it('невалидное окружение: код 78, все ошибки, б�
     expect(run.status).toBe(78);
     expect(run.stderr).toMatch(/DATABASE_URL[\s\S]*NATS_URL[\s\S]*GAME_PORT/);
     expect(run.stderr + run.stdout).not.toContain('s3cr3t');
+  } finally {
+    rmSync(cwd, { recursive: true });
+  }
+});
+
+it('нарушение профиля правил: код 78 с путём поля', () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'duskmarch-'));
+  try {
+    writeFileSync(join(cwd, 'rules.yaml'), 'movement:\n  runMs: 400\n');
+    const run = spawnSync(resolve('node_modules/.bin/tsx'), [resolve('src/main.ts')], {
+      cwd,
+      encoding: 'utf8',
+      env: {
+        PATH: process.env['PATH'],
+        DATABASE_URL: 'postgresql://u:p@127.0.0.1:1/x',
+        VALKEY_URL: 'redis://127.0.0.1:1',
+        NATS_URL: 'nats://127.0.0.1:1',
+        SHARD_RULESET_FILE: join(cwd, 'rules.yaml'),
+      },
+    });
+    expect(run.status).toBe(78);
+    expect(run.stderr).toContain('movement.runMs');
   } finally {
     rmSync(cwd, { recursive: true });
   }

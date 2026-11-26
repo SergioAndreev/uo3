@@ -8,6 +8,22 @@ const config = loadServerConfigOrExit(GameServerEnvSchema);
 const view = redactConfig(GameServerEnvSchema, config);
 console.log(JSON.stringify({ msg: 'game-server: конфигурация', ...view }));
 
+const { loadRuleset } = await import('./ruleset.js');
+const ruleset = loadRuleset(config);
+if (!ruleset.ok) {
+  console.error(
+    `Некорректный профиль правил шарда:\n${ruleset.errors.map((e) => `  - ${e}`).join('\n')}`,
+  );
+  process.exit(78);
+}
+console.log(
+  JSON.stringify({
+    msg: 'game-server: правила',
+    preset: ruleset.profile.preset,
+    fingerprint: ruleset.fingerprint,
+  }),
+);
+
 // Фреймворки загружаются только после проверки конфигурации.
 const { startGameHost } = await import('./game-host.js');
 const host = await startGameHost(config);

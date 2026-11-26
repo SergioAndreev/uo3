@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 import { isDomainError, type DomainErrorCode } from '../errors/index.js';
 import {
@@ -8,6 +9,7 @@ import {
   REPUTATIONS,
   RESOURCES,
   SCHOOLS,
+  SCHOOL_NAMES,
   SKILLS,
   SKILL_MODES,
   SLOTS,
@@ -109,8 +111,20 @@ it('репутация и уровни доступа', () => {
 });
 
 it('каркасы, поверхности и флаги клеток', () => {
-  expect(FRAMES).toHaveLength(6);
-  expect(SURFACES).toHaveLength(11);
+  expect(FRAMES).toEqual(['humanoid', 'beast', 'avian', 'aquatic', 'construct', 'wisp']);
+  expect(SURFACES).toEqual([
+    'soil',
+    'grass',
+    'sand',
+    'stone',
+    'snow',
+    'ice',
+    'ash',
+    'moss',
+    'shallow-water',
+    'deep-water',
+    'void',
+  ]);
   expect(CELL_FLAGS).toHaveLength(10);
   const mask = withFlags(NO_FLAGS, 'water', 'deep');
   expect(mask).toBe(0x18);
@@ -128,4 +142,16 @@ it('оттенки и ключи контента', () => {
   expect(contentKey('creature.ash-hound')).toBe('creature.ash-hound');
   for (const bad of ['Item.Lantern', 'lantern', 'item.', '.item'])
     fails(() => contentKey(bad), 'ERR_INVALID_CONTENT_KEY');
+});
+
+it('таблица навыков в документации совпадает с каталогом', () => {
+  const doc = readFileSync(new URL('../../docs/core-enumerations.md', import.meta.url), 'utf8');
+  const rows = doc
+    .split('\n')
+    .map((line) => /^\| (\d+) \| `([a-z]+)` \| ([^|]+) \| ([^|]+) \|$/.exec(line))
+    .filter((m) => m !== null)
+    .map((m) => ({ id: Number(m[1]), key: m[2], name: m[3]?.trim(), school: m[4]?.trim() }));
+  expect(rows).toEqual(
+    SKILLS.map((s) => ({ id: s.id, key: s.key, name: s.name, school: SCHOOL_NAMES[s.school] })),
+  );
 });
