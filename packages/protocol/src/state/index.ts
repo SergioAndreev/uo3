@@ -114,6 +114,7 @@ export const PartitionState = schema(
     realm: 'string',
     serverTick: 'uint32',
     onlineCount: 'uint16',
+    gameTimeMinutes: 'uint32',
     lightLevel: 'uint8',
     season: 'string',
     protocolVersion: 'string',
@@ -134,6 +135,7 @@ export const HubState = schema(
     shardId: 'string',
     shardStatus: 'string',
     onlineCount: 'uint16',
+    announcement: 'string',
   },
   'HubState',
 );
