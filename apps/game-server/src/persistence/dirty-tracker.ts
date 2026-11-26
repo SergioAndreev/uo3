@@ -25,6 +25,9 @@ export interface DirtyEntry<T> {
   version: number;
   /** Строка, снятая при выгрузке из памяти, — сущности в ядре больше нет. */
   frozen?: T;
+  /** Ключ контента и компоненты на момент отметки (журнал удалений). */
+  contentKey?: string;
+  components?: Record<string, unknown>;
 }
 
 export interface Captured<T> {
@@ -35,6 +38,8 @@ export interface Captured<T> {
   version: number;
   /** Состояние для записи; `null` — удаление без строки (только надгробие). */
   row: T | null;
+  contentKey?: string;
+  components?: Record<string, unknown>;
 }
 
 export interface TrackedCore {
@@ -126,11 +131,15 @@ export class DirtyTracker<T> {
       return;
     }
     this.seq++;
-    if (current) {
-      current.mask |= mask;
-      current.changeSeq = this.seq;
-    } else {
-      this.entries.set(id, { id, kind, mask, changeSeq: this.seq, version });
+    const entry = current ?? { id, kind, mask: 0, changeSeq: 0, version };
+    entry.mask |= mask;
+    entry.changeSeq = this.seq;
+    if (entity?.data) {
+      entry.contentKey = entity.data.contentKey;
+      entry.components = entity.data.components;
+    }
+    if (!current) {
+      this.entries.set(id, entry);
       this.oldestMs ??= this.now();
     }
     if (mask & FIELD.DELETED) this.versions.delete(id);
@@ -154,7 +163,16 @@ export class DirtyTracker<T> {
       const entity = this.core.get(id);
       const row =
         e.mask & FIELD.DELETED ? null : (e.frozen ?? (entity ? this.serialize(entity) : null));
-      out.push({ id, kind: e.kind, mask: e.mask, changeSeq: e.changeSeq, version: e.version, row });
+      out.push({
+        id,
+        kind: e.kind,
+        mask: e.mask,
+        changeSeq: e.changeSeq,
+        version: e.version,
+        row,
+        ...(e.contentKey ? { contentKey: e.contentKey } : {}),
+        ...(e.components ? { components: e.components } : {}),
+      });
     }
     return out;
   }

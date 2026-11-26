@@ -7,7 +7,10 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import { PartitionLeaseRepo, initShardState, listTimers } from '@duskmarch/db/world';
 import { dbBatchWriter, entityToRow } from './persistence/flush-store.js';
 import { IdAllocator, InMemoryIdLeaseProvider } from '@duskmarch/domain';
-import { itemLedger } from '@duskmarch/db';
+import { accounts, characters, itemLedger } from '@duskmarch/db';
+import { randomUUID } from 'node:crypto';
+import { starterLoadout } from '@duskmarch/content';
+import { starterTx } from './persistence/starter.js';
 import { PartitionCore, type Entity } from './engine/partition.js';
 import { CriticalTransactionCoordinator } from './persistence/critical.js';
 import { dbCriticalPorts } from './persistence/critical-store.js';
@@ -227,6 +230,27 @@ it('запись пакета: контейнер и содержимое, об�
     ],
   });
   expect(second).toEqual({ written: [0x60200000], deleted: [0x60200001], conflicts: [0x60200099] });
+  const coin = {
+    ...base,
+    entityId: 0x60200010,
+    contentKey: 'item.copper-coin',
+    amount: 25,
+    placement: 'world',
+    realm: 'proving',
+    x: 3,
+    y: 4,
+    h: 0,
+    parentId: null,
+    rootOwnerId: null,
+  };
+  await write({ upserts: [{ row: coin, expectedVersion: 0 }], deletes: [] });
+  const coinEvents = await client.db
+    .select()
+    .from(itemLedger)
+    .where(eq(itemLedger.itemId, 0x60200010));
+  expect(coinEvents.map((e) => [e.txType, e.eventKind, e.amountDelta])).toEqual([
+    ['BACKGROUND', 'CREATE', 25],
+  ]);
   const [gone] = await client.db
     .select()
     .from(worldEntities)
@@ -369,4 +393,87 @@ it('критическая транзакция: коммит → «аварий
     plan: () => ({ upserts: [], deletes: [], ledger: [] }),
   });
   expect(again).toMatchObject({ txId: out.txId, replayed: true });
+});
+
+it('стартовый набор: флаг героя в той же транзакции, повтор по ключу и параллельная выдача не создают копий', async () => {
+  const accountId = randomUUID();
+  const characterId = randomUUID();
+  const now = new Date();
+  await client.db.insert(accounts).values({
+    id: accountId,
+    email: `${accountId}@example.com`,
+    status: 'active',
+    createdAt: now,
+    updatedAt: now,
+  });
+  await client.db.insert(characters).values({
+    id: characterId,
+    shardId: 'local-dev',
+    accountId,
+    entityId: 0x20000021,
+    slot: 0,
+    name: 'Новичок',
+    nameKey: 'новичок',
+    status: 'active',
+    stats: { might: 30, finesse: 30, will: 30 },
+    appearance: {},
+    startCity: 'proving-camp',
+    realm: 'proving',
+    x: 9,
+    y: 41,
+    h: 0,
+    starterLoadout: [],
+    createdAt: now,
+  });
+  const hero = 0x20000021 as EntityId;
+  const lease = new PartitionLeaseRepo(client.db, 'local-dev', 'proving-8');
+  const { epoch } = await lease.acquire('node-a', 15_000);
+  const allocator = new IdAllocator(new InMemoryIdLeaseProvider({ item: 0x500000 }), {
+    leaseSize: 256,
+  });
+  await allocator.ready();
+  let tracker: DirtyTracker<WorldRowOut> | null = null;
+  const core = new PartitionCore({
+    partitionId: 'proving-8',
+    realm: { key: 'proving', width: 64, height: 64 },
+    bounds: { minX: 0, minY: 0, maxX: 63, maxY: 63 },
+    allocator,
+    onDirty: (id, r) => tracker?.onDirty(id, r),
+  });
+  core.hydrate([
+    {
+      id: hero,
+      kind: 'hero',
+      placement: { kind: 'world', x: 9, y: 41, h: 0 },
+      player: true,
+      height: 7,
+      blocksSight: false,
+      behaviors: [],
+    },
+  ]);
+  const serialize = (e: Entity) => entityToRow('local-dev', 'proving', e, (id) => core.get(id));
+  tracker = new DirtyTracker(core, serialize);
+  const crit = new CriticalTransactionCoordinator(
+    core,
+    tracker,
+    dbCriticalPorts(client.db, 'local-dev', 'proving', lease, () => epoch, serialize),
+    (k) => allocator.next(k),
+  );
+  const loadout = starterLoadout([{ skill: 'edge', tenths: 300 }]);
+  const [first, second] = await Promise.allSettled([
+    crit.run(starterTx(hero, characterId, loadout)),
+    crit.run({
+      ...starterTx(hero, characterId, loadout),
+      idempotencyKey: `starter-alt:${characterId}`,
+    }),
+  ]);
+  expect([first.status, second.status].sort()).toEqual(['fulfilled', 'rejected']);
+  const [row] = await client.db.select().from(characters).where(eq(characters.id, characterId));
+  expect(row?.starterLoadoutGranted).toBe(true);
+  const tree = await loadHeroTree(client.db, 'local-dev', hero);
+  expect(tree).toHaveLength(loadout.length);
+  expect(tree.find((e) => e.data?.contentKey === 'item.copper-coin')?.data?.amount).toBe(100);
+  const replay = await crit.run(starterTx(hero, characterId, loadout));
+  expect(replay.replayed).toBe(true);
+  expect(await loadHeroTree(client.db, 'local-dev', hero)).toHaveLength(loadout.length);
 });

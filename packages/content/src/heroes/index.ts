@@ -27,9 +27,10 @@ export function starterLoadout(skills: readonly SkillPick[]): LoadoutEntry[] {
     const school = SKILL_BY_KEY.get(skill)?.school;
     if (school && !schools.includes(school)) schools.push(school);
   }
-  const totals = new Map<string, number>();
+  const totals = new Map<string, LoadoutEntry>();
   for (const entry of [...BASE_LOADOUT, ...schools.flatMap((s) => SCHOOL_LOADOUTS[s] ?? [])]) {
-    totals.set(entry.key, (totals.get(entry.key) ?? 0) + entry.count);
+    const prev = totals.get(entry.key);
+    totals.set(entry.key, { ...entry, count: (prev?.count ?? 0) + entry.count });
   }
-  return [...totals].map(([key, count]) => ({ key, count }));
+  return [...totals.values()];
 }

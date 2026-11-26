@@ -10,6 +10,7 @@ import {
   IdAllocator,
   InMemoryIdLeaseProvider,
   SeededRng,
+  type EntityId,
   type IdLeaseProvider,
 } from '@duskmarch/domain';
 import { buildProfile, fingerprint, type Profile } from '@duskmarch/rules';
@@ -25,6 +26,7 @@ import { CriticalTransactionCoordinator } from '../persistence/critical.js';
 import { dbCriticalPorts } from '../persistence/critical-store.js';
 import { dbBatchWriter, entityToRow } from '../persistence/flush-store.js';
 import { PartitionLease } from '../persistence/partition-lease.js';
+import { starterTx } from '../persistence/starter.js';
 import { TimerStore } from '../persistence/timer-store.js';
 import { WorldClock, encodeRng } from '../persistence/world-clock.js';
 import { ShardNode, type NodePorts } from './node.js';
@@ -257,6 +259,10 @@ export async function buildNode(
       },
     );
     runtime.persistence = { tracker, flush, critical };
+    runtime.sessions.useStarterGrant(async (s, loadout) => {
+      const out = await critical.run(starterTx(s.entityId, s.characterId, loadout));
+      return out.replayed ? [] : ((out.result['items'] as EntityId[] | undefined) ?? []);
+    });
     runtime.sessions.useHeroFlush((ids) => flush.flushNow(ids));
     node.scheduler.onPostTick(() => flush.tick());
     node.scheduler.every(config.PERSIST_FLUSH_INTERVAL_MS, () => void flush.flush(), 'background');

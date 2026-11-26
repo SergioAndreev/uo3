@@ -66,6 +66,7 @@ export function dbCriticalPorts(
         result: r.result,
         now,
         assertEpoch: (tx) => lease.assertEpoch(tx, epoch()),
+        grantStarterFor: r.grantStarterFor ?? null,
       });
     },
     serialize,

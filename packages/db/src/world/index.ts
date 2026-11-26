@@ -15,6 +15,7 @@ import {
   shardWorldState,
   worldEntities,
   worldTimers,
+  characters,
   criticalTransactions,
   itemLedger,
 } from '../schema/index.js';
@@ -450,6 +451,8 @@ export interface CriticalCommit {
   now: Date;
   /** Проверка эпохи партиции внутри транзакции. */
   assertEpoch: (tx: Executor) => Promise<void>;
+  /** Выдача стартового набора: флаг героя ставится только если ещё не стоит. */
+  grantStarterFor?: string | null;
 }
 
 /**
@@ -490,6 +493,20 @@ export async function commitCritical(db: Database, c: CriticalCommit): Promise<v
       });
     }
     if (c.ledger.length > 0) await tx.insert(itemLedger).values(c.ledger);
+    if (c.grantStarterFor) {
+      const granted = await tx
+        .update(characters)
+        .set({ starterLoadoutGranted: true })
+        .where(
+          and(eq(characters.id, c.grantStarterFor), eq(characters.starterLoadoutGranted, false)),
+        )
+        .returning({ id: characters.id });
+      if (granted.length !== 1) {
+        throw new WorldStoreError('PERSIST_TX_CONFLICT', 'стартовый набор уже выдан', {
+          characterId: c.grantStarterFor,
+        });
+      }
+    }
   });
 }
 

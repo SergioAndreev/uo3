@@ -1,3 +1,4 @@
+import type { Slot } from '@duskmarch/domain';
 import type { SkillPick, StartStats } from '@duskmarch/rules';
 
 export interface StartCity {
@@ -113,14 +114,16 @@ export const BACKGROUNDS: readonly Background[] = [
 export interface LoadoutEntry {
   readonly key: string;
   readonly count: number;
+  /** Слот снаряжения при выдаче; без слота — в заплечный мешок. */
+  readonly slot?: Slot;
 }
 
 /** Базовый набор каждого героя. */
 export const BASE_LOADOUT: readonly LoadoutEntry[] = [
-  { key: 'item.linen-shirt', count: 1 },
-  { key: 'item.linen-trousers', count: 1 },
-  { key: 'item.travel-boots', count: 1 },
-  { key: 'item.satchel', count: 1 },
+  { key: 'item.linen-shirt', count: 1, slot: 'torso' },
+  { key: 'item.linen-trousers', count: 1, slot: 'legs' },
+  { key: 'item.travel-boots', count: 1, slot: 'feet' },
+  { key: 'item.satchel', count: 1, slot: 'pack' },
   { key: 'item.rye-bread', count: 3 },
   { key: 'item.copper-coin', count: 100 },
 ];

@@ -95,6 +95,10 @@ export function infraPorts(
           x: row.x,
           y: row.y,
           h: row.h,
+          starter: {
+            granted: row.starterLoadoutGranted,
+            loadout: row.starterLoadout as NonNullable<HeroRecord['starter']>['loadout'],
+          },
           vitals: {
             health: row.health ?? full.health,
             verve: row.verve ?? full.verve,

@@ -12,7 +12,12 @@ export interface WorldRowOut {
 
 export interface FlushBatch {
   upserts: { row: WorldRowOut; expectedVersion: number }[];
-  deletes: { entityId: number; expectedVersion: number }[];
+  deletes: {
+    entityId: number;
+    expectedVersion: number;
+    contentKey?: string;
+    components?: Record<string, unknown>;
+  }[];
 }
 
 export interface BatchResult {
@@ -268,7 +273,12 @@ export class FlushCoordinator {
     const result = await this.withRetry(() =>
       this.ports.writeBatch({
         upserts: upserts.map((u) => ({ row: u.row as WorldRowOut, expectedVersion: u.version })),
-        deletes: deletes.map((d) => ({ entityId: d.id, expectedVersion: d.version })),
+        deletes: deletes.map((d) => ({
+          entityId: d.id,
+          expectedVersion: d.version,
+          ...(d.contentKey ? { contentKey: d.contentKey } : {}),
+          ...(d.components ? { components: d.components } : {}),
+        })),
       }),
     );
     const ok = new Set([...result.written, ...result.deleted]);

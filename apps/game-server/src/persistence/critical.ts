@@ -51,6 +51,8 @@ export interface CriticalTx {
   participants: EntityId[];
   /** Данные запроса для `payloadHash`. */
   payload: Record<string, unknown>;
+  /** Выдача стартового набора: флаг героя ставится в той же транзакции. */
+  grantStarterFor?: string;
   /** План по снимку участников; без мутаций ядра. */
   plan(
     get: (id: EntityId) => Entity | undefined,
@@ -81,6 +83,7 @@ export interface CommitRequest {
     h?: number | null;
   })[];
   result: Record<string, unknown>;
+  grantStarterFor?: string;
 }
 
 export interface CriticalPorts {
@@ -332,6 +335,7 @@ export class CriticalTransactionCoordinator {
         return where?.kind === 'world' ? { ...l, x: where.x, y: where.y, h: where.h } : l;
       }),
       result: plan.result ?? {},
+      ...(tx.grantStarterFor ? { grantStarterFor: tx.grantStarterFor } : {}),
     };
   }
 

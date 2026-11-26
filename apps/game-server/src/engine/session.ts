@@ -1,4 +1,4 @@
-import { hasAccess, isStaff, type AccessLevel, type EntityId } from '@duskmarch/domain';
+import { hasAccess, isStaff, type AccessLevel, type EntityId, type Slot } from '@duskmarch/domain';
 import { WS_CLOSE } from '@duskmarch/protocol';
 import type { TimerHandle } from './timing-wheel.js';
 import type { Entity, PartitionCore } from './partition.js';
@@ -47,6 +47,8 @@ export interface HeroRecord {
   y: number;
   h: number;
   vitals: { health: number; verve: number; resonance: number };
+  /** Стартовый набор P05 и признак выдачи (P08). */
+  starter?: { granted: boolean; loadout: { key: string; count: number; slot?: Slot }[] };
 }
 
 export interface HeroSave {
@@ -315,6 +317,16 @@ export class SessionManager {
     const tree = (await this.ports.loadHeroTree?.(s.entityId)) ?? [];
     for (const item of tree) this.partition.spawn(item);
     s.owned = tree.map((e) => e.id);
+    if (hero.starter && !hero.starter.granted && this.starterGrant) {
+      try {
+        s.owned.push(...(await this.starterGrant(s, hero.starter.loadout)));
+      } catch (error) {
+        this.ports.publish('session.starter_deferred', {
+          characterId: s.characterId,
+          error: String(error),
+        });
+      }
+    }
     this.byAccount.set(c.accountId, s);
     this.bind(s, client);
     this.enterOnline(s);
@@ -448,6 +460,19 @@ export class SessionManager {
   }
 
   private heroFlush: ((ids: EntityId[]) => Promise<void>) | null = null;
+  private starterGrant:
+    | ((s: Session, loadout: NonNullable<HeroRecord['starter']>['loadout']) => Promise<EntityId[]>)
+    | null = null;
+
+  /** Выдача стартового набора при первом входе (P08). */
+  useStarterGrant(
+    grant: (
+      s: Session,
+      loadout: NonNullable<HeroRecord['starter']>['loadout'],
+    ) => Promise<EntityId[]>,
+  ): void {
+    this.starterGrant = grant;
+  }
   /** Срок срочного сохранения героя, мс. */
   heroFlushTimeoutMs = 5_000;
 

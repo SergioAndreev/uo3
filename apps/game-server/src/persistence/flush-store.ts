@@ -1,4 +1,5 @@
-import type { Database } from '@duskmarch/db';
+import { randomUUID } from 'node:crypto';
+import { itemLedger, type Database } from '@duskmarch/db';
 import {
   softDeleteBatch,
   writeBatch,
@@ -7,6 +8,7 @@ import {
 } from '@duskmarch/db/world';
 import type { EntityId } from '@duskmarch/domain';
 import type { Entity } from '../engine/partition.js';
+import { backgroundLedger } from './ledger-policy.js';
 import { rootOwner, type BatchResult, type FlushBatch, type WorldRowOut } from './flush.js';
 
 /** Сущность ядра → строка `world_entities`. */
@@ -56,7 +58,7 @@ export function dbBatchWriter(
       const upserted = await writeBatch(tx, batch.upserts as unknown as WriteRow[]);
       const deleted = await softDeleteBatch(tx, shardId, batch.deletes);
       const deletedSet = new Set(deleted);
-      return {
+      const result: BatchResult = {
         written: upserted.written,
         deleted,
         conflicts: [
@@ -64,5 +66,8 @@ export function dbBatchWriter(
           ...batch.deletes.map((d) => d.entityId).filter((id) => !deletedSet.has(id)),
         ],
       };
+      const ledger = backgroundLedger(shardId, randomUUID(), batch, result, new Date());
+      if (ledger.length > 0) await tx.insert(itemLedger).values(ledger);
+      return result;
     });
 }
