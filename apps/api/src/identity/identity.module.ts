@@ -38,6 +38,7 @@ export class IdentityModule implements OnModuleInit, OnModuleDestroy {
   /** `runtime` — готовые сервисы (тесты); без него — PostgreSQL, Valkey, NATS из конфигурации. */
   static register(runtime?: IdentityRuntimeOptions): DynamicModule {
     return {
+      global: true,
       module: IdentityModule,
       imports: runtime ? [] : [InfraConnectionsModule],
       controllers: [AuthController, JwksController, AccountController, StaffController],

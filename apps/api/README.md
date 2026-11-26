@@ -11,6 +11,8 @@ REST API (NestJS). Порты по умолчанию: 3001.
 
 Аккаунты, сессии, 2FA и права персонала (`/api/v1/auth`, `/api/v1/account`, `/api/v1/staff`, `/.well-known/jwks.json`) — [docs/identity.md](docs/identity.md).
 
+Шарды, герои и игровые билеты (`/api/v1/shards`, `/api/v1/admin/shards`, `/api/v1/staff/characters`) — [docs/shards.md](docs/shards.md).
+
 Переменные описаны в `.env.example` и `packages/config/docs/configuration.md`. Ошибка конфигурации завершает процесс с кодом `78`.
 
 Запуск: `pnpm --filter @duskmarch/api dev`; сборка и запуск: `build`, затем `start`.

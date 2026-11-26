@@ -6,7 +6,13 @@ export default mergeConfig(nodePreset('default'), {
   test: {
     coverage: {
       // CLI и адаптеры PostgreSQL/Valkey/NATS проверяются в test:integration.
-      exclude: ['src/main.ts', 'src/cli/**', 'src/identity/infra/**', '**/*.test-helper.ts'],
+      exclude: [
+        'src/main.ts',
+        'src/cli/**',
+        'src/identity/infra/**',
+        'src/game/infra/**',
+        '**/*.test-helper.ts',
+      ],
     },
   },
 });
