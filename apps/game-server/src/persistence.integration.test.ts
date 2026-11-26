@@ -4,7 +4,10 @@ import { createDbClient, migrateDatabase, seedDatabase, worldEntities } from '@d
 import type { EntityId } from '@duskmarch/domain';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, expect, it } from 'vitest';
+import { initShardState, listTimers } from '@duskmarch/db/world';
+import { Scheduler } from './engine/scheduler.js';
 import { loadHeroTree, loadPartition, quarantineRows } from './persistence/loader.js';
+import { TimerStore } from './persistence/timer-store.js';
 
 const root = fileURLToPath(new URL('../../..', import.meta.url));
 const dbConfig = loadServerConfig(DbEnvSchema, { cwd: root });
@@ -112,4 +115,47 @@ it('карантин в БД: limbo с исходным родителем; де
       { mode: 'strict' },
     ),
   ).resolves.toMatchObject({ quarantined: [] });
+});
+
+it('состояние шарда: идемпотентная инициализация', async () => {
+  const init = {
+    shardId: 'local-dev',
+    worldVersion: 'a'.repeat(64),
+    rulesetFingerprint: 'b'.repeat(64),
+    rngState: '0'.repeat(31) + '1',
+  };
+  const first = await initShardState(client.db, init);
+  const second = await initShardState(client.db, { ...init, worldVersion: 'c'.repeat(64) });
+  expect(second).toMatchObject({
+    worldVersion: 'a'.repeat(64),
+    gameTimeMs: 0,
+    createdAt: first.createdAt,
+  });
+});
+
+it('таймеры: создание, срабатывание, сохранение остатка и восстановление после простоя', async () => {
+  let now = new Date('2026-11-26T10:00:00Z');
+  const scheduler = new Scheduler({ perfNow: () => 0 });
+  const fired: string[] = [];
+  const store = new TimerStore(client.db, 'local-dev', scheduler, () => now);
+  store.on('decay', (t) => fired.push(t.id));
+  const fast = await store.create('decay', 100, 'pause', 0x60000001 as never);
+  const slow = await store.create('decay', 20 * 60_000, 'pause');
+  scheduler.advance(2);
+  await new Promise((r) => setTimeout(r, 50));
+  expect(fired).toEqual([fast]);
+  scheduler.advance(20);
+  await store.persist();
+  const [saved] = await listTimers(client.db, 'local-dev');
+  expect(saved).toMatchObject({ id: slow, remainingMs: 20 * 60_000 - 1_100 });
+  now = new Date(now.getTime() + 45 * 60_000);
+  const restarted = new Scheduler({ perfNow: () => 0 });
+  const after = new TimerStore(client.db, 'local-dev', restarted, () => now);
+  after.on('decay', (t) => fired.push(t.id));
+  expect(await after.restore()).toBe(1);
+  restarted.advance((20 * 60_000 - 1_100) / 50 - 1);
+  expect(fired).toEqual([fast]);
+  restarted.advance(1);
+  expect(fired).toEqual([fast, slow]);
+  await store.cancel(fast);
 });

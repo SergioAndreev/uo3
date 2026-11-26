@@ -1,7 +1,17 @@
 import { shards, type Database } from '@duskmarch/db';
-import { DbIdLeaseProvider, PartitionLeaseRepo } from '@duskmarch/db/world';
-import { IdAllocator, InMemoryIdLeaseProvider, type IdLeaseProvider } from '@duskmarch/domain';
-import { buildProfile, type Profile } from '@duskmarch/rules';
+import {
+  DbIdLeaseProvider,
+  PartitionLeaseRepo,
+  initShardState,
+  saveShardState,
+} from '@duskmarch/db/world';
+import {
+  IdAllocator,
+  InMemoryIdLeaseProvider,
+  SeededRng,
+  type IdLeaseProvider,
+} from '@duskmarch/domain';
+import { buildProfile, fingerprint, type Profile } from '@duskmarch/rules';
 import { eq } from 'drizzle-orm';
 import type { GameServerConfig } from '../app.module.js';
 import type { Landmarks } from '../world.js';
@@ -9,6 +19,8 @@ import type { RealmStore } from '@duskmarch/asset-formats';
 import type { Entity } from '../engine/partition.js';
 import { loadPartition, quarantineRows, type LoadMode } from '../persistence/loader.js';
 import { PartitionLease } from '../persistence/partition-lease.js';
+import { TimerStore } from '../persistence/timer-store.js';
+import { WorldClock, encodeRng } from '../persistence/world-clock.js';
 import { ShardNode, type NodePorts } from './node.js';
 
 export type HostErrorCode = 'HOST_CONFIG_INVALID' | 'HOST_BOOT_FAILED' | 'HOST_SHARD_MISMATCH';
@@ -110,8 +122,44 @@ export async function buildNode(
     } catch (error) {
       throw new HostError('HOST_BOOT_FAILED', `аренда партиции ${partitionId}: ${String(error)}`);
     }
+    const state = await initShardState(db, {
+      shardId: config.SHARD_ID,
+      worldVersion: world.version,
+      rulesetFingerprint: fingerprint(profile),
+      rngState: encodeRng(new SeededRng(`${config.SHARD_ID}:root`).snapshot()),
+    });
+    if (state.worldVersion !== world.version) {
+      ports.log('warn', 'версия мира шарда изменилась', {
+        saved: state.worldVersion,
+        loaded: world.version,
+      });
+      await saveShardState(db, config.SHARD_ID, { worldVersion: world.version });
+    }
+    const clock = new WorldClock(
+      state,
+      profile.time.tickMs,
+      profile.time.gameHourMs,
+      node.scheduler.tick,
+    );
+    const timers = new TimerStore(db, config.SHARD_ID, node.scheduler, undefined, ports.log);
+    node.world = { clock, timers };
+    node.stopHooks.push(async () => {
+      await timers.persist();
+      await saveShardState(db, config.SHARD_ID, {
+        ...clock.snapshot(node.scheduler.tick),
+        rulesetFingerprint: fingerprint(profile),
+        stoppedAt: new Date(),
+      });
+    });
     node.stopHooks.push(() => lease.release());
   }
+  const runtime = node.addPartition({
+    partitionId,
+    deferHydration: true,
+    realm: { key: realm.key, width: realm.width, height: realm.height },
+    bounds,
+    allocator,
+  });
   let initial: Entity[] = [];
   if (db) {
     const report = await loadPartition(db, config.SHARD_ID, realm.key, bounds, {
@@ -135,12 +183,10 @@ export async function buildNode(
     });
     initial = report.entities;
   }
-  node.addPartition({
-    partitionId,
-    initial,
-    realm: { key: realm.key, width: realm.width, height: realm.height },
-    bounds,
-    allocator,
-  });
+  runtime.core.hydrate(initial);
+  if (node.world) {
+    const restored = await node.world.timers.restore();
+    if (restored > 0) ports.log('info', 'таймеры мира восстановлены', { count: restored });
+  }
   return node;
 }

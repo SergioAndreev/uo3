@@ -1,6 +1,8 @@
 import { hasAccess, type AccessLevel, type EntityId, type IdAllocator } from '@duskmarch/domain';
 import { AnnounceRequest } from '@duskmarch/protocol';
 import { Value } from '@sinclair/typebox/value';
+import type { TimerStore } from '../persistence/timer-store.js';
+import type { WorldClock } from '../persistence/world-clock.js';
 import { HubCore, type HubClaims, type HubPorts } from '../engine/hub.js';
 import { PartitionCore, type Entity, type PartitionEvent } from '../engine/partition.js';
 import type { Rect } from '../engine/spatial-index.js';
@@ -37,6 +39,8 @@ export interface PartitionSpec {
   bounds: Rect;
   allocator: Pick<IdAllocator, 'next'>;
   initial?: Entity[];
+  /** Наполнение позже (загрузка из БД P08): до `core.hydrate` вход отклоняется `4128`. */
+  deferHydration?: boolean;
 }
 
 /** Реестр Valkey (формат P05 `@duskmarch/db/live`). */
@@ -132,6 +136,8 @@ export class ShardNode {
   maintenance = false;
   /** Действия после финального сохранения при остановке (освобождение аренд P08). */
   readonly stopHooks: (() => Promise<void>)[] = [];
+  /** Часы мира и длительные таймеры (P08); без БД не заданы. */
+  world?: { clock: WorldClock; timers: TimerStore };
   private readonly seen = new Set<string>();
   private heartbeatTimer: ReturnType<Scheduler['every']> | null = null;
 
@@ -164,7 +170,7 @@ export class ShardNode {
         for (const l of listeners) l.dirty?.(id, reason);
       },
     });
-    core.hydrate(spec.initial ?? []);
+    if (!spec.deferHydration) core.hydrate(spec.initial ?? []);
     const roomId = `${this.config.shardId}-${spec.partitionId}`;
     const base = this.ports.sessionPorts(spec.partitionId);
     const sessions = new SessionManager(

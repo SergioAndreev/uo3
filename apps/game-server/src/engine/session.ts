@@ -242,7 +242,10 @@ export class SessionManager {
   /** Вход по билету P05. Бросает `CloseError` с кодом реестра. */
   async join(client: ClientLink, ticket: string): Promise<Session> {
     if (this.partition.state !== 'ACTIVE')
-      throw new CloseError(CLOSE.PARTITION_NOT_READY, 'партиция загружается');
+      throw new CloseError(
+        CLOSE.PARTITION_NOT_READY,
+        'PERSIST_WORLD_NOT_READY: партиция загружается',
+      );
     const redeemed = await this.ports.redeem(ticket);
     if (!redeemed.ok) throw new CloseError(CLOSE.INVALID_TICKET, 'билет недействителен');
     const c = redeemed.claims;

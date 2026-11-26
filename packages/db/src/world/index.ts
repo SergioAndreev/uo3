@@ -9,7 +9,13 @@ import {
 } from '@duskmarch/domain';
 import { and, asc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
-import { partitionLeases, shardEntitySequences, worldEntities } from '../schema/index.js';
+import {
+  partitionLeases,
+  shardEntitySequences,
+  shardWorldState,
+  worldEntities,
+  worldTimers,
+} from '../schema/index.js';
 
 /** Ошибка хранилища мира с кодом `PERSIST_*` (сопоставляется с `PersistError` протокола). */
 export class WorldStoreError extends Error {
@@ -322,4 +328,67 @@ export async function writeBatch(tx: Executor, rows: readonly WriteRow[]): Promi
     written: [...ok],
     conflicts: rows.map((r) => r.row.entityId).filter((id) => !ok.has(id)),
   };
+}
+
+export type ShardWorldStateRow = typeof shardWorldState.$inferSelect;
+export type WorldTimerRow = typeof worldTimers.$inferSelect;
+
+/** Идемпотентная инициализация состояния шарда; возвращает действующую запись. */
+export async function initShardState(
+  db: Database,
+  init: { shardId: string; worldVersion: string; rulesetFingerprint: string; rngState: string },
+  now = new Date(),
+): Promise<ShardWorldStateRow> {
+  await db
+    .insert(shardWorldState)
+    .values({ ...init, createdAt: now, updatedAt: now })
+    .onConflictDoNothing();
+  const [row] = await db
+    .select()
+    .from(shardWorldState)
+    .where(eq(shardWorldState.shardId, init.shardId));
+  return row as ShardWorldStateRow;
+}
+
+export async function saveShardState(
+  db: Executor,
+  shardId: string,
+  patch: Partial<Omit<ShardWorldStateRow, 'shardId' | 'createdAt'>>,
+  now = new Date(),
+): Promise<void> {
+  await db
+    .update(shardWorldState)
+    .set({ ...patch, updatedAt: now })
+    .where(eq(shardWorldState.shardId, shardId));
+}
+
+export const listTimers = (db: Executor, shardId: string): Promise<WorldTimerRow[]> =>
+  db
+    .select()
+    .from(worldTimers)
+    .where(eq(worldTimers.shardId, shardId))
+    .orderBy(asc(worldTimers.dueAt));
+
+export async function insertTimer(
+  db: Executor,
+  row: typeof worldTimers.$inferInsert,
+): Promise<void> {
+  await db.insert(worldTimers).values(row);
+}
+
+export async function deleteTimer(db: Executor, id: string): Promise<void> {
+  await db.delete(worldTimers).where(eq(worldTimers.id, id));
+}
+
+/** Остаток таймеров при остановке: `pause` переживает простой. */
+export async function saveTimerRemaining(
+  db: Executor,
+  rows: readonly { id: string; remainingMs: number; dueAt: Date }[],
+): Promise<void> {
+  for (const r of rows) {
+    await db
+      .update(worldTimers)
+      .set({ remainingMs: r.remainingMs, dueAt: r.dueAt })
+      .where(eq(worldTimers.id, r.id));
+  }
 }

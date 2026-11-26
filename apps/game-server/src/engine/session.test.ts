@@ -183,7 +183,10 @@ describe('runtime/session-lifecycle', () => {
     loading.partition.state = 'LOADING';
     await expect(
       loading.sessions.join(new FakeClient(), loading.ticket('a', 'B')),
-    ).rejects.toMatchObject({ code: CLOSE.PARTITION_NOT_READY });
+    ).rejects.toMatchObject({
+      code: CLOSE.PARTITION_NOT_READY,
+      message: expect.stringContaining('PERSIST_WORLD_NOT_READY'),
+    });
   });
 
   it('перехват: старое соединение 4104, та же сущность; во время задержки выхода — таймер отменён', async () => {

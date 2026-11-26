@@ -6,7 +6,13 @@ import { nodePreset } from '@duskmarch/config/vitest/node';
 export default mergeConfig(nodePreset('default'), {
   test: {
     coverage: {
-      exclude: ['src/main.ts', 'src/rooms/**', 'src/host/infra-ports.ts', 'src/host/boot.ts'],
+      exclude: [
+        'src/main.ts',
+        'src/rooms/**',
+        'src/host/infra-ports.ts',
+        'src/host/boot.ts',
+        'src/persistence/timer-store.ts',
+      ],
     },
   },
 });
