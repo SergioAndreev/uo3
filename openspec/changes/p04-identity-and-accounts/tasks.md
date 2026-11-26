@@ -66,5 +66,5 @@
 
 ## 12. Документация и завершение
 
-- [ ] 12.1 `apps/api/docs/identity.md`, глоссарий (уровни, эффективный уровень, семейство сессии, outbox), ROADMAP (M1 «Первый шаг по Заре», ревизия P04), CONCEPT §6 — проверка: `scripts/glossary.test.ts`.
-- [ ] 12.2 Changeset, полный локальный контур (`lint`, `format:check`, `typecheck`, `check:*`, `test`, `test:integration`, `build`), `openspec validate p04-identity-and-accounts --strict` — проверка: всё зелёное.
+- [x] 12.1 `apps/api/docs/identity.md`, глоссарий (уровни, эффективный уровень, семейство сессии, outbox), ROADMAP (M1 «Первый шаг по Заре», ревизия P04), CONCEPT §6 — проверка: `scripts/glossary.test.ts`.
+- [x] 12.2 Changeset, полный локальный контур (`lint`, `format:check`, `typecheck`, `check:*`, `test`, `test:integration`, `build`), `openspec validate p04-identity-and-accounts --strict` — проверка: всё зелёное.

@@ -68,7 +68,28 @@ console.log(redactConfig(ApiEnvSchema, config));
 | `SHUTDOWN_TIMEOUT_MS` | Предел плавной остановки, мс | `15000` |  |
 | `API_HOST` | Адрес HTTP API | `127.0.0.1` |  |
 | `API_PORT` | Порт HTTP API | `3001` |  |
-| `IDENTITY_JWT_SIGNING_KEYS_JSON` | Ключи Ed25519 (формат задаёт P04) | — | да |
+| `IDENTITY_JWT_SIGNING_KEYS_JSON` | JSON-массив {kid, privateKeyPem, retiredAt?} ключей Ed25519; вне production без него ключ создаётся при старте | — | да |
+| `IDENTITY_JWT_ISSUER` | Поле iss Access JWT | `duskmarch` |  |
+| `IDENTITY_JWT_AUDIENCE` | Поле aud Access JWT | `duskmarch-api` |  |
+| `IDENTITY_TOTP_KEYS_JSON` | JSON {версия: base64 32 байта} ключей AES-256-GCM секретов TOTP | — | да |
+| `IDENTITY_TOTP_KEY_VERSION` | Версия ключа TOTP для записи | `1` |  |
+| `IDENTITY_BACKUP_CODE_PEPPER` | Перец HMAC резервных кодов 2FA | — | да |
+| `IDENTITY_PUBLIC_URL` | Адрес клиента для ссылок в письмах | `http://localhost:5273` |  |
+| `IDENTITY_TRUSTED_ORIGINS` | Origin, которым разрешены cookie-эндпоинты | `http://localhost:5273,http://localhost:5274` |  |
+| `IDENTITY_TOS_VERSION` | Действующая версия условий | `2026-11-01` |  |
+| `IDENTITY_PRIVACY_VERSION` | Действующая версия политики конфиденциальности | `2026-11-01` |  |
+| `IDENTITY_BLOCKED_EMAIL_DOMAINS` | Запрещённые почтовые домены через запятую | — |  |
+| `IDENTITY_REGISTRATION_CHALLENGE` | Антибот-проверка регистрации; поставщик проверки подключается позже | `off` |  |
+| `IDENTITY_ARGON2_MEMORY_KIB` | Память argon2id, КиБ | `19456` |  |
+| `IDENTITY_ARGON2_TIME_COST` | Число проходов argon2id | `2` |  |
+| `MAIL_TRANSPORT` | log — письма в журнал, smtp — отправка | `log` |  |
+| `MAIL_SMTP_URL` | Адрес SMTP-сервера | — | да |
+| `MAIL_FROM` | Отправитель писем | `Duskmarch <no-reply@duskmarch.invalid>` |  |
+| `OAUTH_REDIRECT_BASE_URL` | Базовый адрес API для callback OAuth | `http://localhost:3001` |  |
+| `OAUTH_DISCORD_CLIENT_ID` | Клиент OAuth Discord | — |  |
+| `OAUTH_DISCORD_CLIENT_SECRET` | Секрет OAuth Discord | — | да |
+| `OAUTH_GOOGLE_CLIENT_ID` | Клиент OAuth Google | — |  |
+| `OAUTH_GOOGLE_CLIENT_SECRET` | Секрет OAuth Google | — | да |
 | `CORS_ALLOWED_ORIGINS` | Разрешённые origin через запятую | `http://localhost:5273` |  |
 | `CORS_ALLOW_CREDENTIALS` | Разрешить cookie в CORS | `true` |  |
 | `ENABLE_SWAGGER` | Публиковать OpenAPI UI | `false` |  |
