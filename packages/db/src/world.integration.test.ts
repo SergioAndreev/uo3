@@ -13,6 +13,9 @@ import {
 import {
   DbIdLeaseProvider,
   PartitionLeaseRepo,
+  ledgerLineage,
+  ledgerOfItem,
+  ledgerQuery,
   loadOwnedTree,
   streamPartition,
   writeBatch,
@@ -321,4 +324,53 @@ describe('репозитории мира', () => {
     expect(all.filter((id) => id >= 0x60020000 && id < 0x60020100)).toHaveLength(20);
     expect(batches.length).toBeGreaterThan(2);
   });
+});
+
+it('журнал: история предмета, цепочка происхождения в обе стороны, курсор', async () => {
+  const tx = randomUUID();
+  const base = {
+    shardId: 'ember',
+    txId: tx,
+    txType: 'TRADE_EXCHANGE',
+    createdAt: now,
+    characterId: '7d0e2a8e-1c7e-4c49-9a5f-2b4a1f0e9d11',
+  };
+  await client.db.insert(itemLedger).values([
+    { ...base, eventKind: 'CREATE', itemId: 0x60500000, amountDelta: 1_000 },
+    { ...base, eventKind: 'SPLIT', itemId: 0x60500000, amountDelta: -300 },
+    {
+      ...base,
+      eventKind: 'CREATE',
+      itemId: 0x60500001,
+      sourceItemId: 0x60500000,
+      amountDelta: 300,
+    },
+    {
+      ...base,
+      eventKind: 'CREATE',
+      itemId: 0x60500002,
+      sourceItemId: 0x60500001,
+      amountDelta: 100,
+    },
+    { ...base, eventKind: 'CREATE', itemId: 0x60500099, amountDelta: 1, characterId: null },
+  ]);
+  expect((await ledgerOfItem(client.db, 'ember', 0x60500000)).map((r) => r.eventKind)).toEqual([
+    'CREATE',
+    'SPLIT',
+  ]);
+  const lineage = await ledgerLineage(client.db, 'ember', 0x60500001);
+  expect(lineage.items).toEqual([0x60500000, 0x60500001, 0x60500002]);
+  expect(lineage.events).toHaveLength(4);
+  const page = await ledgerQuery(client.db, 'ember', { characterId: base.characterId, limit: 3 });
+  expect(page.events).toHaveLength(3);
+  const rest = await ledgerQuery(client.db, 'ember', {
+    characterId: base.characterId,
+    limit: 3,
+    after: page.next as number,
+  });
+  expect(rest).toMatchObject({
+    next: null,
+    events: [expect.objectContaining({ itemId: 0x60500002 })],
+  });
+  expect((await ledgerQuery(client.db, 'ember', { txId: tx, limit: 100 })).events).toHaveLength(5);
 });

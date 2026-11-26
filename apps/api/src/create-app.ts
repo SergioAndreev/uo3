@@ -1,3 +1,4 @@
+import type { PersistenceAdmin } from './persistence/index.js';
 import 'reflect-metadata';
 import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -11,9 +12,10 @@ export async function createApp(
   config: ApiConfig,
   identity?: IdentityRuntimeOptions,
   game?: GameServices,
+  persistence?: PersistenceAdmin,
 ): Promise<INestApplication> {
   const app = await NestFactory.create(
-    AppModule.register(config, identity, game),
+    AppModule.register(config, identity, game, persistence),
     new ExpressAdapter(),
     {
       logger: ['fatal', 'error', 'warn'],

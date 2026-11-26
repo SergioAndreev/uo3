@@ -263,7 +263,7 @@ export async function buildNode(
       const out = await critical.run(starterTx(s.entityId, s.characterId, loadout));
       return out.replayed ? [] : ((out.result['items'] as EntityId[] | undefined) ?? []);
     });
-    runtime.sessions.useHeroFlush((ids) => flush.flushNow(ids));
+    runtime.sessions.useHeroFlush(async (ids) => void (await flush.flushNow(ids)));
     node.scheduler.onPostTick(() => flush.tick());
     node.scheduler.every(config.PERSIST_FLUSH_INTERVAL_MS, () => void flush.flush(), 'background');
     node.stopHooks.unshift(async () => {

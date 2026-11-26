@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { hasAccess, type AccessLevel, type EntityId, type IdAllocator } from '@duskmarch/domain';
 import { AnnounceRequest } from '@duskmarch/protocol';
 import { Value } from '@sinclair/typebox/value';
@@ -354,6 +355,29 @@ export class ShardNode {
       throw new CloseError(CLOSE.SHARD_MAINTENANCE, 'обслуживание');
     }
     return session;
+  }
+
+  /** Внеочередное сохранение всех партиций узла (ручной запуск через API). */
+  async flushAll(): Promise<{
+    flushId: string;
+    entitiesSaved: number;
+    durationMs: number;
+    checkpointSeq: number;
+  }> {
+    const started = performance.now();
+    let entitiesSaved = 0;
+    let checkpointSeq = 0;
+    for (const p of this.partitions.values()) {
+      if (!p.persistence) continue;
+      entitiesSaved += await p.persistence.flush.flushNow();
+      checkpointSeq += p.persistence.flush.metrics.cycles;
+    }
+    return {
+      flushId: randomUUID(),
+      entitiesSaved,
+      durationMs: performance.now() - started,
+      checkpointSeq,
+    };
   }
 
   /** Потеря эпохи партиции: закрытие клиентов кодом `4117` без сохранения. */

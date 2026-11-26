@@ -246,6 +246,6 @@ describe('persistence/incremental-save: фоновое сохранение', ()
     expect(b.staleCount()).toBe(1);
     expect(b.flush.stopped).toBe(true);
     await b.flush.flush();
-    await expect(b.flush.flushNow()).resolves.toBeUndefined();
+    await expect(b.flush.flushNow()).resolves.toBe(0);
   });
 });

@@ -16,6 +16,14 @@ import {
   StaffCharactersController,
 } from './http/shards.controller.js';
 import { GAME } from './http/tokens.js';
+import { IdentityError } from '../identity/core/errors.js';
+import { AdminPersistenceController, PERSISTENCE } from '../persistence/controller.js';
+import {
+  DrizzleLedgerStore,
+  MemoryLedgerStore,
+  NatsFlushRequester,
+  PersistenceAdmin,
+} from '../persistence/index.js';
 import { createGameServices, type GameServices } from './index.js';
 import { DrizzleGameStore } from './infra/drizzle-store.js';
 import { ValkeyLive } from './infra/valkey-live.js';
@@ -31,6 +39,8 @@ export interface GameModuleOptions {
   memory?: boolean;
   /** Фоновая финализация удалений (в тестах выключена). */
   jobs: boolean;
+  /** Администрирование персистентности (P08); в тестах — свои порты. */
+  persistence?: PersistenceAdmin;
 }
 
 /** Шарды, герои и билеты (P05). */
@@ -47,9 +57,37 @@ export class GameModule implements OnModuleInit, OnModuleDestroy {
     return {
       module: GameModule,
       imports: options.services || options.memory ? [] : [InfraConnectionsModule],
-      controllers: [ShardsController, AdminShardsController, StaffCharactersController],
+      controllers: [
+        ShardsController,
+        AdminShardsController,
+        StaffCharactersController,
+        AdminPersistenceController,
+      ],
       providers: [
         { provide: OPTIONS, useValue: options },
+        options.persistence
+          ? { provide: PERSISTENCE, useValue: options.persistence }
+          : options.services || options.memory
+            ? {
+                provide: PERSISTENCE,
+                useFactory: (identity: IdentityServices) =>
+                  new PersistenceAdmin(identity, new MemoryLedgerStore(), {
+                    request: async () => {
+                      throw new IdentityError('PERSIST_TX_UNAVAILABLE', 'узел шарда недоступен');
+                    },
+                  }),
+                inject: [IDENTITY],
+              }
+            : {
+                provide: PERSISTENCE,
+                useFactory: (identity: IdentityServices, infra: Infra) =>
+                  new PersistenceAdmin(
+                    identity,
+                    new DrizzleLedgerStore(infra.db),
+                    new NatsFlushRequester(infra.nats),
+                  ),
+                inject: [IDENTITY, INFRA],
+              },
         options.services
           ? { provide: GAME, useValue: options.services }
           : options.memory

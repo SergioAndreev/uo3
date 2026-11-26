@@ -1,6 +1,7 @@
 import { Module, type DynamicModule } from '@nestjs/common';
 import { GameModule } from './game/game.module.js';
 import type { GameServices } from './game/index.js';
+import type { PersistenceAdmin } from './persistence/index.js';
 import { HealthController } from './health.controller.js';
 import { IdentityModule, type IdentityRuntimeOptions } from './identity/identity.module.js';
 import { InfraConnectionsModule } from './infra-connections.module.js';
@@ -12,6 +13,7 @@ export class AppModule {
     config: ApiConfig,
     identity?: IdentityRuntimeOptions,
     game?: GameServices,
+    persistence?: PersistenceAdmin,
   ): DynamicModule {
     return {
       module: AppModule,
@@ -19,13 +21,14 @@ export class AppModule {
         PlatformConfigModule.register(config),
         InfraConnectionsModule,
         IdentityModule.register(identity),
-        GameModule.register(
-          game
+        GameModule.register({
+          ...(game
             ? { services: game, jobs: false }
             : identity
               ? { memory: true, jobs: false }
-              : { jobs: true },
-        ),
+              : { jobs: true }),
+          ...(persistence ? { persistence } : {}),
+        }),
       ],
       controllers: [HealthController],
     };

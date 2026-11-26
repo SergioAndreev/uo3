@@ -219,9 +219,11 @@ export class FlushCoordinator {
   }
 
   /** Срочное целевое сохранение без ожидания плана (выход героя, передача, остановка). */
-  async flushNow(ids?: readonly EntityId[]): Promise<void> {
+  async flushNow(ids?: readonly EntityId[]): Promise<number> {
+    if (this.stopped) return 0;
     const items = this.tracker.capture(Infinity, ids ?? undefined);
     await this.writeCaptured(items, false);
+    return items.length;
   }
 
   private async writeCaptured(items: Captured<WorldRowOut>[], retryLater = true): Promise<void> {

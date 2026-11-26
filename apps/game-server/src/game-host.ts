@@ -86,14 +86,27 @@ export async function startGameHost(
       }
       if (node.hub) await matchMaker.createRoom('hub', { node, roomId: node.hubRoomId, net });
       const nc = infra.nats();
-      if (nc)
-        unsubscribe = subscribeEvents(
+      if (nc) {
+        const flushSub = nc.subscribe(`shard.${config.SHARD_ID}.persistence.flush_request`, {
+          callback: (err, msg) => {
+            if (err) return;
+            void (node as ShardNode)
+              .flushAll()
+              .then((r) => msg.respond(JSON.stringify(r)))
+              .catch((e: unknown) => msg.respond(JSON.stringify({ error: String(e) })));
+          },
+        });
+        const events = subscribeEvents(
           nc,
           config.SHARD_ID,
           (s, e) => (node as ShardNode).handleEvent(s, e),
           log,
         );
-      else
+        unsubscribe = () => {
+          events();
+          flushSub.unsubscribe();
+        };
+      } else
         log('warn', 'NATS недоступен при старте: события P04/P05 не будут получены до перезапуска');
       node.scheduler.start();
       node.ready();

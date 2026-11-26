@@ -516,3 +516,80 @@ export async function ensureLedgerMonths(db: Executor, now = new Date()): Promis
   await db.execute(sql`SELECT item_ledger_ensure_month(${now.toISOString().slice(0, 10)}::date)`);
   await db.execute(sql`SELECT item_ledger_ensure_month(${next.toISOString().slice(0, 10)}::date)`);
 }
+
+export type LedgerRow = typeof itemLedger.$inferSelect;
+
+/** История предмета по порядку `ledger_seq`. */
+export const ledgerOfItem = (db: Executor, shardId: string, itemId: number): Promise<LedgerRow[]> =>
+  db
+    .select()
+    .from(itemLedger)
+    .where(and(eq(itemLedger.shardId, shardId), eq(itemLedger.itemId, itemId)))
+    .orderBy(asc(itemLedger.ledgerSeq));
+
+/**
+ * Цепочка происхождения: предмет, его источники вверх по `source_item_id`
+ * и производные стопки вниз, затем история всех звеньев.
+ */
+export async function ledgerLineage(
+  db: Executor,
+  shardId: string,
+  itemId: number,
+): Promise<{ items: number[]; events: LedgerRow[] }> {
+  const rows = await db.execute<{ item_id: string }>(sql`
+    WITH RECURSIVE up(item_id, depth) AS (
+      SELECT ${itemId}::bigint, 0
+      UNION
+      SELECT l.source_item_id, up.depth + 1 FROM item_ledger l JOIN up ON l.item_id = up.item_id
+      WHERE l.shard_id = ${shardId} AND l.source_item_id IS NOT NULL AND up.depth < 32
+    ),
+    down(item_id, depth) AS (
+      SELECT ${itemId}::bigint, 0
+      UNION
+      SELECT l.item_id, down.depth + 1 FROM item_ledger l JOIN down ON l.source_item_id = down.item_id
+      WHERE l.shard_id = ${shardId} AND down.depth < 32
+    )
+    SELECT item_id FROM up UNION SELECT item_id FROM down`);
+  const items = [...new Set(rows.rows.map((r) => Number(r.item_id)))].sort((a, b) => a - b);
+  const events = await db
+    .select()
+    .from(itemLedger)
+    .where(and(eq(itemLedger.shardId, shardId), inArray(itemLedger.itemId, items)))
+    .orderBy(asc(itemLedger.ledgerSeq));
+  return { items, events };
+}
+
+export interface LedgerFilter {
+  characterId?: string;
+  accountId?: string;
+  txId?: string;
+  from?: Date;
+  to?: Date;
+  /** Курсор — последний выданный `ledger_seq`. */
+  after?: number;
+  limit: number;
+}
+
+/** События по герою, исполнителю или транзакции за период с курсорной выдачей. */
+export async function ledgerQuery(
+  db: Executor,
+  shardId: string,
+  f: LedgerFilter,
+): Promise<{ events: LedgerRow[]; next: number | null }> {
+  const conditions = [eq(itemLedger.shardId, shardId)];
+  if (f.characterId) conditions.push(eq(itemLedger.characterId, f.characterId));
+  if (f.accountId) conditions.push(eq(itemLedger.actorAccountId, f.accountId));
+  if (f.txId) conditions.push(eq(itemLedger.txId, f.txId));
+  if (f.from) conditions.push(sql`${itemLedger.createdAt} >= ${f.from}`);
+  if (f.to) conditions.push(sql`${itemLedger.createdAt} < ${f.to}`);
+  if (f.after !== undefined) conditions.push(gt(itemLedger.ledgerSeq, f.after));
+  const events = await db
+    .select()
+    .from(itemLedger)
+    .where(and(...conditions))
+    .orderBy(asc(itemLedger.ledgerSeq))
+    .limit(f.limit + 1);
+  const more = events.length > f.limit;
+  const page = events.slice(0, f.limit);
+  return { events: page, next: more ? (page.at(-1)?.ledgerSeq ?? null) : null };
+}
