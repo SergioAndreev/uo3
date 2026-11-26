@@ -23,5 +23,5 @@
 
 ## 4. Завершение
 
-- [ ] 4.1 Документация `apps/game-server/docs/netcode.md`, глоссарий, ROADMAP, CONCEPT §6, changeset — проверка: `scripts/glossary.test.ts`.
-- [ ] 4.2 Полный локальный контур и `openspec validate p07-netcode-and-replication --strict` — проверка: всё зелёное.
+- [x] 4.1 Документация `apps/game-server/docs/netcode.md`, глоссарий, ROADMAP, CONCEPT §6, changeset — проверка: `scripts/glossary.test.ts`.
+- [x] 4.2 Полный локальный контур и `openspec validate p07-netcode-and-replication --strict` — проверка: всё зелёное.
