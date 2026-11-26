@@ -1,5 +1,5 @@
 import { Controller, Get, HttpCode, Inject, Param, Post, Req, UseGuards } from '@nestjs/common';
-import { FlushRequest, LedgerQuery } from '@duskmarch/protocol';
+import { FlushRequest, LedgerQuery, RestorePointRequest } from '@duskmarch/protocol';
 import { IdentityError } from '../identity/core/errors.js';
 import { IdentityGuard, principalOf } from '../identity/http/guard.js';
 import { metaOf, parse, type HttpRequest } from '../identity/http/request.js';
@@ -64,6 +64,13 @@ export class AdminPersistenceController {
       ...(after !== undefined ? { after } : {}),
       limit: q.limit ?? 100,
     });
+  }
+
+  @Post('restore-points')
+  @HttpCode(201)
+  restorePoint(@Param('shardId') shardId: string, @Req() req: HttpRequest) {
+    const body = parse(RestorePointRequest, req.body ?? {});
+    return this.admin.restorePoint(principalOf(req), metaOf(req), shardId, body.name, body.reason);
   }
 
   @Post('flush')

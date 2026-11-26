@@ -1,18 +1,23 @@
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DbEnvSchema, loadServerConfig } from '@duskmarch/config/env/server';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createDbClient,
   itemLedger,
   migrateDatabase,
   seedDatabase,
+  shardEntitySequences,
+  shards,
   worldEntities,
 } from './index.js';
 import {
   DbIdLeaseProvider,
   PartitionLeaseRepo,
+  backups,
+  checkWorldInvariants,
+  createRestorePoint,
   ledgerLineage,
   ledgerOfItem,
   ledgerQuery,
@@ -373,4 +378,73 @@ it('журнал: история предмета, цепочка происхо
     events: [expect.objectContaining({ itemId: 0x60500002 })],
   });
   expect((await ledgerQuery(client.db, 'ember', { txId: tx, limit: 100 })).events).toHaveLength(5);
+});
+
+it('инварианты мира: цикл, сирота, отставшая граница аренды', async () => {
+  const [ember] = await client.db.select().from(shards).where(eq(shards.id, 'ember'));
+  await client.db
+    .insert(shards)
+    .values({ ...(ember as typeof shards.$inferSelect), id: 'inv', name: 'Проверка' })
+    .onConflictDoNothing();
+  const clean = await checkWorldInvariants(client.db, 'inv');
+  expect(clean).toMatchObject({ ok: true, cycles: [], orphans: [] });
+  const base = {
+    shardId: 'inv',
+    kind: 'item',
+    contentKey: 'item.sack',
+    createdAt: now,
+    updatedAt: now,
+  };
+  await client.db.insert(worldEntities).values([
+    { ...base, entityId: 0x60600001, placement: 'container', parentId: 0x60600002 },
+    { ...base, entityId: 0x60600002, placement: 'container', parentId: 0x60600001 },
+    { ...base, entityId: 0x60600003, placement: 'container', parentId: 0x60609999 },
+  ]);
+  await client.db.insert(shardEntitySequences).values({ shardId: 'inv' }).onConflictDoNothing();
+  const bad = await checkWorldInvariants(client.db, 'inv');
+  expect(bad.ok).toBe(false);
+  expect(bad.cycles.sort()).toEqual([0x60600001, 0x60600002]);
+  expect(bad.orphans).toEqual([0x60600003]);
+  expect(bad.leaseBehind).toEqual(['inv:item']);
+});
+
+it('каталог копий и точка восстановления в WAL', async () => {
+  const id = randomUUID();
+  const old = new Date('2026-01-01T04:00:00Z');
+  await backups.insert(client.db, {
+    id,
+    kind: 'daily',
+    status: 'completed',
+    location: '/tmp/x',
+    retentionUntil: new Date('2026-01-08T04:00:00Z'),
+    createdAt: old,
+  });
+  expect((await backups.latestUsable(client.db))?.id).toBe(id);
+  expect(
+    (await backups.expired(client.db, new Date('2026-02-01T00:00:00Z'))).map((b) => b.id),
+  ).toEqual([id]);
+  await backups.update(client.db, id, { status: 'expired' });
+  expect(await backups.latestUsable(client.db)).toBeUndefined();
+  const [account] = await client.db
+    .execute<{ id: string }>(
+      sql`insert into accounts (id, email, status, created_at, updated_at) values (gen_random_uuid(), 'rp@example.com', 'active', now(), now()) returning id`,
+    )
+    .then((r) => r.rows);
+  const point = await createRestorePoint(client.db, {
+    shardId: 'ember',
+    name: 'pre-p13',
+    reason: 'Перед миграцией P13',
+    createdBy: account?.id as string,
+    checkpointSeq: 3,
+  });
+  expect(point.lsn).toMatch(/^[0-9A-F]+\/[0-9A-F]+$/);
+  await expect(
+    createRestorePoint(client.db, {
+      shardId: 'ember',
+      name: 'pre-p13',
+      reason: 'Повтор',
+      createdBy: account?.id as string,
+      checkpointSeq: 3,
+    }),
+  ).rejects.toMatchObject({ code: 'PERSIST_RESTORE_POINT_EXISTS' });
 });

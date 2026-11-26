@@ -59,7 +59,8 @@
     "check:ci-integrity": "tsx scripts/check-ci-integrity.ts",
     "prepare": "husky",
     "commitlint": "commitlint",
-    "test:coverage": "turbo run test:coverage"
+    "test:coverage": "turbo run test:coverage",
+    "backup": "tsx scripts/backup.ts"
   },
   "devDependencies": {
     "@changesets/cli": "2.31.1",

@@ -1,5 +1,6 @@
 import type { Database } from '@duskmarch/db';
 import {
+  createRestorePoint,
   ledgerLineage,
   ledgerOfItem,
   ledgerQuery,
@@ -19,6 +20,43 @@ export interface LedgerStore {
     shardId: string,
     filter: LedgerFilter,
   ): Promise<{ events: LedgerRow[]; next: number | null }>;
+}
+
+/** Точки восстановления (P08). */
+export interface RestorePointStore {
+  create(row: {
+    shardId: string;
+    name: string;
+    reason: string;
+    createdBy: string;
+    checkpointSeq: number;
+  }): Promise<{ lsn: string }>;
+}
+
+export class DrizzleRestorePoints implements RestorePointStore {
+  constructor(private readonly db: Database) {}
+  async create(row: Parameters<RestorePointStore['create']>[0]) {
+    try {
+      return await createRestorePoint(this.db, row);
+    } catch (error) {
+      if ((error as { code?: string }).code === 'PERSIST_RESTORE_POINT_EXISTS') {
+        throw new IdentityError('PERSIST_RESTORE_POINT_EXISTS', `точка ${row.name} уже есть`);
+      }
+      throw error;
+    }
+  }
+}
+
+export class MemoryRestorePoints implements RestorePointStore {
+  readonly points = new Map<string, { lsn: string; reason: string }>();
+  async create(row: Parameters<RestorePointStore['create']>[0]) {
+    const key = `${row.shardId}/${row.name}`;
+    if (this.points.has(key))
+      throw new IdentityError('PERSIST_RESTORE_POINT_EXISTS', `точка ${row.name} уже есть`);
+    const lsn = `0/${(this.points.size + 1).toString(16).toUpperCase()}000000`;
+    this.points.set(key, { lsn, reason: row.reason });
+    return { lsn };
+  }
 }
 
 /** Запрос внеочередного сохранения узлу шарда. */
@@ -111,7 +149,33 @@ export class PersistenceAdmin {
     private readonly ledger: LedgerStore,
     private readonly flusher: FlushRequester,
     private readonly now: () => number = () => Date.now(),
+    private readonly points: RestorePointStore = new MemoryRestorePoints(),
   ) {}
+
+  /** Точка восстановления: внеочередное сохранение мира, затем точка в WAL. */
+  async restorePoint(
+    principal: Principal,
+    meta: RequestMeta,
+    shardId: string,
+    name: string,
+    reason: string,
+  ) {
+    const actor = await this.identity.staff.authorize(
+      principal,
+      'backup.manage',
+      'backup.restore_point',
+      meta,
+    );
+    const flushed = await this.flusher.request(shardId);
+    const { lsn } = await this.points.create({
+      shardId,
+      name,
+      reason,
+      createdBy: actor.id,
+      checkpointSeq: flushed.checkpointSeq,
+    });
+    return { name, lsn, checkpointSeq: flushed.checkpointSeq };
+  }
 
   private authorize(
     principal: Principal,

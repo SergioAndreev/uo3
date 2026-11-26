@@ -14,9 +14,27 @@ services:
       POSTGRES_USER: ${PG_USER:-duskmarch}
       POSTGRES_PASSWORD: ${PG_PASSWORD:-CHANGE_ME_LOCAL_DEV_ONLY}
       POSTGRES_DB: postgres
+    # Непрерывная архивация WAL для PITR (P08): сегмент не реже раза в 60 с.
+    entrypoint:
+      - sh
+      - -c
+      - chown postgres:postgres /wal-archive /backups && exec docker-entrypoint.sh "$$@"
+      - postgres-entrypoint
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_timeout=60
+      - -c
+      - archive_command=test ! -f /wal-archive/%f && cp %p /wal-archive/%f
     ports: ['127.0.0.1:${PG_PORT:-5432}:5432']
     volumes:
       - duskmarch_pg_data:/var/lib/postgresql/data
+      - duskmarch_pg_wal:/wal-archive
+      - duskmarch_pg_backups:/backups
       - ./infra/local/postgres/init-dbs.sql:/docker-entrypoint-initdb.d/init-dbs.sql:ro
     healthcheck:
       # TCP: сервер фазы инициализации слушает только сокет и не должен считаться готовым.
@@ -155,6 +173,8 @@ networks:
 
 volumes:
   duskmarch_pg_data: {}
+  duskmarch_pg_wal: {}
+  duskmarch_pg_backups: {}
   duskmarch_valkey_data: {}
   duskmarch_nats_data: {}
   duskmarch_prom_data: {}

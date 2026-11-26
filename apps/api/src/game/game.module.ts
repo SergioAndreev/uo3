@@ -20,6 +20,7 @@ import { IdentityError } from '../identity/core/errors.js';
 import { AdminPersistenceController, PERSISTENCE } from '../persistence/controller.js';
 import {
   DrizzleLedgerStore,
+  DrizzleRestorePoints,
   MemoryLedgerStore,
   NatsFlushRequester,
   PersistenceAdmin,
@@ -85,6 +86,8 @@ export class GameModule implements OnModuleInit, OnModuleDestroy {
                     identity,
                     new DrizzleLedgerStore(infra.db),
                     new NatsFlushRequester(infra.nats),
+                    undefined,
+                    new DrizzleRestorePoints(infra.db),
                   ),
                 inject: [IDENTITY, INFRA],
               },

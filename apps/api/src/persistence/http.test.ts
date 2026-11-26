@@ -159,4 +159,34 @@ describe('persistence: API администрирования', () => {
       (await call('POST', `${P}/flush`, admin.session.accessToken, { force: true })).body.flushId,
     ).toBe('f-2');
   });
+
+  it('точка восстановления: администратор — 201 с LSN; повтор имени — 409; без обоснования — 400', async () => {
+    const admin = await g.h.staffSession('admin3@example.com', 'administrator');
+    const t = admin.session.accessToken;
+    const body = {
+      name: 'pre-p13-release-2026-12-01',
+      reason: 'Контрольная точка перед миграцией P13',
+    };
+    const created = await call('POST', `${P}/restore-points`, t, body);
+    expect(created).toMatchObject({
+      status: 201,
+      body: { name: body.name, lsn: expect.stringMatching(/^0\//), checkpointSeq: 7 },
+    });
+    expect(await call('POST', `${P}/restore-points`, t, body)).toMatchObject({
+      status: 409,
+      body: { error: { code: 'PERSIST_RESTORE_POINT_EXISTS' } },
+    });
+    expect(
+      (await call('POST', `${P}/restore-points`, t, { name: 'x', reason: 'мало' })).status,
+    ).toBe(400);
+    const gm = await g.h.staffSession('gm3@example.com', 'game-master');
+    expect(
+      (
+        await call('POST', `${P}/restore-points`, gm.session.accessToken, {
+          ...body,
+          name: 'other-point',
+        })
+      ).status,
+    ).toBe(403);
+  });
 });
