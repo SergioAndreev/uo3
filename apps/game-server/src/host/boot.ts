@@ -18,6 +18,9 @@ import type { Landmarks } from '../world.js';
 import type { RealmStore } from '@duskmarch/asset-formats';
 import type { Entity } from '../engine/partition.js';
 import { loadPartition, quarantineRows, type LoadMode } from '../persistence/loader.js';
+import { DirtyTracker, FIELD } from '../persistence/dirty-tracker.js';
+import { FlushCoordinator, type WorldRowOut } from '../persistence/flush.js';
+import { dbBatchWriter, entityToRow } from '../persistence/flush-store.js';
 import { PartitionLease } from '../persistence/partition-lease.js';
 import { TimerStore } from '../persistence/timer-store.js';
 import { WorldClock, encodeRng } from '../persistence/world-clock.js';
@@ -109,10 +112,13 @@ export async function buildNode(
     );
   }
   const partitionId = `${realm.key}-0`;
+  let lease: PartitionLease | null = null;
+  let leaseRepo: PartitionLeaseRepo | null = null;
   const bounds = { minX: 0, minY: 0, maxX: realm.width - 1, maxY: realm.height - 1 };
   if (db) {
-    const lease = new PartitionLease({
-      repo: new PartitionLeaseRepo(db, config.SHARD_ID, partitionId),
+    leaseRepo = new PartitionLeaseRepo(db, config.SHARD_ID, partitionId);
+    lease = new PartitionLease({
+      repo: leaseRepo,
       nodeId: config.GAME_NODE_ID,
       onLost: () => void node.fence(partitionId),
       log: ports.log,
@@ -151,7 +157,8 @@ export async function buildNode(
         stoppedAt: new Date(),
       });
     });
-    node.stopHooks.push(() => lease.release());
+    const held = lease;
+    node.stopHooks.push(() => held.release());
   }
   const runtime = node.addPartition({
     partitionId,
@@ -161,6 +168,7 @@ export async function buildNode(
     allocator,
   });
   let initial: Entity[] = [];
+  const migrated = new Set<number>();
   if (db) {
     const report = await loadPartition(db, config.SHARD_ID, realm.key, bounds, {
       mode: config.PERSIST_LOAD_MODE as LoadMode,
@@ -182,8 +190,54 @@ export async function buildNode(
       durationMs: Math.round(report.durationMs),
     });
     initial = report.entities;
+    for (const id of report.migrated) migrated.add(id);
   }
   runtime.core.hydrate(initial);
+  if (db && lease && leaseRepo) {
+    const core = runtime.core;
+    const tracker = new DirtyTracker<WorldRowOut>(core, (e) =>
+      entityToRow(config.SHARD_ID, realm.key, e, (id) => core.get(id)),
+    );
+    runtime.listeners.add({ dirty: (id, reason) => tracker.onDirty(id, reason) });
+    for (const e of initial) {
+      if (e.data && e.data.schemaVersion > 0 && migrated.has(e.id))
+        tracker.mark(e.id, FIELD.COMPONENTS);
+    }
+    const held = lease;
+    const flush = new FlushCoordinator(
+      tracker,
+      {
+        writeBatch: dbBatchWriter(db, config.SHARD_ID, leaseRepo, () => held.epoch),
+        writeHeroes: async (ids) => {
+          for (const id of ids) await runtime.sessions.persist(id);
+        },
+      },
+      {
+        intervalMs: config.PERSIST_FLUSH_INTERVAL_MS,
+        batchSize: config.PERSIST_FLUSH_BATCH,
+        captureBudgetMs: config.PERSIST_CAPTURE_BUDGET_MS,
+        maxUnflushedMs: config.PERSIST_MAX_UNFLUSHED_MS,
+        onStale: () => void node.fence(partitionId),
+        onMode: (mode) =>
+          ports.publish(`persistence.${mode === 'normal' ? 'recovered' : 'degraded'}`, {
+            partitionId,
+          }),
+        log: ports.log,
+      },
+    );
+    runtime.persistence = { tracker, flush };
+    node.scheduler.onPostTick(() => flush.tick());
+    node.scheduler.every(config.PERSIST_FLUSH_INTERVAL_MS, () => void flush.flush(), 'background');
+    node.stopHooks.unshift(async () => {
+      const deadline = new Promise<void>((_, reject) =>
+        setTimeout(
+          () => reject(new Error('финальное сохранение не уложилось в срок')),
+          config.PERSIST_SHUTDOWN_FLUSH_MS,
+        ).unref(),
+      );
+      await Promise.race([flush.flushNow(), deadline]);
+    });
+  }
   if (node.world) {
     const restored = await node.world.timers.restore();
     if (restored > 0) ports.log('info', 'таймеры мира восстановлены', { count: restored });

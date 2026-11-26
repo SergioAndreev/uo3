@@ -441,6 +441,21 @@ export class SessionManager {
     });
   }
 
+  /** Сохранение героя в мире без выхода (плановое и срочное сохранение P08). */
+  async persist(entityId: EntityId): Promise<void> {
+    const s = this.ofEntity(entityId);
+    const pos = this.partition.get(entityId)?.placement;
+    if (!s || pos?.kind !== 'world') return;
+    await this.ports.saveHero(s.characterId, {
+      realm: s.realm,
+      x: pos.x,
+      y: pos.y,
+      h: pos.h,
+      vitals: { ...s.vitals },
+      playtimeDeltaS: 0,
+    });
+  }
+
   /** Выгрузка героя и его предметов (вложенные раньше контейнеров). */
   private despawnTree(s: Session): void {
     for (const id of [...s.owned].reverse()) this.partition.despawn(id);

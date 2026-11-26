@@ -4,7 +4,8 @@ import { createDbClient, migrateDatabase, seedDatabase, worldEntities } from '@d
 import type { EntityId } from '@duskmarch/domain';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, expect, it } from 'vitest';
-import { initShardState, listTimers } from '@duskmarch/db/world';
+import { PartitionLeaseRepo, initShardState, listTimers } from '@duskmarch/db/world';
+import { dbBatchWriter } from './persistence/flush-store.js';
 import { Scheduler } from './engine/scheduler.js';
 import { loadHeroTree, loadPartition, quarantineRows } from './persistence/loader.js';
 import { TimerStore } from './persistence/timer-store.js';
@@ -158,4 +159,78 @@ it('таймеры: создание, срабатывание, сохранен
   restarted.advance(1);
   expect(fired).toEqual([fast, slow]);
   await store.cancel(fast);
+});
+
+it('запись пакета: контейнер и содержимое, обновление по версии, мягкое удаление, устаревшая эпоха', async () => {
+  const lease = new PartitionLeaseRepo(client.db, 'local-dev', 'proving-0');
+  const { epoch } = await lease.acquire('node-a', 15_000);
+  let current = epoch;
+  const write = dbBatchWriter(client.db, 'local-dev', lease, () => current);
+  const now = new Date();
+  const base = {
+    shardId: 'local-dev',
+    kind: 'item',
+    contentKey: 'item.oak-chest',
+    realm: null,
+    x: null,
+    y: null,
+    h: null,
+    slot: null,
+    rect: null,
+    amount: 1,
+    components: {},
+    schemaVersion: 1,
+    changeSeq: 0,
+    createdAt: now,
+    updatedAt: now,
+    deletedAt: null,
+  };
+  const chest = {
+    ...base,
+    entityId: 0x60200000,
+    placement: 'world',
+    realm: 'proving',
+    x: 3,
+    y: 3,
+    h: 0,
+    parentId: null,
+    rootOwnerId: null,
+  };
+  const inner = {
+    ...base,
+    entityId: 0x60200001,
+    contentKey: 'item.rye-bread',
+    placement: 'container',
+    parentId: 0x60200000,
+    rootOwnerId: 0x60200000,
+  };
+  const first = await write({
+    upserts: [
+      { row: chest, expectedVersion: 0 },
+      { row: inner, expectedVersion: 0 },
+    ],
+    deletes: [],
+  });
+  expect(first.written.sort()).toEqual([0x60200000, 0x60200001]);
+  const second = await write({
+    upserts: [{ row: { ...chest, x: 4 }, expectedVersion: 1 }],
+    deletes: [
+      { entityId: 0x60200001, expectedVersion: 1 },
+      { entityId: 0x60200099, expectedVersion: 1 },
+    ],
+  });
+  expect(second).toEqual({ written: [0x60200000], deleted: [0x60200001], conflicts: [0x60200099] });
+  const [gone] = await client.db
+    .select()
+    .from(worldEntities)
+    .where(eq(worldEntities.entityId, 0x60200001));
+  expect(gone).toMatchObject({ entityVersion: 2, deletedAt: expect.any(Date) });
+  await lease.acquire('node-a', 15_000);
+  await expect(
+    write({ upserts: [{ row: { ...chest, x: 5 }, expectedVersion: 2 }], deletes: [] }),
+  ).rejects.toMatchObject({ code: 'PERSIST_FENCING_TOKEN_STALE' });
+  current = epoch + 1;
+  await expect(
+    write({ upserts: [{ row: { ...chest, x: 5 }, expectedVersion: 2 }], deletes: [] }),
+  ).resolves.toMatchObject({ written: [0x60200000] });
 });

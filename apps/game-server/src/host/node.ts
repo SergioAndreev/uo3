@@ -1,6 +1,8 @@
 import { hasAccess, type AccessLevel, type EntityId, type IdAllocator } from '@duskmarch/domain';
 import { AnnounceRequest } from '@duskmarch/protocol';
 import { Value } from '@sinclair/typebox/value';
+import type { DirtyTracker } from '../persistence/dirty-tracker.js';
+import type { FlushCoordinator, WorldRowOut } from '../persistence/flush.js';
 import type { TimerStore } from '../persistence/timer-store.js';
 import type { WorldClock } from '../persistence/world-clock.js';
 import { HubCore, type HubClaims, type HubPorts } from '../engine/hub.js';
@@ -105,6 +107,8 @@ export interface PartitionRuntime {
   core: PartitionCore;
   /** Эпоха партиции утрачена: вход и запись запрещены. */
   fenced?: boolean;
+  /** Сохранение мира (P08): отметки изменений и фоновая запись. */
+  persistence?: { tracker: DirtyTracker<WorldRowOut>; flush: FlushCoordinator };
   sessions: SessionManager;
   roomId: string;
   realm: string;
@@ -327,6 +331,12 @@ export class ShardNode {
     const p = this.partition(partitionId);
     this.admitting(null);
     if (p.fenced) throw new CloseError(CLOSE.EPOCH_FENCED, 'партиция передана другому узлу');
+    if (p.persistence?.flush.mode === 'read_only_degraded') {
+      throw new CloseError(
+        CLOSE.PARTITION_NOT_READY,
+        'PERSIST_SERVICE_DEGRADED: сохранение мира недоступно',
+      );
+    }
     if (options.reconnect) {
       const r = options.reconnect;
       return p.sessions.reconnect(client, r.accountId, r.sessionId, r.token);

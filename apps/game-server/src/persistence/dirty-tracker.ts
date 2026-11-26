@@ -63,6 +63,16 @@ export class DirtyTracker<T> {
     return this.entries.size;
   }
 
+  ids(): EntityId[] {
+    return [...this.entries.keys()].sort((a, b) => a - b);
+  }
+
+  countByKind(): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const e of this.entries.values()) out[e.kind] = (out[e.kind] ?? 0) + 1;
+    return out;
+  }
+
   has(id: EntityId): boolean {
     return this.entries.has(id);
   }

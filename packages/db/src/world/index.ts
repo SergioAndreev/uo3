@@ -392,3 +392,22 @@ export async function saveTimerRemaining(
       .where(eq(worldTimers.id, r.id));
   }
 }
+
+/** Мягкое удаление пакетом при совпадении версии; возвращает удалённые идентификаторы. */
+export async function softDeleteBatch(
+  tx: Executor,
+  shardId: string,
+  rows: readonly { entityId: number; expectedVersion: number }[],
+  now = new Date(),
+): Promise<number[]> {
+  if (rows.length === 0) return [];
+  const ids = rows.map((r) => r.entityId);
+  const versions = rows.map((r) => r.expectedVersion);
+  const result = await tx.execute<{ entity_id: string }>(
+    sql`UPDATE world_entities AS w SET deleted_at = ${now}, updated_at = ${now}, entity_version = w.entity_version + 1
+        FROM unnest(${sql.param(ids)}::bigint[], ${sql.param(versions)}::int[]) AS v(id, ver)
+        WHERE w.shard_id = ${shardId} AND w.entity_id = v.id AND w.entity_version = v.ver AND w.deleted_at IS NULL
+        RETURNING w.entity_id`,
+  );
+  return result.rows.map((r) => Number(r.entity_id));
+}
