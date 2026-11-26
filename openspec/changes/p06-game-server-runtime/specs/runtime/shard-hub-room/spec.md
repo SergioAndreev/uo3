@@ -59,7 +59,7 @@
 
 #### Scenario: Скрытие невидимого game-master от обычных игроков и helper
 - **WHEN** на шарде находятся `10` обычных игроков и `1` скрытый `game-master`
-- **THEN** обычные игроки и `helper` видят `onlineCount = 10` и статус `offline` при проверке этого `game-master`, тогда как `game-master`, `game-master` и `owner` видят его в присутствии
+- **THEN** обычные игроки и `helper` видят `onlineCount = 10` и статус `offline` при проверке этого `game-master`, тогда как `game-master`, `administrator` и `owner` видят его в присутствии
 
 #### Scenario: Мгновенное снятие скрытности при понижении эффективного уровня до Player
 - **WHEN** скрытый `game-master` переключает `effectiveGameAccessLevel` в `player`
