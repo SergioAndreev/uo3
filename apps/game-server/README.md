@@ -12,3 +12,5 @@
 Переменные описаны в `.env.example` и `packages/config/docs/configuration.md`. Ошибка конфигурации завершает процесс с кодом `78`.
 
 Запуск: `pnpm --filter @duskmarch/game-server dev`; сборка и запуск: `build`, затем `start`.
+
+Среда выполнения, комнаты, сессии и тестовый стенд — [docs/runtime.md](docs/runtime.md).
