@@ -138,12 +138,12 @@ flowchart TD
 - `netcode/interest-management` — радиусы профиля, гистерезис, секторы, скрытность, контейнеры.
 - `netcode/time-sync-and-latency` — синхронизация часов, интерполяция, качество связи.
 
-### P08 — `p08-world-persistence` — Персистентность мира
+### P08 — `p08-world-persistence` — Персистентность мира (ревизия выполнена)
 **Зависит от:** P07
 - `persistence/world-store` — схема хранения сущностей, загрузка мира при старте.
 - `persistence/incremental-save` — dirty-tracking и фоновый flush.
 - `persistence/critical-transactions` — синхронные атомарные операции и журнал предметов.
-- `persistence/backup-and-restore` — снапшоты, PITR, откат персонажа/предмета.
+- `persistence/backup-and-restore` — снимки, PITR, откат героя или предмета.
 
 ### P09 — `p09-client-shell` — Оболочка клиента
 **Зависит от:** P02, P05
