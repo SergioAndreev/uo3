@@ -71,7 +71,7 @@
 
 ### D-09. Идентификаторы, журналы, CSRF
 - Первичные ключи — UUIDv7 (`uuidv7(clock, entropy)`), не раскрывают объём базы и сохраняют локальность индексов.
-- `security_events`, `access_audit_log`, `tos_acceptances` защищены триггером `BEFORE UPDATE OR DELETE`, кроме роли обслуживания; это проверяет интеграционный тест.
+- `security_events`, `access_audit_log`, `tos_acceptances` защищены триггером `BEFORE UPDATE OR DELETE`, кроме удаления в транзакции с `duskmarch.retention = on` (плановая очистка); это проверяет интеграционный тест.
 - Cookie-эндпоинты проверяют `Origin` (или origin `Referer`) по `IDENTITY_TRUSTED_ORIGINS`; чувствительные операции требуют подтверждения пароля или TOTP за последние 10 минут (`auth_sessions.reauth_at`).
 
 ## Architecture & Contracts

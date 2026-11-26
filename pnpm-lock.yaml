@@ -175,6 +175,9 @@ importers:
       '@duskmarch/rules':
         specifier: workspace:*
         version: link:../../packages/rules
+      '@nats-io/transport-node':
+        specifier: 3.5.0
+        version: 3.5.0
       '@nestjs/common':
         specifier: 11.2.12
         version: 11.2.12(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -187,6 +190,12 @@ importers:
       '@node-rs/argon2':
         specifier: 2.0.2
         version: 2.0.2
+      drizzle-orm:
+        specifier: 0.45.4
+        version: 0.45.4(@types/pg@8.23.1)(pg@8.23.1)
+      iovalkey:
+        specifier: 0.4.0
+        version: 0.4.0
       reflect-metadata:
         specifier: 0.2.2
         version: 0.2.2
