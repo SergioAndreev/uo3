@@ -2,7 +2,7 @@
 
 ## Context
 
-Фаза P11 реализует визуализацию мобайлов и внутримирового надголовного оверлея в рамках вехи **M1 «Шаг по Британии»**. Продуктовая мотивация и границы скоупа зафиксированы в [proposal.md](proposal.md), поведенческие контракты — в [specs/render/mobile-animation/spec.md](specs/render/mobile-animation/spec.md) и [specs/render/overhead-text-and-bars/spec.md](specs/render/overhead-text-and-bars/spec.md).
+Фаза P11 реализует визуализацию мобайлов и внутримирового надголовного оверлея в рамках вехи **M1 «Первый шаг по Заре»**. Продуктовая мотивация и границы скоупа зафиксированы в [proposal.md](proposal.md), поведенческие контракты — в [specs/render/mobile-animation/spec.md](specs/render/mobile-animation/spec.md) и [specs/render/overhead-text-and-bars/spec.md](specs/render/overhead-text-and-bars/spec.md).
 
 На входе фазы зафиксированы следующие опоры из предыдущих фаз и [docs/ARCHITECTURE.md](../../../docs/ARCHITECTURE.md):
 - **ADR-001 (Монорепозиторий):** строгий TypeScript ESM, чистые изоморфные правила в `packages/domain` (0 зависимостей) и `packages/rules`, клиентская 3D/UI-реализация в `apps/client` без импорта серверного кода.

@@ -2,129 +2,139 @@
 
 ## Purpose
 
-Спецификация определяет каноническую 7-уровневую иерархию ролей персонала UO (`Player`..`Owner`), детерминированную матрицу разрешений, единые правила проверки прав в HTTP API и игровой среде, ограничения иерархии при управлении правами, режим временного понижения игрового уровня и неизменяемый аудит изменений доступа.
+Спецификация определяет шесть уровней доступа Duskmarch (`player`, `helper`, `moderator`, `game-master`, `administrator`, `owner`), матрицу разрешений с запретом по умолчанию, единую чистую функцию проверки прав для HTTP API и игрового сервера, иерархические ограничения действий над чужими аккаунтами, назначение уровней, режим игры с пониженным уровнем и неизменяемый аудит изменений доступа.
 
 ## ADDED Requirements
 
-### Requirement: Каноническая иерархия уровней доступа UO
-Система MUST поддерживать ровно семь уровней доступа в строгом порядке старшинства: `Player` (0), `Counselor` (1), `GameMaster` (2), `Seer` (3), `Administrator` (4), `Developer` (5), `Owner` (6). Каждый вновь зарегистрированный аккаунт SHALL получать уровень `Player` (0), а любое сравнение старшинства ролей MUST выполняться по этой числовой иерархии.
+### Requirement: Иерархия уровней доступа Duskmarch
+Система MUST поддерживать ровно шесть уровней доступа в строгом порядке старшинства `player < helper < moderator < game-master < administrator < owner`, взятых из перечисления `ACCESS_LEVELS` пакета `@duskmarch/domain`. Персоналом SHALL считаться любой уровень от `helper` и выше. Значение вне перечисления MUST отклоняться при разборе запроса, токена или записи БД.
 
-#### Scenario: Проверка линейного порядка старшинства всех семи ролей
-- **WHEN** система сравнивает старшинство двух ролей из набора `Player < Counselor < GameMaster < Seer < Administrator < Developer < Owner`
-- **THEN** сравнение возвращает детерминированный строгий порядок от 0 (`Player`) до 6 (`Owner`)
+#### Scenario: Линейный порядок старшинства
+- **WHEN** система сравнивает два уровня из набора
+- **THEN** результат сравнения совпадает с порядком индексов в `ACCESS_LEVELS`
+- **AND** `isStaff('player')` ложно, а `isStaff('helper')` истинно
 
-#### Scenario: Отклонение неизвестного значения уровня доступа
-- **WHEN** клиент или административный запрос передаёт значение уровня доступа, не входящее в 7 канонических ролей
-- **THEN** система отклоняет запрос с HTTP `400 Bad Request` и кодом `RBAC_INVALID_ACCESS_LEVEL`
+#### Scenario: Отклонение неизвестного уровня
+- **WHEN** запрос назначения передаёт уровень `superuser`
+- **THEN** система отклоняет запрос с HTTP `400 Bad Request` и кодом `RBAC_UNKNOWN_ACCESS_LEVEL`
 
-### Requirement: Детерминированная матрица разрешений по принципу запрета по умолчанию
-Система SHALL определять конечный перечень именованных разрешений для API и игровых операций и детерминированно сопоставлять каждый уровень доступа с набором разрешённых операций. Любое разрешение, явно не назначенное роли субъекта, MUST считаться запрещённым (deny-by-default).
+### Requirement: Матрица разрешений с запретом по умолчанию
+Система SHALL вычислять разрешения уровня по неизменяемой таблице `PERMISSIONS` «разрешение → минимальный уровень»; старший уровень наследует все разрешения младших. Разрешение вне таблицы MUST считаться запрещённым для всех уровней.
 
-#### Scenario: Разделение полномочий между Counselor, GameMaster, Seer и Administrator
-- **WHEN** вычисляется матрица разрешений для ролей `Counselor`, `GameMaster`, `Seer` и `Administrator`
-- **THEN** `Counselor` получает только права помощи игрокам (`help.pages.handle`, `game.teleport.self`), но не получает `account.ban.temp`
-- **AND** `GameMaster` получает `account.ban.temp` (до 30 суток) и `account.inspect`, но не получает `account.ban.permanent`
-- **AND** `Seer` получает `game.events.manage` и `game.world.decorate` сверх прав `GameMaster`, но не получает `account.access_level.assign`
-- **AND** `Administrator` получает `account.ban.permanent`, `account.ban.lift`, `account.tfa.reset`, `account.access_level.assign` и `audit.access.read`
+#### Scenario: Права помощника
+- **WHEN** вычисляются разрешения уровня `helper`
+- **THEN** набор равен `player.assist` (ответы на обращения) и `chat.warn` (предупреждения в чате), а у `player` разрешений нет
 
-#### Scenario: Отказ при проверке незарегистрированного или неназначенного разрешения
-- **WHEN** выполняется проверка права, отсутствующего в наборе разрешений роли субъекта
-- **THEN** проверка детерминированно возвращает отказ с кодом причины `RBAC_INSUFFICIENT_PERMISSION`
+#### Scenario: Права модератора
+- **WHEN** вычисляются разрешения уровня `moderator`
+- **THEN** сверх прав `helper` набор содержит `account.inspect`, `account.sessions.revoke`, `account.ban.temp` (до 30 суток) и `world.observe`
 
-### Requirement: Авторизация запросов в HTTP API
-Защищённый эндпоинт HTTP API MUST проверять подлинность и активность сессии, отсутствие бана, требуемую роль или разрешение, а также активную 2FA для персонала (`Counselor` и выше). При недостатке прав система SHALL возвращать HTTP `403` (`RBAC_INSUFFICIENT_PERMISSION`), а без активной 2FA у персонала — HTTP `403` (`TFA_SETUP_REQUIRED`).
+#### Scenario: Права ведущего
+- **WHEN** вычисляются разрешения уровня `game-master`
+- **THEN** сверх прав `moderator` набор содержит `world.events.manage`, `world.edit` (патчи мира) и `beacon.manage` (маяки), но не `account.ban.permanent`
 
-#### Scenario: Успешный доступ к административному эндпоинту с нужным разрешением и 2FA
-- **WHEN** сотрудник уровня `Administrator` с валидным Access JWT и `mfa: true` вызывает эндпоинт, требующий разрешение `audit.access.read`
-- **THEN** система разрешает выполнение запроса и возвращает HTTP `200 OK`
+#### Scenario: Права администратора и владельца
+- **WHEN** вычисляются разрешения уровней `administrator` и `owner`
+- **THEN** `administrator` сверх прав `game-master` получает `account.ban.permanent`, `account.unban`, `account.tfa.reset`, `account.access.assign`, `audit.read` и `shard.manage`
+- **AND** только `owner` получает `ruleset.manage`
 
-#### Scenario: Отказ игроку при обращении к эндпоинту персонала
-- **WHEN** аутентифицированный пользователь уровня `Player` обращается к эндпоинту блокировки аккаунтов
-- **THEN** система отклоняет запрос с HTTP `403 Forbidden` и кодом `RBAC_INSUFFICIENT_PERMISSION`
+#### Scenario: Отказ по неизвестному разрешению
+- **WHEN** код проверяет строку `world.destroy`, которой нет в таблице
+- **THEN** проверка возвращает отказ для любого уровня, включая `owner`
 
-#### Scenario: Отказ сотруднику, вошедшему без подтверждённого второго фактора
-- **WHEN** сотрудник уровня `GameMaster` с сессией, где `mfa: false`, обращается к эндпоинту наложения временного бана
-- **THEN** система отклоняет запрос с HTTP `403 Forbidden` и кодом `TFA_SETUP_REQUIRED`
+### Requirement: Авторизация запросов HTTP API
+Защищённый эндпоинт HTTP API MUST проверять подлинность Access JWT, отсутствие сессии в списке отзыва, отсутствие активного бана и наличие требуемого разрешения у уровня `acl`. Для разрешений персонала токен SHALL содержать `mfa: true`. Отказ по правам MUST возвращать HTTP `403 Forbidden` с кодом `RBAC_INSUFFICIENT_PERMISSION` или `TFA_SETUP_REQUIRED`.
 
-### Requirement: Единый контракт проверки прав для игровой среды
-Система SHALL предоставлять детерминированный контракт авторизации для игровой симуляции по контексту субъекта (`maxAccessLevel`, `effectiveGameAccessLevel`, `mfaVerified`, `isBanned`), требуемому праву и уровню цели. Проверка MUST применять ту же матрицу прав и иерархию, что и HTTP API, возвращая `allowed` или `denied` с кодом причины.
+#### Scenario: Доступ модератора к инспекции аккаунта
+- **WHEN** `moderator` с токеном `mfa: true` запрашивает карточку аккаунта игрока
+- **THEN** система возвращает HTTP `200 OK` без хэшей пароля, секретов TOTP и значений токенов
 
-#### Scenario: Авторизация игровой команды по эффективному уровню доступа
-- **WHEN** игровая симуляция проверяет разрешение `game.events.manage` для сотрудника с `maxAccessLevel = Seer`, `effectiveGameAccessLevel = Seer`, `mfaVerified = true`, `isBanned = false`
-- **THEN** проверка возвращает `{ allowed: true }`
+#### Scenario: Отказ игроку на эндпоинте персонала
+- **WHEN** `player` обращается к эндпоинту, требующему `account.inspect`
+- **THEN** система возвращает HTTP `403 Forbidden` с кодом `RBAC_INSUFFICIENT_PERMISSION`
 
-#### Scenario: Отказ в игровой команде при временном понижении уровня до Player
-- **WHEN** сотрудник с `maxAccessLevel = GameMaster` переключил `effectiveGameAccessLevel` на `Player` и пытается выполнить действие, требующее `game.teleport.self`
-- **THEN** проверка возвращает `{ allowed: false, code: "RBAC_INSUFFICIENT_PERMISSION" }`
+#### Scenario: Отказ сотруднику без второго фактора
+- **WHEN** `moderator` с токеном `mfa: false` обращается к эндпоинту, требующему `account.inspect`
+- **THEN** система возвращает HTTP `403 Forbidden` с кодом `TFA_SETUP_REQUIRED`
 
-#### Scenario: Отказ в игровой привилегии при активном бане или отсутствии 2FA
-- **WHEN** игровой контекст передаёт `mfaVerified = false` или `isBanned = true` для сотрудника уровня `Seer`
-- **THEN** проверка возвращает `{ allowed: false }` с кодом `TFA_SETUP_REQUIRED` или `SEC_ACCOUNT_BANNED`
+### Requirement: Единый контракт проверки прав для игрового сервера
+Пакет `@duskmarch/domain` SHALL экспортировать чистую функцию `evaluateAccess(context, permission)`, где контекст содержит `maxLevel`, `effectiveLevel`, `mfa` и `banned`. Функция MUST использовать `effectiveLevel` для проверки, отказывать при `banned = true` и отказывать в разрешениях персонала при `mfa = false`, возвращая причину отказа.
 
-### Requirement: Иерархические ограничения на воздействия над другими аккаунтами
-При любой привилегированной операции над другим аккаунтом (бан, разбан, сброс 2FA, принудительный отзыв сессий, изменение уровня доступа) уровень инициатора MUST быть строго выше текущего уровня целевого аккаунта; исключение допускается только для `Owner` в отношении другого `Owner` при сохранении инварианта последнего владельца. Нарушение иерархии SHALL отклоняться с HTTP `403 Forbidden` и кодом `RBAC_HIERARCHY_VIOLATION`.
+#### Scenario: Игровая команда по эффективному уровню
+- **WHEN** контекст `{ maxLevel: 'game-master', effectiveLevel: 'game-master', mfa: true, banned: false }` проверяет `world.events.manage`
+- **THEN** функция возвращает `{ allowed: true }`
 
-#### Scenario: Запрет воздействия на аккаунт равного уровня доступа
-- **WHEN** сотрудник уровня `GameMaster` пытается наложить временный бан на другого сотрудника уровня `GameMaster`
-- **THEN** система отклоняет операцию с HTTP `403 Forbidden` и кодом `RBAC_HIERARCHY_VIOLATION`
+#### Scenario: Отказ при игре с пониженным уровнем
+- **WHEN** сотрудник с `maxLevel = 'game-master'` переключился на `effectiveLevel = 'player'` и проверяет `world.edit`
+- **THEN** функция возвращает `{ allowed: false, reason: 'insufficient' }`
 
-#### Scenario: Запрет воздействия на аккаунт более высокого уровня доступа
-- **WHEN** сотрудник уровня `Administrator` пытается отозвать сессии или заблокировать аккаунт уровня `Developer` или `Owner`
-- **THEN** система отклоняет операцию с HTTP `403 Forbidden` и кодом `RBAC_HIERARCHY_VIOLATION`
+#### Scenario: Отказ при бане или без второго фактора
+- **WHEN** контекст содержит `banned: true` или `mfa: false` для разрешения персонала
+- **THEN** функция возвращает отказ с причиной `banned` или `mfa_required`
 
-#### Scenario: Разрешение воздействия на аккаунт строго более низкого уровня
-- **WHEN** сотрудник уровня `Administrator` отзывает сессии аккаунта уровня `Seer` с указанием причины
-- **THEN** проверка иерархии проходит успешно и операция выполняется
+### Requirement: Иерархические ограничения действий над аккаунтами
+Действия над чужим аккаунтом (бан, снятие бана, отзыв сессий, сброс 2FA, смена уровня) MUST разрешаться только если уровень исполнителя строго выше уровня цели; исключение — `owner` действует на другого `owner` только при смене уровня с защитой последнего `owner`. Нарушение SHALL отклоняться с HTTP `403 Forbidden` и кодом `RBAC_HIERARCHY_VIOLATION`.
 
-### Requirement: Назначение уровней доступа и защита последнего Owner
-Изменять уровни доступа SHALL разрешаться только ролям `Administrator` (назначение до `Seer`), `Developer` (до `Administrator`) и `Owner` (до `Owner`), с обязательным подтверждением 2FA и причиной длиной 10–1000 символов. Система MUST гарантировать наличие не менее одного активного незаблокированного аккаунта уровня `Owner`, отклоняя понижение или блокировку последнего `Owner` с HTTP `409 Conflict` (`RBAC_LAST_OWNER_PROTECTED`).
+#### Scenario: Запрет действия над равным уровнем
+- **WHEN** `moderator` пытается забанить другого `moderator`
+- **THEN** система отклоняет запрос с кодом `RBAC_HIERARCHY_VIOLATION`
 
-#### Scenario: Повышение игрока до GameMaster администратором
-- **WHEN** `Administrator` с подтверждённым актуальным TOTP-кодом назначает аккаунту уровня `Player` уровень `GameMaster` с причиной длиной 30 символов
-- **THEN** система обновляет уровень доступа целевого аккаунта на `GameMaster`, фиксирует запись в аудите и уведомляет целевой аккаунт по email
+#### Scenario: Запрет действия над старшим уровнем
+- **WHEN** `administrator` пытается отозвать сессии `owner`
+- **THEN** система отклоняет запрос с кодом `RBAC_HIERARCHY_VIOLATION`
 
-#### Scenario: Запрет назначения роли равной или выше собственной
-- **WHEN** `Administrator` пытается назначить другому аккаунту уровень `Administrator` или `Developer`
-- **THEN** система отклоняет запрос с HTTP `403 Forbidden` и кодом `RBAC_ELEVATION_FORBIDDEN`
+#### Scenario: Действие над младшим уровнем
+- **WHEN** `administrator` отзывает сессии `game-master`
+- **THEN** система отзывает все сессии цели и возвращает число завершённых сессий
 
-#### Scenario: Защита единственного активного Owner от понижения или блокировки
-- **WHEN** в системе существует ровно один активный незаблокированный аккаунт уровня `Owner` и поступает запрос понизить его до `Administrator` или заблокировать
-- **THEN** система отклоняет операцию с HTTP `409 Conflict` и кодом `RBAC_LAST_OWNER_PROTECTED`
+### Requirement: Назначение уровней и защита последнего владельца
+Назначение уровня SHALL требовать разрешения `account.access.assign`, свежего подтверждения TOTP-кодом и причины длиной 10–1000 символов. `administrator` MUST назначать уровни не выше `game-master`; `owner` — любые уровни. Понижение или бан единственного активного `owner` MUST отклоняться с HTTP `409 Conflict` и кодом `RBAC_LAST_OWNER`.
 
-### Requirement: Немедленное вступление в силу изменений уровня доступа
-При любом изменении уровня доступа аккаунта система MUST немедленно обновить кэш прав и опубликовать событие `identity.account.access_level_changed` с `accountId`, `previousLevel`, `newLevel` и `changedAt` для синхронизации с игровым сервером. При понижении уровня доступа система SHALL дополнительно отозвать все активные сессии целевого аккаунта, немедленно прекращая действие ранее выданных Access JWT с устаревшим `acl`.
+#### Scenario: Повышение игрока до модератора
+- **WHEN** `administrator` с подтверждённым TOTP назначает аккаунту `player` уровень `moderator` с причиной
+- **THEN** система обновляет уровень, отзывает сессии цели, пишет запись аудита и публикует событие `identity.account.access_level_changed`
 
-#### Scenario: Немедленный отзыв сессий при понижении сотрудника до Player
-- **WHEN** `Administrator` понижает аккаунт уровня `GameMaster` до `Player`
-- **THEN** система отзывает все активные сессии и Refresh-токены целевого аккаунта, добавляет их `sid` в список немедленного отзыва и публикует событие `identity.account.access_level_changed`
-- **AND** последующий запрос с прежним Access JWT (где `acl = GameMaster`) немедленно отклоняется с HTTP `401 Unauthorized`
+#### Scenario: Запрет назначения уровня не ниже собственного
+- **WHEN** `administrator` назначает аккаунту уровень `administrator`
+- **THEN** система отклоняет запрос с кодом `RBAC_HIERARCHY_VIOLATION`
 
-#### Scenario: Публикация события при повышении уровня доступа
-- **WHEN** `Owner` повышает аккаунт уровня `Counselor` до `GameMaster`
-- **THEN** система публикует событие `identity.account.access_level_changed` с `previousLevel: "Counselor"` и `newLevel: "GameMaster"` и обновляет запись аккаунта
+#### Scenario: Защита единственного владельца
+- **WHEN** единственный активный `owner` понижает себя до `administrator`
+- **THEN** система отклоняет запрос с HTTP `409 Conflict` и кодом `RBAC_LAST_OWNER`
 
-### Requirement: Режим временного понижения активного игрового уровня персонала
-Сотрудник с назначенным уровнем `Counselor` и выше SHALL иметь возможность переключать свой активный игровой уровень (`effectiveGameAccessLevel`) на любое значение от `Player` до своего `maxAccessLevel` включительно, при этом событие смены публикуется для игрового сервера. Попытка установить `effectiveGameAccessLevel` выше `maxAccessLevel` MUST отклоняться с HTTP `403 Forbidden` (`RBAC_ELEVATION_FORBIDDEN`).
+### Requirement: Немедленное вступление изменений уровня в силу
+После изменения уровня система MUST отозвать все сессии цели, внести их `sid` в список отзыва на оставшийся срок Access JWT и опубликовать событие `identity.account.access_level_changed` с `accountId`, `previousLevel`, `newLevel`, `changedBy` и `occurredAt`.
 
-#### Scenario: Переключение GameMaster в режим Player и возврат обратно
-- **WHEN** сотрудник с `maxAccessLevel = GameMaster` устанавливает `effectiveGameAccessLevel = Player`, а затем возвращает его в `GameMaster`
-- **THEN** оба переключения выполняются успешно с HTTP `200 OK`, фиксируются в аудите и публикуют обновление активного игрового уровня
+#### Scenario: Отзыв сессий при понижении
+- **WHEN** `administrator` понижает `game-master` до `player`
+- **THEN** следующий запрос с прежним Access JWT цели отклоняется с HTTP `401 Unauthorized` и кодом `AUTH_SESSION_REVOKED`
 
-#### Scenario: Запрет самоповышения выше назначенного уровня
-- **WHEN** сотрудник с `maxAccessLevel = Counselor` отправляет запрос на установку `effectiveGameAccessLevel = GameMaster`
-- **THEN** система отклоняет запрос с HTTP `403 Forbidden` и кодом `RBAC_ELEVATION_FORBIDDEN`
+#### Scenario: Событие при повышении
+- **WHEN** `owner` повышает `helper` до `moderator`
+- **THEN** публикуется событие с `previousLevel: 'helper'` и `newLevel: 'moderator'`
 
-### Requirement: Неизменяемый аудит изменений прав и отказов в привилегированном доступе
-Система MUST фиксировать в неизменяемом журнале аудита все изменения уровня доступа, переключения `effectiveGameAccessLevel`, баны, разбаны, сбросы 2FA и отказы в доступе к привилегированным эндпоинтам (актор, цель, действие, старое/новое значение, причина, IP, `correlationId`, время UTC). Просмотр журнала SHALL быть доступен только ролям `Administrator` и выше (пагинация до 100 записей).
+### Requirement: Игра с пониженным уровнем
+Сотрудник SHALL иметь возможность установить эффективный игровой уровень в диапазоне от `player` до своего назначенного уровня. Значение хранится в аккаунте, попадает в новые Access JWT как `eacl` и не может превышать назначенный уровень.
 
-#### Scenario: Фиксация полного контекста при изменении роли
-- **WHEN** `Administrator` изменяет уровень доступа целевого аккаунта с `Player` на `Counselor`
-- **THEN** в журнале аудита создаётся неизменяемая запись со всеми обязательными полями, включая `previousValue: "Player"`, `newValue: "Counselor"`, `reason` и `correlationId`
+#### Scenario: Переключение ведущего в режим игрока и обратно
+- **WHEN** `game-master` устанавливает эффективный уровень `player`, а затем `game-master`
+- **THEN** система сохраняет каждое значение, отвечает HTTP `200 OK` и публикует `identity.account.effective_level_changed`
 
-#### Scenario: Фиксация отказа при несанкционированном обращении к административному эндпоинту
-- **WHEN** пользователь уровня `Counselor` пытается вызвать эндпоинт назначения ролей и получает HTTP `403 Forbidden`
-- **THEN** система создаёт запись аудита с типом события `access_denied`, указанием `actorAccountId`, запрошенного действия и `ipAddress`
+#### Scenario: Запрет повышения сверх назначенного
+- **WHEN** `helper` устанавливает эффективный уровень `moderator`
+- **THEN** система отклоняет запрос с кодом `RBAC_HIERARCHY_VIOLATION`
 
-#### Scenario: Доступ к чтению журнала аудита ограничен уровнем Administrator и выше
-- **WHEN** сотрудник уровня `Seer` запрашивает журнал аудита доступа
-- **THEN** система отклоняет запрос с HTTP `403 Forbidden` и кодом `RBAC_INSUFFICIENT_PERMISSION`
+### Requirement: Неизменяемый аудит доступа
+Каждое изменение уровня, бан, снятие бана, сброс 2FA, отзыв чужих сессий и каждый отказ по правам на эндпоинтах персонала MUST записываться в таблицу `access_audit_log`, которую код только дополняет. Чтение журнала SHALL требовать разрешения `audit.read`.
+
+#### Scenario: Полный контекст изменения уровня
+- **WHEN** `administrator` меняет уровень цели с `player` на `helper`
+- **THEN** запись аудита содержит исполнителя, цель, действие, прежнее и новое значение, причину, IP, User-Agent и время UTC
+
+#### Scenario: Запись отказа
+- **WHEN** `helper` вызывает эндпоинт назначения уровней
+- **THEN** система отвечает `403` и пишет запись аудита с исходом `denied`
+
+#### Scenario: Чтение журнала ограничено
+- **WHEN** `game-master` запрашивает журнал аудита
+- **THEN** система отклоняет запрос с кодом `RBAC_INSUFFICIENT_PERMISSION`

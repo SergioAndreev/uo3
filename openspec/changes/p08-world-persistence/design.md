@@ -2,7 +2,7 @@
 
 ## Context
 
-Мотивация, место фазы в вехе **M1 «Шаг по Британии»** и границы скоупа зафиксированы в [proposal.md](proposal.md); нормативные требования и проверяемые сценарии — в четырёх спецификациях `specs/persistence/*/spec.md`.
+Мотивация, место фазы в вехе **M1 «Первый шаг по Заре»** и границы скоупа зафиксированы в [proposal.md](proposal.md); нормативные требования и проверяемые сценарии — в четырёх спецификациях `specs/persistence/*/spec.md`.
 
 Фаза **P08** надстраивается поверх фундамента монорепозитория (P00), доменных примитивов и контракта `SerialLeaseProvider` / `GameClock` / `SeededRng` / `RulesetProfile` (P01), версионирования данных статического мира `WorldDataVersionSchema` (P03), аккаунтов/RBAC/2FA/аудита (P04), таблиц `shards`, `characters`, `character_skills`, `shard_serial_sequences` и дескриптора `StarterLoadoutV1` (P05), среды выполнения `apps/game-server` с 20 Гц циклом, колесом таймеров и комнатами `WorldPartitionRoom` (P06) и протокола клиентских команд/репликации (P07).
 

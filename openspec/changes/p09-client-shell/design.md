@@ -2,7 +2,7 @@
 
 ## Context
 
-Фаза **P09 (`p09-client-shell`)** реализует пользовательскую веб-оболочку `apps/client` вехи **M1 «Шаг по Британии»**, объединяющую ранее зафиксированные серверные и клиентские подсистемы (мотивация и границы скоупа — см. [proposal.md](proposal.md), нормативные требования — в `specs/client/*/spec.md`).
+Фаза **P09 (`p09-client-shell`)** реализует пользовательскую веб-оболочку `apps/client` вехи **M1 «Первый шаг по Заре»**, объединяющую ранее зафиксированные серверные и клиентские подсистемы (мотивация и границы скоупа — см. [proposal.md](proposal.md), нормативные требования — в `specs/client/*/spec.md`).
 
 На входе фазы зафиксированы следующие контракты:
 - **P00 (`p00-monorepo-foundation`):** каркас `apps/client` (React 19 + Vite 6 + TypeScript strict ESM), `packages/ui-kit`, клиентский валидатор окружения `@uo3/config/env/client` (`ClientEnvSchema`), DAG-ограничения импортов (клиент не импортирует `@uo3/db`, `@uo3/config/env/server` и `node:*`) и реестр CC0-ассетов `assets/ASSET_MANIFEST.json`.
