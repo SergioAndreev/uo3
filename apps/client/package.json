@@ -18,6 +18,7 @@
     "@duskmarch/protocol": "workspace:*",
     "@duskmarch/rules": "workspace:*",
     "@duskmarch/ui-kit": "workspace:*",
+    "colyseus.js": "0.16.22",
     "react": "19.1.10",
     "react-dom": "19.1.10"
   },

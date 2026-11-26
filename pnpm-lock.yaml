@@ -310,6 +310,9 @@ importers:
       '@duskmarch/ui-kit':
         specifier: workspace:*
         version: link:../../packages/ui-kit
+      colyseus.js:
+        specifier: 0.16.22
+        version: 0.16.22
       react:
         specifier: 19.1.10
         version: 19.1.10
