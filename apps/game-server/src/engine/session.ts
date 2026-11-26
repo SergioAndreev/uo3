@@ -344,6 +344,7 @@ export class SessionManager {
     });
     s.timers.logout = this.scheduler.after(this.o.logoutDelayMs, () => void this.exit(s));
     void this.ports.updateSession(s.accountId, this.record(s));
+    this.ports.publish('session.lingering', { accountId: s.accountId, characterId: s.characterId });
   }
 
   reconnect(client: ClientLink, accountId: string, sessionId: string, token: string): Session {
@@ -360,6 +361,7 @@ export class SessionManager {
     this.bind(s, client);
     this.enterOnline(s);
     void this.ports.updateSession(s.accountId, this.record(s));
+    this.ports.publish('session.resumed', { accountId: s.accountId, characterId: s.characterId });
     return s;
   }
 
@@ -383,6 +385,7 @@ export class SessionManager {
     s.state = 'LOGOUT_DELAY';
     s.timers.logout = this.scheduler.after(this.o.logoutDelayMs, () => void this.exit(s));
     void this.ports.updateSession(s.accountId, this.record(s));
+    this.ports.publish('session.lingering', { accountId: s.accountId, characterId: s.characterId });
   }
 
   /** Сохранение, выгрузка, освобождение шардовой записи. */
