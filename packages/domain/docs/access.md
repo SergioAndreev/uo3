@@ -22,14 +22,18 @@
 | `world.events.manage` | `game-master` | Мировые события |
 | `world.edit` | `game-master` | Патчи мира (P03) |
 | `beacon.manage` | `game-master` | Маяки между планами |
-| `character.restore` | `game-master` | Восстановление удалённых героев |
+| `character.restore` | `game-master` | Восстановление удалённых героев; предпросмотр отката героя (применение — `administrator`) |
+| `items.manage` | `game-master` | Выдача, изменение и удаление предметов персоналом (с обоснованием) |
+| `items.ledger.read` | `game-master` | Журнал предметов и цепочки происхождения |
 | `account.ban.permanent` | `administrator` | Бан без срока или длиннее 30 суток |
 | `account.unban` | `administrator` | Досрочное снятие бана |
 | `account.tfa.reset` | `administrator` | Сброс утерянной 2FA |
 | `account.access.assign` | `administrator` | Назначение уровней |
 | `audit.read` | `administrator` | Журнал аудита |
+| `backup.manage` | `administrator` | Снимки, точки восстановления, точечные откаты |
 | `shard.manage` | `administrator` | Управление шардами |
 | `ruleset.manage` | `owner` | Профиль правил |
+| `shard.restore` | `owner` | Полное восстановление шарда на момент времени (PITR) |
 
 ## Функции
 

@@ -14,12 +14,16 @@ export const PERMISSIONS = Object.freeze({
   'world.edit': 'game-master',
   'beacon.manage': 'game-master',
   'character.restore': 'game-master',
+  'items.manage': 'game-master',
+  'items.ledger.read': 'game-master',
   'account.ban.permanent': 'administrator',
   'account.unban': 'administrator',
   'account.tfa.reset': 'administrator',
   'account.access.assign': 'administrator',
   'audit.read': 'administrator',
   'shard.manage': 'administrator',
+  'backup.manage': 'administrator',
+  'shard.restore': 'owner',
   'ruleset.manage': 'owner',
 } as const satisfies Record<string, AccessLevel>);
 

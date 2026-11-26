@@ -3,7 +3,7 @@
 ## 1. Данные и контракты (`packages/db`, `packages/protocol`, `packages/domain`)
 
 - [x] 1.1 Миграция `0004_world_persistence` и схема Drizzle: `world_entities`, `hero_world_state`, `shard_world_state`, `world_timers`, `partition_leases`, `item_ledger` (секции по месяцам, триггер только-добавления), `critical_transactions`, `restore_operations`, `restore_points`, `backup_catalog`, `characters.starter_loadout_granted`; ограничения владения и слотов — проверка: интеграционные тесты миграции, ограничений и триггера.
-- [ ] 1.2 Коды `PERSIST_*`, `CriticalTxType`, схемы API администрирования; разрешения `items.manage`, `items.ledger.read`, `backup.manage`, `shard.restore` и обновление `docs/access.md` — проверка: тесты схем и таблицы разрешений.
+- [x] 1.2 Коды `PERSIST_*`, `CriticalTxType`, схемы API администрирования; разрешения `items.manage`, `items.ledger.read`, `backup.manage`, `shard.restore` и обновление `docs/access.md` — проверка: тесты схем и таблицы разрешений.
 - [ ] 1.3 Репозитории: аренда блоков `EntityId` по видам с восстановлением границы, аренда партиции с эпохой, курсорная загрузка, пакетная запись с проверкой версий и эпохи — проверка: интеграционные тесты сценариев `world-store` (параллельная аренда, исчерпание диапазона, захват и устаревшая эпоха).
 
 ## 2. Хранилище и загрузка (`apps/game-server/src/persistence`)

@@ -79,9 +79,12 @@ describe('матрица разрешений', () => {
         'world.edit',
         'beacon.manage',
         'character.restore',
+        'items.manage',
+        'items.ledger.read',
       ]),
     );
     expect(gm).not.toContain('account.ban.permanent');
+    expect(gm).not.toContain('backup.manage');
   });
 
   it('права администратора и владельца', () => {
@@ -93,10 +96,12 @@ describe('матрица разрешений', () => {
       'account.access.assign',
       'audit.read',
       'shard.manage',
+      'backup.manage',
     ] as const) {
       expect(admin).toContain(p);
     }
     expect(admin).not.toContain('ruleset.manage');
+    expect(admin).not.toContain('shard.restore');
     expect(permissionsOf('owner')).toHaveLength(Object.keys(PERMISSIONS).length);
   });
 

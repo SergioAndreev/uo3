@@ -1,6 +1,7 @@
 import { Value } from '@sinclair/typebox/value';
 import { describe, expect, it } from 'vitest';
 import { IDENTITY_ERRORS } from '../identity/errors.js';
+import { PERSIST_ERRORS } from '../persistence/errors.js';
 import {
   API_ERRORS,
   CharacterCreateRequest,
@@ -19,7 +20,9 @@ describe('контракты P05', () => {
       expect([400, 401, 403, 404, 409, 410, 426, 429, 503]).toContain(status);
     }
     expect(Object.keys(API_ERRORS)).toHaveLength(
-      Object.keys(IDENTITY_ERRORS).length + Object.keys(SHARD_ERRORS).length,
+      Object.keys(IDENTITY_ERRORS).length +
+        Object.keys(SHARD_ERRORS).length +
+        Object.keys(PERSIST_ERRORS).length,
     );
   });
 
