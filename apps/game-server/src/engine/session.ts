@@ -429,6 +429,12 @@ export class SessionManager {
       playtimeDeltaS: Math.round(s.playtimeMs / 1000),
     };
     s.playtimeMs = 0;
+    if (!(await this.flushHero(s))) {
+      this.ports.publish('session.save_deferred', {
+        accountId: s.accountId,
+        characterId: s.characterId,
+      });
+    }
     this.despawnTree(s);
     this.unbind(s);
     this.byAccount.delete(s.accountId);
@@ -439,6 +445,36 @@ export class SessionManager {
       characterId: s.characterId,
       partitionId: this.partition.id,
     });
+  }
+
+  private heroFlush: ((ids: EntityId[]) => Promise<void>) | null = null;
+  /** Срок срочного сохранения героя, мс. */
+  heroFlushTimeoutMs = 5_000;
+
+  /** Срочное сохранение предметов героя (P08) — при выходе и перед передачей. */
+  useHeroFlush(flush: (ids: EntityId[]) => Promise<void>): void {
+    this.heroFlush = flush;
+  }
+
+  private async flushHero(s: Session): Promise<boolean> {
+    if (!this.heroFlush) return true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        this.heroFlush([s.entityId, ...s.owned]),
+        new Promise((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('таймаут сохранения героя')),
+            this.heroFlushTimeoutMs,
+          );
+        }),
+      ]);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /** Сохранение героя в мире без выхода (плановое и срочное сохранение P08). */
@@ -549,8 +585,17 @@ export class SessionManager {
   }
 
   /** Передача в другую партицию: подтверждение — выгрузка без задержки выхода; отказ или таймаут — назад в ONLINE. */
-  beginHandoff(s: Session, confirm: () => Promise<boolean>): Promise<boolean> {
-    if (s.state !== 'ONLINE') return Promise.resolve(false);
+  async beginHandoff(s: Session, confirm: () => Promise<boolean>): Promise<boolean> {
+    if (s.state !== 'ONLINE') return false;
+    if (!(await this.flushHero(s))) {
+      this.ports.publish('session.handoff_failed', {
+        accountId: s.accountId,
+        characterId: s.characterId,
+        reason: 'PERSIST_HANDOFF_FLUSH_FAILED',
+      });
+      return false;
+    }
+    if (s.state !== 'ONLINE') return false;
     s.state = 'HANDOFF_OUT';
     return new Promise((resolve) => {
       let settled = false;

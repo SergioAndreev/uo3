@@ -415,11 +415,41 @@ describe('runtime/session-lifecycle', () => {
     expect(await t.sessions.beginHandoff(s, async () => false)).toBe(false);
     expect(s.state).toBe('ONLINE');
     const pending = t.sessions.beginHandoff(s, () => new Promise(() => undefined));
+    await new Promise((r) => setImmediate(r));
     t.advanceMs(5_000);
     expect(await pending).toBe(false);
     expect(s.state).toBe('ONLINE');
     expect(await t.sessions.beginHandoff(s, async () => true)).toBe(true);
     expect(t.partition.get(s.entityId)).toBeUndefined();
     expect(t.records.has('acc')).toBe(true);
+  });
+
+  it('срочное сохранение P08: при выходе до выгрузки; сбой — отложено; перед передачей — отказ при сбое', async () => {
+    const t = await setup();
+    const flushed: number[][] = [];
+    let fail = false;
+    t.sessions.useHeroFlush(async (ids) => {
+      if (fail) throw new Error('БД недоступна');
+      flushed.push(ids.map((id) => (t.partition.get(id) ? id : -id)));
+    });
+    const s = await t.sessions.join(new FakeClient(), t.ticket('acc', 'A'));
+    await t.sessions.exit(s);
+    expect(flushed).toEqual([[s.entityId]]);
+    const s2 = await t.sessions.join(new FakeClient(), t.ticket('acc2', 'B'));
+    fail = true;
+    expect(await t.sessions.beginHandoff(s2, async () => true)).toBe(false);
+    expect(s2.state).toBe('ONLINE');
+    expect(t.published.at(-1)).toEqual([
+      'session.handoff_failed',
+      expect.objectContaining({ reason: 'PERSIST_HANDOFF_FLUSH_FAILED' }),
+    ]);
+    await t.sessions.exit(s2);
+    expect(t.published.map(([sub]) => sub)).toContain('session.save_deferred');
+    expect(t.partition.get(s2.entityId)).toBeUndefined();
+    fail = false;
+    t.sessions.heroFlushTimeoutMs = 10;
+    t.sessions.useHeroFlush(() => new Promise(() => undefined));
+    const s3 = await t.sessions.join(new FakeClient(), t.ticket('acc3', 'C'));
+    expect(await t.sessions.beginHandoff(s3, async () => true)).toBe(false);
   });
 });

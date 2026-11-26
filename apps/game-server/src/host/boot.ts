@@ -226,6 +226,7 @@ export async function buildNode(
       },
     );
     runtime.persistence = { tracker, flush };
+    runtime.sessions.useHeroFlush((ids) => flush.flushNow(ids));
     node.scheduler.onPostTick(() => flush.tick());
     node.scheduler.every(config.PERSIST_FLUSH_INTERVAL_MS, () => void flush.flush(), 'background');
     node.stopHooks.unshift(async () => {
