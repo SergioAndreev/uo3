@@ -99,6 +99,8 @@ export interface PartitionRuntime {
   partitionId: string;
   listeners: Set<PartitionListener>;
   core: PartitionCore;
+  /** Эпоха партиции утрачена: вход и запись запрещены. */
+  fenced?: boolean;
   sessions: SessionManager;
   roomId: string;
   realm: string;
@@ -128,6 +130,8 @@ export class ShardNode {
   readonly hub: HubCore | null;
   readonly hubRoomId: string;
   maintenance = false;
+  /** Действия после финального сохранения при остановке (освобождение аренд P08). */
+  readonly stopHooks: (() => Promise<void>)[] = [];
   private readonly seen = new Set<string>();
   private heartbeatTimer: ReturnType<Scheduler['every']> | null = null;
 
@@ -316,6 +320,7 @@ export class ShardNode {
   ) {
     const p = this.partition(partitionId);
     this.admitting(null);
+    if (p.fenced) throw new CloseError(CLOSE.EPOCH_FENCED, 'партиция передана другому узлу');
     if (options.reconnect) {
       const r = options.reconnect;
       return p.sessions.reconnect(client, r.accountId, r.sessionId, r.token);
@@ -328,6 +333,15 @@ export class ShardNode {
       throw new CloseError(CLOSE.SHARD_MAINTENANCE, 'обслуживание');
     }
     return session;
+  }
+
+  /** Потеря эпохи партиции: закрытие клиентов кодом `4117` без сохранения. */
+  async fence(partitionId: string): Promise<void> {
+    const p = this.partitions.get(partitionId);
+    if (!p || p.fenced) return;
+    p.fenced = true;
+    this.ports.log('error', 'эпоха партиции утрачена — партиция остановлена', { partitionId });
+    await p.sessions.fence(CLOSE.EPOCH_FENCED);
   }
 
   leaveWorld(partitionId: string, clientId: string): void {
@@ -485,6 +499,8 @@ export class ShardNode {
       if (this.heartbeatTimer) this.scheduler.cancel(this.heartbeatTimer);
       for (const p of this.partitions.values()) await p.sessions.shutdown();
       await this.ports.finalFlush?.();
+      for (const hook of this.stopHooks)
+        await hook().catch((e) => this.ports.log('warn', 'хук остановки', { error: String(e) }));
       for (const p of this.partitions.values()) p.core.dispose();
       await this.ports.registry.clear([...this.partitions.keys()]).catch(() => undefined);
       clearTimeout(hard);

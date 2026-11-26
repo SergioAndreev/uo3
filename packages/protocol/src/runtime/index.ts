@@ -33,6 +33,7 @@ export const WS_CLOSE = {
   CHARACTER_FORCE_RENAME: 4126,
   SHARD_MAINTENANCE: 4127,
   PARTITION_NOT_READY: 4128,
+  EPOCH_FENCED: 4117,
 } as const;
 
 /** Опции подключения к комнате: билет P05 или переподключение. */

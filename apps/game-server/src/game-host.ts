@@ -76,7 +76,7 @@ export async function startGameHost(
         roomIdOf,
         `${config.SHARD_ID}-hub`,
       );
-      node = await buildNode(config, profile, world, ports);
+      node = await buildNode(config, profile, world, ports, infra.db);
       game.define('world', WorldPartitionRoom);
       game.define('hub', ShardHubRoom);
       await game.listen(config.GAME_PORT, config.GAME_HOST);

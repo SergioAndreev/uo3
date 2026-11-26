@@ -1,10 +1,12 @@
 import { shards, type Database } from '@duskmarch/db';
-import { IdAllocator, InMemoryIdLeaseProvider } from '@duskmarch/domain';
+import { DbIdLeaseProvider, PartitionLeaseRepo } from '@duskmarch/db/world';
+import { IdAllocator, InMemoryIdLeaseProvider, type IdLeaseProvider } from '@duskmarch/domain';
 import { buildProfile, type Profile } from '@duskmarch/rules';
 import { eq } from 'drizzle-orm';
 import type { GameServerConfig } from '../app.module.js';
 import type { Landmarks } from '../world.js';
 import type { RealmStore } from '@duskmarch/asset-formats';
+import { PartitionLease } from '../persistence/partition-lease.js';
 import { ShardNode, type NodePorts } from './node.js';
 
 export type HostErrorCode = 'HOST_CONFIG_INVALID' | 'HOST_BOOT_FAILED' | 'HOST_SHARD_MISMATCH';
@@ -52,6 +54,7 @@ export async function buildNode(
   profile: Profile,
   world: LoadedWorld,
   ports: NodePorts,
+  db?: Database,
 ): Promise<ShardNode> {
   const node = new ShardNode(
     {
@@ -71,8 +74,18 @@ export async function buildNode(
     ports,
   );
   if (config.GAME_NODE_ROLE === 'hub') return node;
-  // Аренда идентификаторов в PostgreSQL — P08; до неё существа и предметы не сохраняются.
-  const allocator = new IdAllocator(new InMemoryIdLeaseProvider());
+  let provider: IdLeaseProvider = new InMemoryIdLeaseProvider();
+  if (db) {
+    const ids = new DbIdLeaseProvider(db, config.SHARD_ID, (kind, percent) =>
+      ports.log(percent === 95 ? 'error' : 'warn', 'диапазон EntityId заполняется', {
+        kind,
+        percent,
+      }),
+    );
+    await ids.recover();
+    provider = ids;
+  }
+  const allocator = new IdAllocator(provider);
   await allocator.ready();
   const realm = profile.realms.find((r) => r.key === world.store.realm.key);
   if (!realm) {
@@ -81,8 +94,23 @@ export async function buildNode(
       `нет мира для планов шарда (${profile.realms.map((r) => r.key).join(', ')}); загружен ${world.store.realm.key}`,
     );
   }
+  const partitionId = `${realm.key}-0`;
+  if (db) {
+    const lease = new PartitionLease({
+      repo: new PartitionLeaseRepo(db, config.SHARD_ID, partitionId),
+      nodeId: config.GAME_NODE_ID,
+      onLost: () => void node.fence(partitionId),
+      log: ports.log,
+    });
+    try {
+      await lease.acquire();
+    } catch (error) {
+      throw new HostError('HOST_BOOT_FAILED', `аренда партиции ${partitionId}: ${String(error)}`);
+    }
+    node.stopHooks.push(() => lease.release());
+  }
   node.addPartition({
-    partitionId: `${realm.key}-0`,
+    partitionId,
     realm: { key: realm.key, width: realm.width, height: realm.height },
     bounds: { minX: 0, minY: 0, maxX: realm.width - 1, maxY: realm.height - 1 },
     allocator,

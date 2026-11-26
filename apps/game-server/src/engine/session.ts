@@ -430,6 +430,22 @@ export class SessionManager {
     });
   }
 
+  /**
+   * Потеря эпохи партиции: все клиенты закрываются без сохранения (запись принадлежит новому
+   * владельцу), записи сессий освобождаются.
+   */
+  async fence(code: number): Promise<void> {
+    for (const s of [...this.byAccount.values()]) {
+      this.leaveOnline(s);
+      this.cancelTimers(s);
+      s.state = 'EXITED';
+      this.partition.despawn(s.entityId);
+      this.unbind(s)?.close(code, 'партиция передана другому узлу');
+      this.byAccount.delete(s.accountId);
+      await this.ports.release(s.accountId, s.sessionId);
+    }
+  }
+
   /** Бан, блокировка — немедленно; отзыв сессий и переименование — через задержку выхода. */
   async securityEvent(
     accountId: string,
