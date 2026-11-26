@@ -12,7 +12,7 @@ it('рисует бейдж с проверенной конфигурацией
   act(() => createRoot(host).render(<App config={readConfig(env)} />));
   expect(host.textContent).toContain('development');
   expect(host.querySelector('[data-testid="ruleset"]')?.textContent).toMatch(
-    /^Правила duskmarch v1 · [0-9a-f]{12}$/,
+    /^Правила duskmarch v2 · [0-9a-f]{12}$/,
   );
 });
 

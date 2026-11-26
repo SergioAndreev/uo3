@@ -27,4 +27,4 @@
 ## 4. Завершение
 
 - [x] 4.1 Документация `apps/api/docs/shards.md`, глоссарий, ROADMAP, CONCEPT §6, changeset — проверка: `scripts/glossary.test.ts`.
-- [ ] 4.2 Полный локальный контур и `openspec validate p05-shards-and-characters --strict` — проверка: всё зелёное.
+- [x] 4.2 Полный локальный контур и `openspec validate p05-shards-and-characters --strict` — проверка: всё зелёное.
