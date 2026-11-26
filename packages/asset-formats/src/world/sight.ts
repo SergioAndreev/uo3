@@ -18,8 +18,17 @@ export interface SightOptions {
   /** Дальность по Чебышёву (по умолчанию 20). */
   range?: number;
   trace?: boolean;
+  /** Динамические препятствия клетки (предметы и постройки партиции P06). */
+  dynamic?: (x: number, y: number) => Iterable<DynamicObstacle>;
 }
-export type SightBlock = 'cell' | 'object' | 'terrain' | 'corner';
+
+/** Препятствие, которого нет в чанках: `base`/`top` — высоты в шагах. */
+export interface DynamicObstacle {
+  base: number;
+  top: number;
+  blocksSight: boolean;
+}
+export type SightBlock = 'cell' | 'object' | 'terrain' | 'corner' | 'dynamic';
 export interface TraceStep {
   x: number;
   y: number;
@@ -43,6 +52,7 @@ function blockAt(
   y: number,
   value: number,
   denom: number,
+  dynamic?: SightOptions['dynamic'],
 ): SightBlock | undefined {
   const cell = store.cell(x, y);
   if (!cell) return 'cell';
@@ -50,6 +60,11 @@ function blockAt(
   if (value < cell.h * denom) return 'terrain';
   for (const o of store.objectsAt(x, y)) {
     if (o.blocksSight && o.base * denom <= value && value < o.top * denom) return 'object';
+  }
+  if (dynamic) {
+    for (const o of dynamic(x, y)) {
+      if (o.blocksSight && o.base * denom <= value && value < o.top * denom) return 'dynamic';
+    }
   }
   return undefined;
 }
@@ -99,8 +114,8 @@ export function lineOfSight(
     if (nx === ny) {
       // Точный проход через угол: блокирует, только если закрыты обе ортогональные клетки.
       const value = height(2 * nx);
-      const a = blockAt(store, cx + sx, cy, value, D);
-      const b = blockAt(store, cx, cy + sy, value, D);
+      const a = blockAt(store, cx + sx, cy, value, D, options.dynamic);
+      const b = blockAt(store, cx, cy + sy, value, D, options.dynamic);
       if (a && b) return done('corner', { x: cx + sx, y: cy });
       cx += sx;
       cy += sy;
@@ -120,7 +135,7 @@ export function lineOfSight(
     const exit = Math.min(nextX, nextY, M);
     const value = height(enter + exit);
     trace?.push({ x: cx, y: cy, rayH: value / D });
-    const reason = blockAt(store, cx, cy, value, D);
+    const reason = blockAt(store, cx, cy, value, D, options.dynamic);
     if (reason) return done(reason, { x: cx, y: cy });
   }
   return done();

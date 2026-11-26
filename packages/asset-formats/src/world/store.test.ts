@@ -368,3 +368,19 @@ it('загрузка из пакета через чтение по пути', (
     ),
   ).toThrow('ASSET_SCHEMA');
 });
+
+it('динамические препятствия партиции закрывают обзор', () => {
+  const from = { x: 30, y: 20, h: 0 };
+  const to = { x: 36, y: 26, h: 0 };
+  const wall = { base: 0, top: 8, blocksSight: true };
+  const at = (x: number, y: number) => (x === 33 && y === 23 ? [wall] : []);
+  expect(lineOfSight(store, from, to, { dynamic: at })).toMatchObject({
+    visible: false,
+    reason: 'dynamic',
+    blockedAt: { x: 33, y: 23 },
+  });
+  expect(
+    lineOfSight(store, from, to, { dynamic: () => [{ ...wall, blocksSight: false }] }).visible,
+  ).toBe(true);
+  expect(lineOfSight(store, from, to, { dynamic: () => [] }).visible).toBe(true);
+});
