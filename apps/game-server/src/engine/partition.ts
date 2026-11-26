@@ -244,11 +244,12 @@ export class PartitionCore {
     const entity = this.entities.get(id);
     if (!entity) return false;
     for (const b of entity.behaviors) b.onDespawn?.(entity);
+    // Отметка до удаления: слой сохранения (P08) успевает снять строку выгружаемой сущности.
+    this.dirty(id, deleted ? 'deleted' : 'despawned');
     this.index.remove(id);
     this.entities.delete(id);
     this.players.delete(id);
     this.emit({ type: deleted ? 'entity.deleted' : 'entity.despawned', id });
-    this.dirty(id, deleted ? 'deleted' : 'despawned');
     return true;
   }
 
