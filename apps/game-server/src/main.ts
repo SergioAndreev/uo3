@@ -41,9 +41,9 @@ console.log(
 
 // Фреймворки загружаются только после проверки конфигурации.
 const { startGameHost } = await import('./game-host.js');
-const host = await startGameHost(config, {
-  realm: world.store.realm.key,
-  version: world.version,
+const host = await startGameHost(config, world).catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
 });
 console.log(JSON.stringify({ msg: 'game-server: запущен', port: host.gamePort }));
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

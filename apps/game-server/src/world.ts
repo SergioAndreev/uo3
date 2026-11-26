@@ -13,11 +13,13 @@ export interface WorldConfig {
   WORLD_PACK_DIR?: string | undefined;
 }
 
+export type Landmarks = Readonly<Record<string, readonly { x: number; y: number }[]>>;
+
 export type WorldResult =
-  | { ok: true; store: RealmStore; version: string; source: string }
+  | { ok: true; store: RealmStore; version: string; source: string; landmarks: Landmarks }
   | { ok: false; errors: string[] };
 
-function fromDirectory(dir: string): RealmStore {
+function fromDirectory(dir: string): { store: RealmStore; landmarks: Landmarks } {
   const manifestFile = join(dir, 'pack.json');
   if (!existsSync(manifestFile)) throw new WorldError('WORLD_SCHEMA', `нет ${manifestFile}`);
   const manifest = JSON.parse(readFileSync(manifestFile, 'utf8')) as PackManifest;
@@ -25,20 +27,35 @@ function fromDirectory(dir: string): RealmStore {
     const file = join(dir, path);
     return existsSync(file) ? new Uint8Array(readFileSync(file)) : undefined;
   };
-  return RealmStore.fromPack(manifest, read, SYNTHETIC_CATALOG);
+  const store = RealmStore.fromPack(manifest, read, SYNTHETIC_CATALOG);
+  const index = manifest.entries.find((e) => e.kind === 'world-index');
+  const raw = index ? read(index.path) : undefined;
+  const landmarks = raw
+    ? ((JSON.parse(new TextDecoder().decode(raw)) as { landmarks?: Landmarks }).landmarks ?? {})
+    : {};
+  return { store, landmarks };
 }
 
-function synthetic(): RealmStore {
+function synthetic(): { store: RealmStore; landmarks: Landmarks } {
   const pack = generateSyntheticPack('proving', 42);
-  return RealmStore.fromPack(pack.manifest, (path) => pack.files.get(path), SYNTHETIC_CATALOG);
+  return {
+    store: RealmStore.fromPack(pack.manifest, (path) => pack.files.get(path), SYNTHETIC_CATALOG),
+    landmarks: pack.world.landmarks ?? {},
+  };
 }
 
 /** Мир шарда: пакет из `WORLD_PACK_DIR` или синтетический `proving` вне production (design P03 D9). */
 export function loadWorld(config: WorldConfig): WorldResult {
   try {
     if (config.WORLD_PACK_DIR) {
-      const store = fromDirectory(config.WORLD_PACK_DIR);
-      return { ok: true, store, version: store.version(), source: config.WORLD_PACK_DIR };
+      const { store, landmarks } = fromDirectory(config.WORLD_PACK_DIR);
+      return {
+        ok: true,
+        store,
+        landmarks,
+        version: store.version(),
+        source: config.WORLD_PACK_DIR,
+      };
     }
     if (config.NODE_ENV === 'production') {
       return {
@@ -46,8 +63,8 @@ export function loadWorld(config: WorldConfig): WorldResult {
         errors: ['[CONFIG_VALIDATION_FAILED] WORLD_PACK_DIR: обязателен в production'],
       };
     }
-    const store = synthetic();
-    return { ok: true, store, version: store.version(), source: 'synthetic:proving' };
+    const { store, landmarks } = synthetic();
+    return { ok: true, store, landmarks, version: store.version(), source: 'synthetic:proving' };
   } catch (error) {
     const code = error instanceof WorldError ? `[${error.code}] ` : '';
     return { ok: false, errors: [`${code}${(error as Error).message}`] };

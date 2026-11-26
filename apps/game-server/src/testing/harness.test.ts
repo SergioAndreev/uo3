@@ -284,3 +284,27 @@ describe('runtime/game-server-host: узел шарда', () => {
     expect(hard).toBe(0);
   });
 });
+
+describe('runtime/game-server-host: сообщения хаба', () => {
+  it('ручное объявление ведущего и отказ игроку; расширения', async () => {
+    const shard = await HeadlessShard.create();
+    const gm = await shard.player('gm', { level: 'game-master' });
+    const p = await shard.player('p');
+    const msg = {
+      severity: 'info',
+      displayMode: 'chat',
+      text: 'Сбор у маяка',
+      scope: { kind: 'all' },
+      pinned: false,
+      expiresAtMs: null,
+    };
+    shard.node.hubMessage(gm.hub?.id ?? '', 'hub:announce_request', msg);
+    expect(p.hub?.last('hub:announcement')).toMatchObject({ text: 'Сбор у маяка' });
+    shard.node.hubMessage(p.hub?.id ?? '', 'hub:announce_request', { ...msg, text: 'спам' });
+    expect(p.hub?.last('hub:announcement')).toMatchObject({ text: 'Сбор у маяка' });
+    shard.node.hubMessage(gm.hub?.id ?? '', 'hub:announce_request', { text: 'без схемы' });
+    shard.node.hubMessage('ghost', 'hub:announce_request', msg);
+    expect(shard.trace.some((e) => e.type === 'log.warn')).toBe(true);
+    shard.node.hubMessage(p.hub?.id ?? '', 'guild:say', 'x');
+  });
+});

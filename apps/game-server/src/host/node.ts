@@ -1,4 +1,6 @@
 import { hasAccess, type AccessLevel, type IdAllocator } from '@duskmarch/domain';
+import { AnnounceRequest } from '@duskmarch/protocol';
+import { Value } from '@sinclair/typebox/value';
 import { HubCore, type HubClaims, type HubPorts } from '../engine/hub.js';
 import { PartitionCore, type Entity } from '../engine/partition.js';
 import type { Rect } from '../engine/spatial-index.js';
@@ -237,6 +239,7 @@ export class ShardNode {
         updatedAt,
       });
       for (const [id, p] of this.partitions) {
+        await p.sessions.refreshRecords();
         await this.ports.registry.partition({
           partitionId: id,
           realm: p.realm,
@@ -322,6 +325,22 @@ export class ShardNode {
         else p.sessions.touch(s);
       },
     });
+  }
+
+  /** Сообщение хаба: ручные объявления персонала и расширения. */
+  hubMessage(clientId: string, type: string, payload: unknown): void {
+    if (!this.hub) return;
+    if (type === 'hub:announce_request') {
+      const sender = this.hub.claimsOf(clientId);
+      if (!sender || !Value.Check(AnnounceRequest, payload)) return;
+      try {
+        this.hub.staffAnnounce(sender, payload as Parameters<HubCore['staffAnnounce']>[1]);
+      } catch (error) {
+        this.ports.log('warn', 'объявление отклонено', { error: String(error) });
+      }
+      return;
+    }
+    this.hub.message(clientId, type, payload);
   }
 
   async joinHub(client: ClientLink, ticket: string): Promise<HubClaims> {

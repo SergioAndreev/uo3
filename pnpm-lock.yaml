@@ -377,12 +377,24 @@ importers:
       '@duskmarch/rules':
         specifier: workspace:*
         version: link:../../packages/rules
+      '@nats-io/transport-node':
+        specifier: 3.5.0
+        version: 3.5.0
       '@nestjs/common':
         specifier: 11.2.12
         version: 11.2.12(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/core':
         specifier: 11.2.12
         version: 11.2.12(@nestjs/common@11.2.12(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.2.12)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@sinclair/typebox':
+        specifier: 'catalog:'
+        version: 0.34.52
+      drizzle-orm:
+        specifier: 0.45.4
+        version: 0.45.4(@types/pg@8.23.1)(pg@8.23.1)
+      iovalkey:
+        specifier: 0.4.0
+        version: 0.4.0
       reflect-metadata:
         specifier: 0.2.2
         version: 0.2.2
@@ -390,15 +402,15 @@ importers:
         specifier: 7.8.2
         version: 7.8.2
     devDependencies:
-      '@sinclair/typebox':
-        specifier: 'catalog:'
-        version: 0.34.52
       '@types/node':
         specifier: 'catalog:'
         version: 22.20.6
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 3.2.7(vitest@3.2.7(@types/node@22.20.6)(jiti@2.6.1)(jsdom@26.1.0)(tsx@4.23.15)(yaml@2.9.1))
+      colyseus.js:
+        specifier: 0.16.22
+        version: 0.16.22
       tsx:
         specifier: 'catalog:'
         version: 4.23.15
@@ -847,6 +859,10 @@ packages:
 
   '@colyseus/greeting-banner@2.0.6':
     resolution: {integrity: sha512-65nK7KnJn6g3ArtJqNfVX+Mx7xTlBka04kSwloLP7s24UpCEaK7bMGRLgkzfnysARzlVh1eV4jynBWZN82dYwQ==}
+
+  '@colyseus/httpie@2.0.1':
+    resolution: {integrity: sha512-JvABMZzPLiyrUsVj3ElXGORRDTu+NKzXHWd1uV1R1SThAKMm06cVW6bOyADARD65bs8JJoHNNbUkW8KoRvRDzA==}
+    engines: {node: '>=10'}
 
   '@colyseus/msgpackr@1.11.3':
     resolution: {integrity: sha512-P86w/FrZWUaV7StxI7WuNg3wFlUrROSiBOrF378wyOgxS5+etcxUQMPe0OJZDEx+QUdu7QOPzsqE0Ziqwpjnug==}
@@ -2364,6 +2380,10 @@ packages:
 
   colorette@2.0.20:
     resolution: {integrity: sha512-IfEDxwoWIjkeXL1eXcDiow4UbKjhLdq6/EuSVR9GMN7KVH3r9gQ83e73hsz1Nd1T3ijd5xv1wcWRYO+D6kCI2w==}
+
+  colyseus.js@0.16.22:
+    resolution: {integrity: sha512-xyiajukHvlwOtcziVbXZWmz7yBH3EImovYrGPAe2kVkdubLVYmOjskJuXh2VLlO8XGjyhmNwig9ELz18sTUo9g==}
+    engines: {node: '>= 12.x'}
 
   commander@13.1.0:
     resolution: {integrity: sha512-/rFeCpNJQbhSZjGVwO9RFV3xPqbnERS8MmIQzCtD/zl6gpJuV/bMLuN92oG3F7d8oDEHHRrujSXNUr8fpjntKw==}
@@ -4543,6 +4563,8 @@ snapshots:
 
   '@colyseus/greeting-banner@2.0.6': {}
 
+  '@colyseus/httpie@2.0.1': {}
+
   '@colyseus/msgpackr@1.11.3':
     optionalDependencies:
       msgpackr-extract: 3.0.7
@@ -5821,6 +5843,17 @@ snapshots:
   color-name@1.1.4: {}
 
   colorette@2.0.20: {}
+
+  colyseus.js@0.16.22:
+    dependencies:
+      '@colyseus/httpie': 2.0.1
+      '@colyseus/msgpackr': 1.11.3
+      '@colyseus/schema': 3.0.76
+      tslib: 2.9.1
+      ws: 8.23.0
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
 
   commander@13.1.0: {}
 

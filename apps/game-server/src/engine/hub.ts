@@ -105,6 +105,11 @@ export class HubCore {
     this.connections.delete(account);
   }
 
+  claimsOf(clientId: string): HubClaims | undefined {
+    const account = this.byClient.get(clientId);
+    return account === undefined ? undefined : this.connections.get(account)?.claims;
+  }
+
   connected(accountId: string): boolean {
     return this.connections.has(accountId);
   }

@@ -159,6 +159,13 @@ export class SessionManager {
     return this.byClient.get(clientId);
   }
 
+  /** Продление шардовых записей всех сессий (heartbeat узла): у упавшего узла записи истекают. */
+  async refreshRecords(): Promise<void> {
+    for (const s of this.byAccount.values()) {
+      if (s.state !== 'EXITED') await this.ports.updateSession(s.accountId, this.record(s));
+    }
+  }
+
   private now(): number {
     return this.scheduler.timeMs;
   }
