@@ -44,7 +44,7 @@
 - **Входные зависимости:**
   - **P00 (`p00-monorepo-foundation`)** — монорепозиторий, границы пакетов, TypeBox-конфигурация, Docker Compose и Vitest.
   - **P01 (`p01-shared-domain-model`)** — `Serial`, `SerialAllocator`, `Point3D`, `Rect2D`, `packSectorKey`, `AccessLevel`, `RulesetProfile`, `GameClock` (`latch()`), `Xoshiro128PlusPlusRng`, `FakeGameClock`.
-  - **P02 (`p02-uo-asset-formats-and-import`)** — синтетический мир и CC0-фикстуры для dev/CI и headless-харнеса.
+  - **P02 (`p02-asset-pack-and-world-chunks`)** — синтетический мир и CC0-фикстуры для dev/CI и headless-харнеса.
   - **P03 (`p03-server-world-data`)** — `WorldDataModule`, `WorldDataRegistryService`, `FacetTileMatrix`, `resolveSurfaces`, `DynamicTileProvider` и `worldDataVersion`.
   - **P04 (`p04-identity-and-accounts`)** — `evaluateAccessPolicy`, `canActOnTarget`, `IDENTITY_EVENTS` в NATS и ключи отзыва/бана в Valkey.
   - **P05 (`p05-shards-and-characters`)** — `GameTicketVerifier` / `consume_game_ticket.lua`, `VerifiedGameTicketClaims`, схема Valkey heartbeat/partitions/hub/session, таблицы `shards`/`characters`/`character_skills` и `UO3_SHARD_EVENTS`.

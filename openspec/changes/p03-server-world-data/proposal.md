@@ -41,7 +41,7 @@
 - **Входные зависимости (должны быть завершены до реализации P03):**
   - **P00** (`p00-monorepo-foundation`) — структура монорепо, конфигурация, CI-гейты и запрет проприетарных ассетов.
   - **P01** (`p01-shared-domain-model`) — `Point3D`, фасеты, границы карт, перечисления и флаги `TileFlag`, `RulesetProfile`, константы `PersonHeight`/`StepHeight`.
-  - **P02** (`p02-uo-asset-formats-and-import`) — парсеры MUL/IDX/UOP, `map*`/`statics*`, `tiledata`, `multi` (`packages/uo-formats`), синтетический мир для разработки и CI, базовая платформа `apps/asset-tool`.
+  - **P02** (`p02-asset-pack-and-world-chunks`) — парсеры MUL/IDX/UOP, `map*`/`statics*`, `tiledata`, `multi` (`packages/uo-formats`), синтетический мир для разработки и CI, базовая платформа `apps/asset-tool`.
 - **Что разблокируется после P03:**
   - **P06** (`p06-game-server-runtime`) — запуск `WorldPartitionRoom` и симуляционного харнеса с авторитарными данными карты.
   - **P12** (`p12-movement-and-navigation`) — валидация шагов и A*-поиск пути поверх запросов высот/поверхностей P03.

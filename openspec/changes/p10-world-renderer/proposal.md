@@ -47,7 +47,7 @@
 ### Входные зависимости
 
 - **P09 (`p09-client-shell`):** игровой экран-контейнер с размерами вьюпорта, завершённый bootstrap ассетов, профиль настроек клиента (качество графики, круг прозрачности, скрытие крыш, масштаб зума, экспериментальный флаг WebGPU) и обработка фатальных ошибок клиента.
-- **P02 (`p02-uo-asset-formats-and-import`):** `useAssetStore`, `WebAssetCacheManager`, `AssetWorkerPool`, упакованные Texture Arrays (`texmaps64`, `texmaps128`, `land44`), MaxRects-атласы `art`, текстура `hues` LUT `32×3001`, атлас `light.mul`, таблицы `tiledata`/`multi` и синтетический CC0-мир.
+- **P02 (`p02-asset-pack-and-world-chunks`):** `useAssetStore`, `WebAssetCacheManager`, `AssetWorkerPool`, упакованные Texture Arrays (`texmaps64`, `texmaps128`, `land44`), MaxRects-атласы `art`, текстура `hues` LUT `32×3001`, атлас `light.mul`, таблицы `tiledata`/`multi` и синтетический CC0-мир.
 - **P01 / P03:** доменные типы, `GameClock`/`GameTime`/`computeGlobalLightLevel`, формулы высот и игнорируемых тайлов земли.
 
 ### Что разблокируется

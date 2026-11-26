@@ -48,7 +48,7 @@
 - **Внешние зависимости (только пермиссивные SPDX-лицензии по политике P00):**
   - Клиентский роутер SPA (`react-router` v7 / `@tanstack/react-router`), `TanStack Query` v5, `Zustand` v5 (уже зафиксированы в `docs/ARCHITECTURE.md`), генератор QR-кода SVG для TOTP-настройки (чистый TS/SVG без canvas-зависимостей, MIT).
 - **Входные зависимости (должны быть заархивированы до реализации P09):**
-  - **P02 (`p02-uo-asset-formats-and-import`)** — `ClientImportController`, `WebAssetCacheManager`, `useAssetStore`, декодированные `hues` LUT / спрайты и синтетический CC0-мир.
+  - **P02 (`p02-asset-pack-and-world-chunks`)** — `ClientImportController`, `WebAssetCacheManager`, `useAssetStore`, декодированные `hues` LUT / спрайты и синтетический CC0-мир.
   - **P05 (`p05-shards-and-characters`)** — REST API шардов, тикетов, ростера и создания персонажей, изоморфные валидаторы `packages/rules` и `StarterLoadoutV1` (транзитивно включает **P04** identity/auth/2FA/OAuth, **P03** `WorldDataVersionSchema`, **P01** `AccessLevel`/`RulesetProfile`/`ClientRulesetSnapshot`, **P00** каркас монорепо и конфиги).
 - **Что разблокируется после завершения P09:**
   - **P10 (`p10-world-renderer`)** — получает готовый `WorldViewportHost`, проверенный WebGL2-контекст, активный кэш ассетов из `client/asset-bootstrap` и реактивные графические настройки из `useSettingsStore`.
