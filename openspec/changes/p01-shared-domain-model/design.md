@@ -34,7 +34,7 @@ P00 создала изоморфные пакеты `@duskmarch/domain`, `@dusk
 `h` — целое `-1 024..1 023` (−256…+255,75 м). Целые шаги исключают ошибки сравнения чисел с плавающей точкой при проверке подъёма и зазоров; перевод в метры выполняется только для сцены.
 
 ### D5. Направления и повороты камеры без тригонометрии
-Направление к цели определяется по знакам `dx`, `dy` и сравнению `2·|dx|` с `|dy|` (и наоборот), то есть по секторам ±22,5° без `atan2`. Экранное направление при повороте камеры `r` — `(d − 2r) mod 8`.
+Направление к цели определяется по секторам ±22,5° без `atan2`: ось выбирается, если `1000·|меньшее смещение| ≤ 414·|большее|` (tan 22,5° ≈ 0,414), иначе диагональ по знакам `dx`, `dy`. Экранное направление при повороте камеры `r` — `(d − 2r) mod 8`.
 
 ### D6. Навыки в десятых долях, коэффициенты в сотых
 Значения навыков — целые `0..1 000`; формулы ресурсов и веса используют коэффициенты в сотых (`60 + floor(might × 60 / 100)`). Результаты совпадают на всех движках JavaScript.
@@ -147,14 +147,16 @@ flowchart LR
 | 35 | `stewardship` | Хозяйство | Общество |
 
 ### Снимок аллокатора (контракт для P08)
+Числа — `основание вида + номер`: `next` — следующий идентификатор, `highWater` — граница выданных блоков (первый номер, который поставщик выдаст следующим). Граница может равняться основанию следующего вида, когда диапазон исчерпан. Поставщик обязан выдавать блоки не ниже `highWater`.
+
 ```json
 {
   "version": 1,
   "kinds": {
-    "hero": { "next": 536870913, "highWater": 536875008 },
-    "creature": { "next": 1073741825, "highWater": 1073745920 },
-    "item": { "next": 1610612737, "highWater": 1610616832 },
-    "structure": { "next": 2147483649, "highWater": 2147487744 }
+    "hero": { "next": 536870913, "highWater": 536875009 },
+    "creature": { "next": 1073741825, "highWater": 1073745921 },
+    "item": { "next": 1610612737, "highWater": 1610616833 },
+    "structure": { "next": 2147483649, "highWater": 2147487745 }
   }
 }
 ```
@@ -170,7 +172,7 @@ override:
 ```
 
 ### Коды ошибок
-`ERR_INVALID_ENTITY_ID`, `ERR_ENTITY_KIND_MISMATCH`, `ERR_RESERVED_ENTITY_ID`, `ERR_ENTITY_ID_COLLISION`, `ERR_ENTITY_ID_EXHAUSTED`, `ERR_INVALID_LEASE_SIZE`, `ERR_ID_LEASE_PENDING`, `ERR_INVALID_COORDINATE`, `ERR_HEIGHT_OUT_OF_RANGE`, `ERR_OUT_OF_REALM_BOUNDS`, `ERR_UNKNOWN_REALM`, `ERR_REALM_MISMATCH`, `ERR_SKILL_VALUE_OUT_OF_RANGE`, `ERR_INVALID_TONE_SET`, `ERR_UNKNOWN_CELL_FLAG`, `ERR_INVALID_CONTENT_KEY`, `ERR_UNKNOWN_FEATURE_FLAG`, `ERR_RULESET_INVARIANT`, `ERR_RULESET_SCHEMA`, `ERR_CLOCK_REGRESSION`, `ERR_INVALID_DICE`.
+`ERR_INVALID_ENTITY_ID`, `ERR_ENTITY_KIND_MISMATCH`, `ERR_RESERVED_ENTITY_ID`, `ERR_ENTITY_ID_COLLISION`, `ERR_ENTITY_ID_EXHAUSTED`, `ERR_INVALID_LEASE_SIZE`, `ERR_ID_LEASE_PENDING`, `ERR_INVALID_COORDINATE`, `ERR_HEIGHT_OUT_OF_RANGE`, `ERR_OUT_OF_REALM_BOUNDS`, `ERR_UNKNOWN_REALM`, `ERR_REALM_MISMATCH`, `ERR_SKILL_VALUE_OUT_OF_RANGE`, `ERR_INVALID_TONE_SET`, `ERR_UNKNOWN_CELL_FLAG`, `ERR_INVALID_CONTENT_KEY`, `ERR_INVALID_TINT`, `ERR_UNKNOWN_FEATURE_FLAG`, `ERR_RULESET_INVARIANT`, `ERR_RULESET_SCHEMA`, `ERR_CLOCK_REGRESSION`, `ERR_INVALID_DICE`.
 
 ## Risks / Trade-offs
 

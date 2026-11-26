@@ -12,10 +12,12 @@
   "scripts": {
     "build": "tsc --build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --coverage"
+    "test": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@duskmarch/domain": "workspace:*"
+    "@duskmarch/domain": "workspace:*",
+    "@sinclair/typebox": "catalog:"
   },
   "devDependencies": {
     "@duskmarch/config": "workspace:*",
