@@ -18,9 +18,11 @@
 | `account.sessions.revoke` | `moderator` | Завершение сессий младших аккаунтов |
 | `account.ban.temp` | `moderator` | Временный бан до 30 суток |
 | `world.observe` | `moderator` | Невидимое наблюдение в мире |
+| `character.manage` | `moderator` | Блокировка и принудительное переименование героев |
 | `world.events.manage` | `game-master` | Мировые события |
 | `world.edit` | `game-master` | Патчи мира (P03) |
 | `beacon.manage` | `game-master` | Маяки между планами |
+| `character.restore` | `game-master` | Восстановление удалённых героев |
 | `account.ban.permanent` | `administrator` | Бан без срока или длиннее 30 суток |
 | `account.unban` | `administrator` | Досрочное снятие бана |
 | `account.tfa.reset` | `administrator` | Сброс утерянной 2FA |

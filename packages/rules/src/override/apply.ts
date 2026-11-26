@@ -50,6 +50,24 @@ export function invariants(p: RulesetProfile): Violation[] {
     'skills.maxTenths',
     'навык больше общего капа',
   );
+  const c = p.creation;
+  need(
+    c.statMin * 3 <= c.statPool && c.statPool <= c.statMax * 3,
+    'creation.statPool',
+    `пул ${c.statPool} вне ${c.statMin * 3}..${c.statMax * 3}`,
+  );
+  need(c.statMin >= s.min && c.statMax <= s.max, 'creation.statMax', 'вне пределов stats');
+  need(
+    c.skillMinTenths <= c.skillMaxTenths && c.skillMaxTenths <= p.skills.maxTenths,
+    'creation.skillMaxTenths',
+    'skillMin ≤ skillMax ≤ skills.maxTenths',
+  );
+  need(
+    c.skillPoolTenths <= c.skillMaxTenths * c.maxStartSkills &&
+      c.skillPoolTenths >= c.skillMinTenths,
+    'creation.skillPoolTenths',
+    'пул навыков недостижим при пределах',
+  );
   need(
     p.interest.radius <= p.interest.largeRadius,
     'interest.largeRadius',

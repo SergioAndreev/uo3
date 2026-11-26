@@ -13,6 +13,7 @@ export const FEATURE_FLAGS = [
   'playerBounties',
 ] as const;
 export type FeatureFlag = (typeof FEATURE_FLAGS)[number];
+export const FeatureFlagSchema = Type.Union(FEATURE_FLAGS.map((flag) => Type.Literal(flag)));
 
 export const RealmSchema = Type.Object(
   {
@@ -54,6 +55,20 @@ export const RulesetProfileSchema = Type.Object(
     time: Type.Object({ tickMs: Int(1, 1_000), gameHourMs: Int(1_000, 86_400_000) }, strict),
     stats: Type.Object({ min: Int(0, 1_000), max: Int(1, 1_000), totalCap: Int(1, 3_000) }, strict),
     skills: Type.Object({ maxTenths: Int(1, 10_000), totalCapTenths: Int(1, 360_000) }, strict),
+    creation: Type.Object(
+      {
+        statPool: Int(1, 3_000),
+        statMin: Int(0, 1_000),
+        statMax: Int(1, 1_000),
+        skillPoolTenths: Int(1, 360_000),
+        skillMinTenths: Int(1, 10_000),
+        skillMaxTenths: Int(1, 10_000),
+        maxStartSkills: Int(1, 36),
+        /** Навык → флаг функции, без которого навык не выбрать при создании. */
+        skillFeatures: Type.Record(Type.String({ pattern: '^[a-z]+$' }), FeatureFlagSchema),
+      },
+      strict,
+    ),
     inventory: Type.Object({ packSlots: Int(1, 1_000) }, strict),
     speech: Type.Object({ whisper: Int(0, 64), normal: Int(0, 64), shout: Int(0, 64) }, strict),
     light: Type.Record(Type.String({ pattern: '^[a-z][a-z0-9-]*$' }), LightRange),

@@ -21,7 +21,7 @@ const realm = (key: string) => {
 /** Значения ARCHITECTURE §5. Любое изменение значения по умолчанию повышает `version`. */
 export const STANDARD: RulesetProfile = {
   id: 'duskmarch',
-  version: 1,
+  version: 2,
   preset: 'standard',
   space: { heightStepMm: 250, sectorSize: 16, chunkSize: 32 },
   realms: [realm('dawn'), realm('dusk')],
@@ -39,6 +39,16 @@ export const STANDARD: RulesetProfile = {
   time: { tickMs: 50, gameHourMs: 240_000 },
   stats: { min: 10, max: 120, totalCap: 240 },
   skills: { maxTenths: 1_000, totalCapTenths: 6_000 },
+  creation: {
+    statPool: 90,
+    statMin: 10,
+    statMax: 60,
+    skillPoolTenths: 1_000,
+    skillMinTenths: 100,
+    skillMaxTenths: 500,
+    maxStartSkills: 3,
+    skillFeatures: { sailing: 'seafaring', beaconry: 'beaconTravel', taming: 'mounts' },
+  },
   inventory: { packSlots: 80 },
   speech: { whisper: 2, normal: 14, shout: 24 },
   light: { dawn: { ...DAWN_LIGHT }, dusk: { ...DUSK_LIGHT } },
@@ -56,6 +66,7 @@ export const PROVING: RulesetProfile = {
   realms: [realm('proving')],
   time: { ...STANDARD.time, gameHourMs: STANDARD.time.gameHourMs / 10 },
   light: { proving: { min: 40, max: 80 } },
+  creation: { ...STANDARD.creation, skillPoolTenths: 2_000, skillMaxTenths: 1_000 },
 };
 
 export const presetProfile = (preset: Preset): RulesetProfile =>

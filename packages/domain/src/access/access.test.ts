@@ -66,12 +66,20 @@ describe('матрица разрешений', () => {
         'account.sessions.revoke',
         'account.ban.temp',
         'world.observe',
+        'character.manage',
       ]),
     );
     expect(moderator).not.toContain('world.edit');
+    expect(moderator).not.toContain('character.restore');
     const gm = permissionsOf('game-master');
     expect(gm).toEqual(
-      expect.arrayContaining([...moderator, 'world.events.manage', 'world.edit', 'beacon.manage']),
+      expect.arrayContaining([
+        ...moderator,
+        'world.events.manage',
+        'world.edit',
+        'beacon.manage',
+        'character.restore',
+      ]),
     );
     expect(gm).not.toContain('account.ban.permanent');
   });
