@@ -13,6 +13,7 @@ export default mergeConfig(nodePreset('default'), {
         'src/host/boot.ts',
         'src/persistence/timer-store.ts',
         'src/persistence/flush-store.ts',
+        'src/persistence/critical-store.ts',
       ],
     },
   },

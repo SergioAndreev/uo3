@@ -5,7 +5,14 @@ import type { EntityId } from '@duskmarch/domain';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { PartitionLeaseRepo, initShardState, listTimers } from '@duskmarch/db/world';
-import { dbBatchWriter } from './persistence/flush-store.js';
+import { dbBatchWriter, entityToRow } from './persistence/flush-store.js';
+import { IdAllocator, InMemoryIdLeaseProvider } from '@duskmarch/domain';
+import { itemLedger } from '@duskmarch/db';
+import { PartitionCore, type Entity } from './engine/partition.js';
+import { CriticalTransactionCoordinator } from './persistence/critical.js';
+import { dbCriticalPorts } from './persistence/critical-store.js';
+import { DirtyTracker } from './persistence/dirty-tracker.js';
+import type { WorldRowOut } from './persistence/flush.js';
 import { Scheduler } from './engine/scheduler.js';
 import { loadHeroTree, loadPartition, quarantineRows } from './persistence/loader.js';
 import { TimerStore } from './persistence/timer-store.js';
@@ -233,4 +240,133 @@ it('запись пакета: контейнер и содержимое, об�
   await expect(
     write({ upserts: [{ row: { ...chest, x: 5 }, expectedVersion: 2 }], deletes: [] }),
   ).resolves.toMatchObject({ written: [0x60200000] });
+});
+
+it('критическая транзакция: коммит → «аварийное завершение» → загрузка видит обмен без потерь и копий', async () => {
+  const A = 0x20000011 as EntityId;
+  const B = 0x20000012 as EntityId;
+  const now = new Date();
+  const base = { shardId: 'local-dev', kind: 'item', createdAt: now, updatedAt: now };
+  await client.db.insert(worldEntities).values([
+    {
+      ...base,
+      entityId: 0x60300001,
+      contentKey: 'item.blade',
+      placement: 'equipped',
+      parentId: A,
+      slot: 'main-hand',
+      rootOwnerId: A,
+    },
+    {
+      ...base,
+      entityId: 0x60300002,
+      contentKey: 'item.copper-coin',
+      amount: 5_000,
+      placement: 'equipped',
+      parentId: B,
+      slot: 'pack',
+      rootOwnerId: B,
+    },
+  ]);
+  const lease = new PartitionLeaseRepo(client.db, 'local-dev', 'proving-9');
+  const { epoch } = await lease.acquire('node-a', 15_000);
+  const allocator = new IdAllocator(new InMemoryIdLeaseProvider({ item: 0x400000 }), {
+    leaseSize: 256,
+  });
+  await allocator.ready();
+  let tracker: DirtyTracker<WorldRowOut> | null = null;
+  const core = new PartitionCore({
+    partitionId: 'proving-9',
+    realm: { key: 'proving', width: 64, height: 64 },
+    bounds: { minX: 0, minY: 0, maxX: 63, maxY: 63 },
+    allocator,
+    onDirty: (id, r) => tracker?.onDirty(id, r),
+  });
+  const items = [
+    ...(await loadHeroTree(client.db, 'local-dev', A)),
+    ...(await loadHeroTree(client.db, 'local-dev', B)),
+  ];
+  core.hydrate([
+    {
+      id: A,
+      kind: 'hero',
+      placement: { kind: 'world', x: 5, y: 5, h: 0 },
+      player: true,
+      height: 7,
+      blocksSight: false,
+      behaviors: [],
+    },
+    {
+      id: B,
+      kind: 'hero',
+      placement: { kind: 'world', x: 6, y: 5, h: 0 },
+      player: true,
+      height: 7,
+      blocksSight: false,
+      behaviors: [],
+    },
+    ...items,
+  ]);
+  const serialize = (e: Entity) => entityToRow('local-dev', 'proving', e, (id) => core.get(id));
+  tracker = new DirtyTracker(core, serialize);
+  const crit = new CriticalTransactionCoordinator(
+    core,
+    tracker,
+    dbCriticalPorts(client.db, 'local-dev', 'proving', lease, () => epoch, serialize),
+    (k) => allocator.next(k),
+  );
+  const out = await crit.run({
+    type: 'TRADE_EXCHANGE',
+    idempotencyKey: 'trade-1',
+    participants: [0x60300001 as EntityId, 0x60300002 as EntityId],
+    payload: { amount: 300 },
+    plan: (get, newId) => {
+      const sword = get(0x60300001 as EntityId) as Entity;
+      const stack = get(0x60300002 as EntityId) as Entity;
+      sword.placement = { kind: 'equipped', holder: B, slot: 'main-hand' };
+      const paid: Entity = {
+        ...stack,
+        id: newId('item'),
+        placement: { kind: 'equipped', holder: A, slot: 'pack' },
+        data: { ...stack.data!, amount: 300, entityVersion: 0 },
+      };
+      return {
+        upserts: [sword, { ...stack, data: { ...stack.data!, amount: 4_700 } }, paid],
+        deletes: [],
+        ledger: [
+          { eventKind: 'TRANSFER', itemId: sword.id, fromOwnerId: A, toOwnerId: B },
+          { eventKind: 'SPLIT', itemId: stack.id, amountDelta: -300 },
+          {
+            eventKind: 'CREATE',
+            itemId: paid.id,
+            sourceItemId: stack.id,
+            amountDelta: 300,
+            toOwnerId: A,
+          },
+        ],
+        result: { paid: paid.id },
+      };
+    },
+  });
+  // «SIGKILL»: память отбрасывается, состояние читается из БД заново.
+  const treeA = await loadHeroTree(client.db, 'local-dev', A);
+  const treeB = await loadHeroTree(client.db, 'local-dev', B);
+  expect(treeA.map((e) => [e.data?.contentKey, e.data?.amount])).toEqual([
+    ['item.copper-coin', 300],
+  ]);
+  expect(treeB.map((e) => [e.data?.contentKey, e.data?.amount]).sort()).toEqual([
+    ['item.blade', 1],
+    ['item.copper-coin', 4_700],
+  ]);
+  const ledger = await client.db.select().from(itemLedger).where(eq(itemLedger.txId, out.txId));
+  expect(ledger.map((l) => l.eventKind).sort()).toEqual(['CREATE', 'SPLIT', 'TRANSFER']);
+  expect(ledger.find((l) => l.eventKind === 'CREATE')?.sourceItemId).toBe(0x60300002);
+  const again = await crit.run({
+    type: 'TRADE_EXCHANGE',
+    idempotencyKey: 'trade-1',
+    participants: [0x60300001 as EntityId, 0x60300002 as EntityId],
+    payload: { amount: 300 },
+    plan: () => ({ upserts: [], deletes: [], ledger: [] }),
+  });
+  expect(again).toMatchObject({ txId: out.txId, replayed: true });
 });

@@ -15,6 +15,8 @@ import {
   shardWorldState,
   worldEntities,
   worldTimers,
+  criticalTransactions,
+  itemLedger,
 } from '../schema/index.js';
 
 /** Ошибка хранилища мира с кодом `PERSIST_*` (сопоставляется с `PersistError` протокола). */
@@ -410,4 +412,90 @@ export async function softDeleteBatch(
         RETURNING w.entity_id`,
   );
   return result.rows.map((r) => Number(r.entity_id));
+}
+
+export type LedgerInsert = Omit<typeof itemLedger.$inferInsert, 'ledgerSeq'>;
+export type CriticalTxRow = typeof criticalTransactions.$inferSelect;
+
+export const findCriticalTx = async (
+  db: Executor,
+  shardId: string,
+  idempotencyKey: string,
+): Promise<CriticalTxRow | undefined> =>
+  (
+    await db
+      .select()
+      .from(criticalTransactions)
+      .where(
+        and(
+          eq(criticalTransactions.shardId, shardId),
+          eq(criticalTransactions.idempotencyKey, idempotencyKey),
+        ),
+      )
+  )[0];
+
+export interface CriticalCommit {
+  shardId: string;
+  txId: string;
+  txType: string;
+  idempotencyKey: string | null;
+  payloadHash: string;
+  actorAccountId: string | null;
+  /** Несохранённые фоновые изменения участников — в той же транзакции. */
+  prior: WriteRow[];
+  upserts: WriteRow[];
+  deletes: { entityId: number; expectedVersion: number }[];
+  ledger: LedgerInsert[];
+  result: Record<string, unknown>;
+  now: Date;
+  /** Проверка эпохи партиции внутри транзакции. */
+  assertEpoch: (tx: Executor) => Promise<void>;
+}
+
+/**
+ * Критическая транзакция одной ACID-единицей: реестр, предварительные изменения, план, удаления, журнал.
+ * Любое расхождение версий откатывает всё (`PERSIST_TX_CONFLICT`).
+ */
+export async function commitCritical(db: Database, c: CriticalCommit): Promise<void> {
+  await db.transaction(async (tx) => {
+    await c.assertEpoch(tx);
+    await tx.insert(criticalTransactions).values({
+      txId: c.txId,
+      shardId: c.shardId,
+      txType: c.txType,
+      idempotencyKey: c.idempotencyKey,
+      payloadHash: c.payloadHash,
+      status: 'committed',
+      result: c.result,
+      actorAccountId: c.actorAccountId,
+      createdAt: c.now,
+      committedAt: c.now,
+    });
+    const prior = await writeBatch(tx, c.prior);
+    if (prior.conflicts.length > 0) {
+      throw new WorldStoreError('PERSIST_TX_CONFLICT', 'версии участников изменились', {
+        entityIds: prior.conflicts,
+      });
+    }
+    const main = await writeBatch(tx, c.upserts);
+    if (main.conflicts.length > 0) {
+      throw new WorldStoreError('PERSIST_TX_CONFLICT', 'версии участников изменились', {
+        entityIds: main.conflicts,
+      });
+    }
+    const deleted = await softDeleteBatch(tx, c.shardId, c.deletes, c.now);
+    if (deleted.length !== c.deletes.length) {
+      throw new WorldStoreError('PERSIST_TX_CONFLICT', 'удаляемые предметы изменились', {
+        entityIds: c.deletes.map((d) => d.entityId).filter((id) => !deleted.includes(id)),
+      });
+    }
+    if (c.ledger.length > 0) await tx.insert(itemLedger).values(c.ledger);
+  });
+}
+
+/** Секции журнала текущего и следующего месяца. */
+export async function ensureLedgerMonths(db: Executor, now = new Date()): Promise<void> {
+  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  await db.execute(sql`SELECT item_ledger_ensure_month(${now.toISOString().slice(0, 10)}::date)`);
+  await db.execute(sql`SELECT item_ledger_ensure_month(${next.toISOString().slice(0, 10)}::date)`);
 }

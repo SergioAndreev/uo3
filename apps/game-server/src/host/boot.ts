@@ -2,6 +2,7 @@ import { shards, type Database } from '@duskmarch/db';
 import {
   DbIdLeaseProvider,
   PartitionLeaseRepo,
+  ensureLedgerMonths,
   initShardState,
   saveShardState,
 } from '@duskmarch/db/world';
@@ -20,6 +21,8 @@ import type { Entity } from '../engine/partition.js';
 import { loadPartition, quarantineRows, type LoadMode } from '../persistence/loader.js';
 import { DirtyTracker, FIELD } from '../persistence/dirty-tracker.js';
 import { FlushCoordinator, type WorldRowOut } from '../persistence/flush.js';
+import { CriticalTransactionCoordinator } from '../persistence/critical.js';
+import { dbCriticalPorts } from '../persistence/critical-store.js';
 import { dbBatchWriter, entityToRow } from '../persistence/flush-store.js';
 import { PartitionLease } from '../persistence/partition-lease.js';
 import { TimerStore } from '../persistence/timer-store.js';
@@ -225,7 +228,35 @@ export async function buildNode(
         log: ports.log,
       },
     );
-    runtime.persistence = { tracker, flush };
+    await ensureLedgerMonths(db);
+    const serialize = (e: Entity) =>
+      entityToRow(config.SHARD_ID, realm.key, e, (id) => core.get(id));
+    const critical = new CriticalTransactionCoordinator(
+      core,
+      tracker,
+      dbCriticalPorts(
+        db,
+        config.SHARD_ID,
+        realm.key,
+        leaseRepo,
+        () => held.epoch,
+        serialize,
+        (type, r) =>
+          ports.publish(`audit.${type.toLowerCase()}`, {
+            txId: r.txId,
+            actorAccountId: r.actor?.accountId,
+            actorAccessLevel: r.actor?.accessLevel,
+            reason: r.reason,
+            items: r.ledger.map((l) => l.itemId),
+          }),
+      ),
+      (kind) => allocator.next(kind),
+      {
+        mode: () => flush.mode,
+        onAlert: (code, data) => ports.log('error', `критическая транзакция: ${code}`, data),
+      },
+    );
+    runtime.persistence = { tracker, flush, critical };
     runtime.sessions.useHeroFlush((ids) => flush.flushNow(ids));
     node.scheduler.onPostTick(() => flush.tick());
     node.scheduler.every(config.PERSIST_FLUSH_INTERVAL_MS, () => void flush.flush(), 'background');

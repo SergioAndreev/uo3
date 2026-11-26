@@ -1,6 +1,7 @@
 import { hasAccess, type AccessLevel, type EntityId, type IdAllocator } from '@duskmarch/domain';
 import { AnnounceRequest } from '@duskmarch/protocol';
 import { Value } from '@sinclair/typebox/value';
+import type { CriticalTransactionCoordinator } from '../persistence/critical.js';
 import type { DirtyTracker } from '../persistence/dirty-tracker.js';
 import type { FlushCoordinator, WorldRowOut } from '../persistence/flush.js';
 import type { TimerStore } from '../persistence/timer-store.js';
@@ -108,7 +109,11 @@ export interface PartitionRuntime {
   /** Эпоха партиции утрачена: вход и запись запрещены. */
   fenced?: boolean;
   /** Сохранение мира (P08): отметки изменений и фоновая запись. */
-  persistence?: { tracker: DirtyTracker<WorldRowOut>; flush: FlushCoordinator };
+  persistence?: {
+    tracker: DirtyTracker<WorldRowOut>;
+    flush: FlushCoordinator;
+    critical?: CriticalTransactionCoordinator;
+  };
   sessions: SessionManager;
   roomId: string;
   realm: string;
