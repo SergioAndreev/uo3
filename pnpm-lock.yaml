@@ -399,6 +399,9 @@ importers:
       '@duskmarch/domain':
         specifier: workspace:*
         version: link:../domain
+      '@sinclair/typebox':
+        specifier: 'catalog:'
+        version: 0.34.52
     devDependencies:
       '@duskmarch/config':
         specifier: workspace:*

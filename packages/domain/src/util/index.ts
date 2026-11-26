@@ -46,3 +46,4 @@ export function canonicalJson(value: unknown): string {
   };
   return write(value, '$');
 }
+export { sha256 } from './sha256.js';

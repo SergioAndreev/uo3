@@ -99,9 +99,23 @@ CRC-32 (полином `0xEDB88320`) в заголовке ловит повре
   "width": 256,
   "height": 256,
   "chunkSize": 32,
-  "chunks": [{ "cx": 0, "cy": 0, "key": "chunk.dawn.x0.y0", "sha256": "…" }]
+  "chunks": [{ "cx": 0, "cy": 0, "key": "chunk.dawn.x0.y0", "sha256": "…" }],
+  "landmarks": { "spawn": [{ "x": 128, "y": 128 }] }
 }
 ```
+
+### Стенды плана `proving` (64×64, пол — трава на высоте 0)
+| Ориентир | Клетки | Свойства |
+| --- | --- | --- |
+| `spawn` | (32, 32) | `standable` |
+| `stairs` | (4..8, 4) | камень, высоты 0, 2, 4, 6, 8 |
+| `low-ceiling` | (12..14, 4) | пол 0, объект `model.test-crate` с флагом `roof` на высоте 6 |
+| `wall-window` | (20, 2..10), проём (20, 6) | стена `impassable` + `blocks-sight`, объекты `model.test-wall`; проём без флагов |
+| `door` | (20, 12) | `door` + `standable` |
+| `shallow-water` | (40..47, 4..11) | `shallow-water`, `water` + `standable` |
+| `deep-water` | (48..55, 4..11) | `deep-water`, `water` + `deep` |
+| `shelter` | (8..11, 40..43) | камень, `shelter` + `standable` |
+| `hazard` | (40..43, 40..43) | пепел, `hazard` + `standable` |
 
 ### Модули `@duskmarch/asset-formats`
 `pack/` (схема, проверка, отпечаток, загрузчик), `chunk/` (кодек, CRC-32, доступ к клеткам), `world/` (индекс), `palette/`, `glb/` (писатель и проверка), `synthetic/` (шум, стенды, пресеты, сборка пакета). Подпути экспорта: `/pack`, `/chunk`, `/world`, `/palette`, `/glb`, `/synthetic`.

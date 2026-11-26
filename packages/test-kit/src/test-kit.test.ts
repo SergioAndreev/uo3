@@ -41,3 +41,14 @@ it('фабрики воспроизводимы', async () => {
   expect(testProfile().preset).toBe('proving');
   expect(testProfile('standard', { features: { mounts: false } }).features.mounts).toBe(false);
 });
+
+it('фикстуры мира', async () => {
+  const { flatChunk, packChunks, provingPack } = await import('./index.js');
+  expect(provingPack()).toBe(provingPack());
+  const chunks = packChunks();
+  expect([...chunks.keys()].sort()).toEqual(['0,0', '0,1', '1,0', '1,1']);
+  expect(chunks.get('0,0')?.realm).toBe(255);
+  const flat = flatChunk(3);
+  expect(flat.heights.every((h) => h === 3)).toBe(true);
+  expect(flat.flags[0]).toBe(4);
+});
