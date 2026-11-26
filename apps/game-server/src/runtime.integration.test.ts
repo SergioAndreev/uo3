@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { DbEnvSchema, GameServerEnvSchema, loadServerConfig } from '@duskmarch/config/env/server';
 import { accounts, characters, createDbClient, migrateDatabase, seedDatabase } from '@duskmarch/db';
 import { issueBundle, readShardLive } from '@duskmarch/db/live';
-import { RUNTIME_OPCODES } from '@duskmarch/protocol';
+import { NETCODE_OPCODES, PROTOCOL_VERSION, RUNTIME_OPCODES } from '@duskmarch/protocol';
 import { Client } from 'colyseus.js';
 import { eq, sql } from 'drizzle-orm';
 import { Redis } from 'iovalkey';
@@ -27,8 +27,13 @@ const redis = new Redis(
   config.VALKEY_PASSWORD ? { password: config.VALKEY_PASSWORD } : {},
 );
 let host: GameHost;
+let worldVersion = '';
 const accountId = randomUUID();
 const characterId = randomUUID();
+const heroes = [
+  { accountId: randomUUID(), characterId: randomUUID(), entityId: 536_870_914, name: 'Ясна' },
+  { accountId: randomUUID(), characterId: randomUUID(), entityId: 536_870_915, name: 'Ива' },
+];
 
 beforeAll(async () => {
   await admin.db.execute(sql.raw(`drop database if exists ${name} with (force)`));
@@ -62,8 +67,37 @@ beforeAll(async () => {
     starterLoadout: [],
     createdAt: now,
   });
+  for (const [i, hero] of heroes.entries()) {
+    await db.db.insert(accounts).values({
+      id: hero.accountId,
+      email: `${hero.accountId}@example.com`,
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.db.insert(characters).values({
+      id: hero.characterId,
+      shardId: 'local-dev',
+      accountId: hero.accountId,
+      entityId: hero.entityId,
+      slot: 0,
+      name: hero.name,
+      nameKey: hero.name.toLowerCase(),
+      status: 'active',
+      stats: { might: 30, finesse: 30, will: 30 },
+      appearance: {},
+      startCity: 'proving-camp',
+      realm: 'proving',
+      x: 10 + i,
+      y: 41,
+      h: 0,
+      starterLoadout: [],
+      createdAt: now,
+    });
+  }
   const world = loadWorld({ NODE_ENV: 'test' });
   if (!world.ok) throw new Error(world.errors.join());
+  worldVersion = world.version;
   vi_silence();
   host = await startGameHost(
     {
@@ -182,4 +216,101 @@ it('билет P05 → вход в партицию и хаб → выход в 
   expect(saved?.lastPlayedAt).not.toBeNull();
   expect(await redis.get(`dm:shard:local-dev:session:${accountId}`)).toBeNull();
   await hubRoom.leave();
+}, 60_000);
+
+/** Билет мира для героя из `heroes`. */
+async function worldTicket(hero: (typeof heroes)[number], index: number): Promise<string> {
+  const now = Date.now();
+  const bundleId = randomUUID();
+  const roomId = 'local-dev-proving-0';
+  const base = {
+    ...ticketPayload('world', roomId, bundleId, now),
+    accountId: hero.accountId,
+    characterId: hero.characterId,
+    entityId: hero.entityId,
+    name: hero.name,
+    x: 10 + index,
+  };
+  const world = { roomId, token: randomUUID().replace(/-/g, ''), payload: base, free: 10 };
+  const hub = {
+    roomId: 'local-dev-hub',
+    token: randomUUID().replace(/-/g, ''),
+    payload: { ...base, roomType: 'hub', roomId: 'local-dev-hub' },
+    free: 10,
+  };
+  await issueBundle(redis, {
+    shardId: 'local-dev',
+    accountId: hero.accountId,
+    bundleId,
+    world,
+    hub,
+    ttlMs: 30_000,
+    now,
+  });
+  return world.token;
+}
+
+interface Replicated {
+  beings: Map<string, { name: string; x: number; healthPercent: number }>;
+  privates: Map<string, { health: number }>;
+}
+
+it('P07: рукопожатие, два героя видят друг друга, без чужого приватного, перестают видеть при уходе', async () => {
+  const client = new Client(`ws://127.0.0.1:${host.gamePort}`);
+  const rooms = [];
+  for (const [i, hero] of heroes.entries()) {
+    const room = await client.joinById<Replicated>('local-dev-proving-0', {
+      ticket: await worldTicket(hero, i),
+    });
+    room.onMessage('*', () => undefined);
+    const welcome = new Promise<Record<string, unknown>>((resolve) =>
+      room.onMessage(NETCODE_OPCODES['session.welcome'], resolve),
+    );
+    room.send(NETCODE_OPCODES['session.hello'], {
+      protocolVersion: PROTOCOL_VERSION,
+      rulesetFingerprint: '0'.repeat(64),
+      worldVersion,
+    });
+    expect(await welcome).toMatchObject({
+      negotiatedProtocolVersion: PROTOCOL_VERSION,
+      compatibility: 'OK',
+      worldVersion,
+    });
+    rooms.push(room);
+  }
+  const [a, b] = rooms as [(typeof rooms)[number], (typeof rooms)[number]];
+  const [ha, hb] = heroes as [(typeof heroes)[number], (typeof heroes)[number]];
+  const until = async (check: () => boolean) => {
+    for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 50));
+    return check();
+  };
+  expect(
+    await until(
+      () => a.state.beings?.has(String(hb.entityId)) && b.state.beings?.has(String(ha.entityId)),
+    ),
+  ).toBe(true);
+  expect(a.state.beings.get(String(hb.entityId))).toMatchObject({ name: 'Ива', x: 11 });
+  expect([...a.state.privates.keys()]).toEqual([String(ha.entityId)]);
+  expect([...b.state.privates.keys()]).toEqual([String(hb.entityId)]);
+  const pong = new Promise<Record<string, unknown>>((resolve) =>
+    a.onMessage(NETCODE_OPCODES['time.pong'], resolve),
+  );
+  a.send(NETCODE_OPCODES['time.ping'], { seq: 1, clientSendMs: 1 });
+  expect(await pong).toMatchObject({ seq: 1, tickIntervalMs: 50 });
+  const errored = new Promise<Record<string, unknown>>((resolve) =>
+    a.onMessage(NETCODE_OPCODES['cmd.error'], resolve),
+  );
+  a.send(0x0100, { seq: 1, direction: 2 });
+  expect(await errored).toMatchObject({ error: 'CMD_HANDLER_UNAVAILABLE' });
+
+  const closed = new Promise<number>((resolve) => b.onLeave(resolve));
+  b.send(RUNTIME_OPCODES['session:logout_request']);
+  expect(await closed).toBe(4122);
+  expect(await until(() => !a.state.beings.has(String(hb.entityId)))).toBe(true);
+
+  const silent = await client.joinById('local-dev-proving-0', { ticket: await worldTicket(hb, 1) });
+  silent.onMessage('*', () => undefined);
+  const timeout = await new Promise<number>((resolve) => silent.onLeave(resolve));
+  expect(timeout).toBe(4129);
+  await a.leave();
 }, 60_000);

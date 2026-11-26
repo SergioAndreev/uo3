@@ -155,6 +155,12 @@ export class SessionManager {
     return this.byAccount.get(accountId);
   }
 
+  /** Сессия героя по его сущности. */
+  ofEntity(entityId: EntityId): Session | undefined {
+    for (const s of this.byAccount.values()) if (s.entityId === entityId) return s;
+    return undefined;
+  }
+
   ofClient(clientId: string): Session | undefined {
     return this.byClient.get(clientId);
   }

@@ -1,8 +1,8 @@
-import { hasAccess, type AccessLevel, type IdAllocator } from '@duskmarch/domain';
+import { hasAccess, type AccessLevel, type EntityId, type IdAllocator } from '@duskmarch/domain';
 import { AnnounceRequest } from '@duskmarch/protocol';
 import { Value } from '@sinclair/typebox/value';
 import { HubCore, type HubClaims, type HubPorts } from '../engine/hub.js';
-import { PartitionCore, type Entity } from '../engine/partition.js';
+import { PartitionCore, type Entity, type PartitionEvent } from '../engine/partition.js';
 import type { Rect } from '../engine/spatial-index.js';
 import { Scheduler } from '../engine/scheduler.js';
 import {
@@ -89,7 +89,15 @@ export interface NodePorts {
   finalFlush?(): Promise<void>;
 }
 
-interface PartitionRuntime {
+/** Слушатели ядра партиции (сетевой слой P07). */
+export interface PartitionListener {
+  event?(event: PartitionEvent): void;
+  dirty?(id: EntityId, reason: string): void;
+}
+
+export interface PartitionRuntime {
+  partitionId: string;
+  listeners: Set<PartitionListener>;
   core: PartitionCore;
   sessions: SessionManager;
   roomId: string;
@@ -137,6 +145,7 @@ export class ShardNode {
   /** Партиция: проверка границ и гидратация до приёма игроков. */
   addPartition(spec: PartitionSpec): PartitionRuntime {
     if (this.config.role === 'hub') throw new Error('узел хаба не обслуживает партиции');
+    const listeners = new Set<PartitionListener>();
     const core = new PartitionCore({
       partitionId: spec.partitionId,
       realm: spec.realm,
@@ -144,6 +153,12 @@ export class ShardNode {
       allocator: spec.allocator,
       hardCapacity: this.config.capacity,
       staffBuffer: this.config.staffBuffer,
+      onEvent: (event) => {
+        for (const l of listeners) l.event?.(event);
+      },
+      onDirty: (id, reason) => {
+        for (const l of listeners) l.dirty?.(id, reason);
+      },
     });
     core.hydrate(spec.initial ?? []);
     const roomId = `${this.config.shardId}-${spec.partitionId}`;
@@ -168,7 +183,14 @@ export class ShardNode {
       priority: 100,
       run: (ctx) => core.tick(ctx.tick),
     });
-    const runtime = { core, sessions, roomId, realm: spec.realm.key };
+    const runtime: PartitionRuntime = {
+      partitionId: spec.partitionId,
+      listeners,
+      core,
+      sessions,
+      roomId,
+      realm: spec.realm.key,
+    };
     this.partitions.set(spec.partitionId, runtime);
     return runtime;
   }

@@ -12,6 +12,7 @@ import { infraPorts, subscribeEvents } from './host/infra-ports.js';
 import type { ShardNode } from './host/node.js';
 import { safeZones, spawnResolver } from './host/world-ports.js';
 import { ShardHubRoom, WorldPartitionRoom } from './rooms/rooms.js';
+import { netContext } from './netcode/context.js';
 
 export interface GameHost {
   healthPort: number;
@@ -79,10 +80,11 @@ export async function startGameHost(
       game.define('world', WorldPartitionRoom);
       game.define('hub', ShardHubRoom);
       await game.listen(config.GAME_PORT, config.GAME_HOST);
+      const net = netContext(config.SHARD_ID, profile, world.version, log);
       for (const [partitionId, p] of node.partitions) {
-        await matchMaker.createRoom('world', { node, partitionId, roomId: p.roomId });
+        await matchMaker.createRoom('world', { node, partitionId, roomId: p.roomId, net });
       }
-      if (node.hub) await matchMaker.createRoom('hub', { node, roomId: node.hubRoomId });
+      if (node.hub) await matchMaker.createRoom('hub', { node, roomId: node.hubRoomId, net });
       const nc = infra.nats();
       if (nc)
         unsubscribe = subscribeEvents(
