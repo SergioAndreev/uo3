@@ -11,6 +11,9 @@ it('назначает пороги по слоям', () => {
   });
   expect(nodePreset().test?.coverage).toMatchObject({ thresholds: { lines: 70, branches: 65 } });
   expect(browserPreset().test?.environment).toBe('jsdom');
+  expect(nodePreset().test?.coverage).toMatchObject({
+    exclude: expect.arrayContaining(['**/dist/**', '**/*.d.ts', '**/*.test.{ts,tsx}']),
+  });
 });
 
 it('прогон падает при покрытии ниже порога', () => {
