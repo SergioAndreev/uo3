@@ -111,6 +111,19 @@ console.log(redactConfig(ApiEnvSchema, config));
 | `GAME_PORT` | Порт WebSocket | `2567` |  |
 | `GAME_HEALTH_PORT` | Порт проверок здоровья | `2568` |  |
 | `SHARD_ID` | Идентификатор шарда | `local-dev` |  |
+| `SHARD_RULESET_PRESET` | Пресет профиля правил шарда | `standard` |  |
+| `SHARD_RULESET_FILE` | Файл переопределения правил шарда (JSON или YAML) | — |  |
+| `WORLD_PACK_DIR` | Каталог пакета мира; без него вне production — синтетический proving | — |  |
+| `GAME_NODE_ROLE` | Роль узла: партиции и хаб, только партиции, только хаб | `all` |  |
+| `GAME_NODE_ID` | Идентификатор узла в heartbeat | `node-1` |  |
+| `GAME_PUBLIC_WS_URL` | Адрес WebSocket узла для клиентов (публикуется в реестре комнат) | `ws://127.0.0.1:2567` |  |
+| `GAME_HEARTBEAT_MS` | Период heartbeat узла, мс | `5000` |  |
+| `GAME_RECONNECT_WINDOW_MS` | Окно переподключения, мс | `30000` |  |
+| `GAME_IDLE_TIMEOUT_MS` | Отключение игрока за бездействие, мс (0 — выключено) | `1800000` |  |
+| `GAME_SHUTDOWN_HARD_TIMEOUT_MS` | Жёсткий предел остановки, мс | `30000` |  |
+| `GAME_PARTITION_CAPACITY` | Игроков на партицию | `500` |  |
+| `GAME_STAFF_BUFFER` | Мест персонала сверх ёмкости | `20` |  |
+| `GAME_MOTD` | Сообщение дня хаба | `Добро пожаловать на Duskmarch` |  |
 
 ### asset-tool
 

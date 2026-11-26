@@ -35,9 +35,58 @@ export interface HubInfo {
   updatedAt: number;
 }
 
+/** Живая сессия аккаунта на шарде; поля P06 необязательны для читателей P05. */
 export interface LiveSession {
   characterId: string;
   state: 'online' | 'logout_delay';
+  entityId?: number;
+  worldRoomId?: string;
+  nodeId?: string;
+  sessionId?: string;
+  updatedAt?: number;
+}
+
+const CLAIM = `
+local cur = redis.call('GET', KEYS[1])
+if cur then
+  local c = cjson.decode(cur)
+  if c.characterId ~= ARGV[2] then return cur end
+end
+redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[3])
+return 'claimed'`;
+
+const RELEASE = `
+local cur = redis.call('GET', KEYS[1])
+if cur and cjson.decode(cur).sessionId == ARGV[1] then redis.call('DEL', KEYS[1]) return 1 end
+return 0`;
+
+/** Атомарный захват: `claimed` или запись другого героя аккаунта. */
+export async function claimSession(
+  redis: Redis,
+  shard: string,
+  account: string,
+  session: LiveSession,
+  ttlMs: number,
+): Promise<'claimed' | LiveSession> {
+  const result = (await redis.eval(
+    CLAIM,
+    1,
+    KEYS.session(shard, account),
+    JSON.stringify(session),
+    session.characterId,
+    ttlMs,
+  )) as string;
+  return result === 'claimed' ? 'claimed' : (JSON.parse(result) as LiveSession);
+}
+
+/** Удаляет запись, только если она принадлежит этой сессии. */
+export async function releaseSession(
+  redis: Redis,
+  shard: string,
+  account: string,
+  sessionId: string,
+) {
+  return Number(await redis.eval(RELEASE, 1, KEYS.session(shard, account), sessionId)) === 1;
 }
 
 export interface ShardLive {

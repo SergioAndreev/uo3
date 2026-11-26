@@ -4,6 +4,8 @@ import { ValkeyEnvSchema, loadServerConfig } from '@duskmarch/config/env/server'
 import { Redis } from 'iovalkey';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
+  claimSession,
+  releaseSession,
   HEARTBEAT_TTL_MS,
   KEYS,
   issueBundle,
@@ -239,5 +241,26 @@ describe('билеты', () => {
       ),
     ).toBe('FULL_HUB');
     expect(await reservedSeats(redis, s, 'w1', T + 30_000)).toBe(0);
+  });
+});
+
+describe('живая сессия P06', () => {
+  it('захват: свой герой перезаписывает, чужой возвращает запись; освобождение по sessionId', async () => {
+    const s = shard();
+    const a = { characterId: 'A', state: 'online' as const, sessionId: 's1', entityId: 7 };
+    expect(await claimSession(redis, s, 'acc', a, 10_000)).toBe('claimed');
+    expect(await claimSession(redis, s, 'acc', { ...a, sessionId: 's2' }, 10_000)).toBe('claimed');
+    expect(
+      await claimSession(
+        redis,
+        s,
+        'acc',
+        { characterId: 'B', state: 'online', sessionId: 's3' },
+        10_000,
+      ),
+    ).toMatchObject({ characterId: 'A', sessionId: 's2' });
+    expect(await releaseSession(redis, s, 'acc', 's1')).toBe(false);
+    expect(await releaseSession(redis, s, 'acc', 's2')).toBe(true);
+    expect(await readSession(redis, s, 'acc')).toBeNull();
   });
 });

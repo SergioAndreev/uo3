@@ -82,6 +82,11 @@ export const characters = pgTable(
     statusBeforeDeletion: varchar('status_before_deletion', { length: 24 }),
     renamedAt: at('renamed_at'),
     lockReason: text('lock_reason'),
+    /** Текущие ресурсы; `null` — полные (герой ещё не входил в мир). */
+    health: integer('health'),
+    verve: integer('verve'),
+    resonance: integer('resonance'),
+    playtimeSeconds: integer('playtime_seconds').notNull().default(0),
   },
   (t) => [
     uniqueIndex('characters_name_live_idx')

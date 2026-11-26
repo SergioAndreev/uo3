@@ -1,25 +1,11 @@
 import { hasAccess, isStaff, type AccessLevel, type EntityId } from '@duskmarch/domain';
+import { WS_CLOSE } from '@duskmarch/protocol';
 import type { TimerHandle } from './timing-wheel.js';
 import type { PartitionCore } from './partition.js';
 import type { Scheduler } from './scheduler.js';
 
 /** Коды закрытия из реестра протокола. */
-export const CLOSE = {
-  INVALID_TICKET: 4101,
-  BANNED: 4103,
-  DUPLICATE_SESSION: 4104,
-  CHARACTER_NOT_FOUND: 4105,
-  PARTITION_FULL: 4106,
-  IDLE_TIMEOUT: 4109,
-  SERVER_SHUTDOWN: 4112,
-  LOGOUT_COMPLETE: 4122,
-  SESSION_REVOKED: 4123,
-  ACCOUNT_ALREADY_IN_WORLD: 4124,
-  CHARACTER_LOCKED: 4125,
-  CHARACTER_FORCE_RENAME: 4126,
-  SHARD_MAINTENANCE: 4127,
-  PARTITION_NOT_READY: 4128,
-} as const;
+export const CLOSE = WS_CLOSE;
 
 /** Отказ подключения с кодом закрытия. */
 export class CloseError extends Error {

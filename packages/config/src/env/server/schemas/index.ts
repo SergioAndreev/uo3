@@ -156,6 +156,46 @@ export const GameServerEnvSchema = Type.Object({
   WORLD_PACK_DIR: Type.Optional(
     Text({ description: 'Каталог пакета мира; без него вне production — синтетический proving' }),
   ),
+  GAME_NODE_ROLE: level(
+    ['all', 'partition', 'hub'],
+    'all',
+    'Роль узла: партиции и хаб, только партиции, только хаб',
+  ),
+  GAME_NODE_ID: Text({
+    default: 'node-1',
+    pattern: '^[a-z0-9-]+$',
+    description: 'Идентификатор узла в heartbeat',
+  }),
+  GAME_PUBLIC_WS_URL: Url('ws', {
+    default: 'ws://127.0.0.1:2567',
+    description: 'Адрес WebSocket узла для клиентов (публикуется в реестре комнат)',
+  }),
+  GAME_HEARTBEAT_MS: TimeoutMs({ default: 5_000, description: 'Период heartbeat узла, мс' }),
+  GAME_RECONNECT_WINDOW_MS: TimeoutMs({ default: 30_000, description: 'Окно переподключения, мс' }),
+  GAME_IDLE_TIMEOUT_MS: Type.Integer({
+    minimum: 0,
+    default: 1_800_000,
+    description: 'Отключение игрока за бездействие, мс (0 — выключено)',
+  }),
+  GAME_SHUTDOWN_HARD_TIMEOUT_MS: TimeoutMs({
+    default: 30_000,
+    description: 'Жёсткий предел остановки, мс',
+  }),
+  GAME_PARTITION_CAPACITY: Type.Integer({
+    minimum: 1,
+    default: 500,
+    description: 'Игроков на партицию',
+  }),
+  GAME_STAFF_BUFFER: Type.Integer({
+    minimum: 0,
+    default: 20,
+    description: 'Мест персонала сверх ёмкости',
+  }),
+  GAME_MOTD: Type.String({
+    default: 'Добро пожаловать на Duskmarch',
+    maxLength: 512,
+    description: 'Сообщение дня хаба',
+  }),
 });
 
 export const AssetToolEnvSchema = Type.Object({
