@@ -7,6 +7,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./identity": {
+      "types": "./dist/identity/index.d.ts",
+      "import": "./dist/identity/index.js"
     }
   },
   "scripts": {
@@ -15,7 +19,8 @@
     "test": "vitest run --coverage"
   },
   "dependencies": {
-    "@duskmarch/domain": "workspace:*"
+    "@duskmarch/domain": "workspace:*",
+    "@sinclair/typebox": "catalog:"
   },
   "devDependencies": {
     "@duskmarch/config": "workspace:*",

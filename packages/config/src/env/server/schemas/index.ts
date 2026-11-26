@@ -47,13 +47,87 @@ export const DbEnvSchema = Type.Object({
   ),
 });
 
+const prodKey = (description: string) =>
+  Type.Optional(
+    createSecretSchema({ 'x-crypto-key': true, 'x-required-in-production': true, description }),
+  );
+const level = (values: readonly string[], fallback: string, description: string) =>
+  Type.Union(
+    values.map((v) => Type.Literal(v)),
+    { default: fallback, description },
+  );
+
+/** Переменные подсистемы identity (P04). */
+const IdentityEnvFields = {
+  IDENTITY_JWT_SIGNING_KEYS_JSON: prodKey(
+    'JSON-массив {kid, privateKeyPem, retiredAt?} ключей Ed25519; вне production без него ключ создаётся при старте',
+  ),
+  IDENTITY_JWT_ISSUER: Text({ default: 'duskmarch', description: 'Поле iss Access JWT' }),
+  IDENTITY_JWT_AUDIENCE: Text({ default: 'duskmarch-api', description: 'Поле aud Access JWT' }),
+  IDENTITY_TOTP_KEYS_JSON: prodKey(
+    'JSON {версия: base64 32 байта} ключей AES-256-GCM секретов TOTP',
+  ),
+  IDENTITY_TOTP_KEY_VERSION: Text({ default: '1', description: 'Версия ключа TOTP для записи' }),
+  IDENTITY_BACKUP_CODE_PEPPER: prodKey('Перец HMAC резервных кодов 2FA'),
+  IDENTITY_PUBLIC_URL: Url('http', {
+    default: 'http://localhost:5273',
+    description: 'Адрес клиента для ссылок в письмах',
+  }),
+  IDENTITY_TRUSTED_ORIGINS: CsvList({
+    default: ['http://localhost:5273', 'http://localhost:5274'],
+    description: 'Origin, которым разрешены cookie-эндпоинты',
+  }),
+  IDENTITY_TOS_VERSION: Text({ default: '2026-11-01', description: 'Действующая версия условий' }),
+  IDENTITY_PRIVACY_VERSION: Text({
+    default: '2026-11-01',
+    description: 'Действующая версия политики конфиденциальности',
+  }),
+  IDENTITY_BLOCKED_EMAIL_DOMAINS: CsvList({
+    default: [],
+    description: 'Запрещённые почтовые домены через запятую',
+  }),
+  IDENTITY_REGISTRATION_CHALLENGE: level(
+    ['off', 'required'],
+    'off',
+    'Антибот-проверка регистрации; поставщик проверки подключается позже',
+  ),
+  IDENTITY_ARGON2_MEMORY_KIB: Type.Integer({
+    minimum: 1024,
+    default: 19_456,
+    description: 'Память argon2id, КиБ',
+  }),
+  IDENTITY_ARGON2_TIME_COST: Type.Integer({
+    minimum: 1,
+    default: 2,
+    description: 'Число проходов argon2id',
+  }),
+  MAIL_TRANSPORT: level(['log', 'smtp'], 'log', 'log — письма в журнал, smtp — отправка'),
+  MAIL_SMTP_URL: Type.Optional(
+    createSensitiveUriSchema('smtp', { description: 'Адрес SMTP-сервера' }),
+  ),
+  MAIL_FROM: Text({
+    default: 'Duskmarch <no-reply@duskmarch.invalid>',
+    description: 'Отправитель писем',
+  }),
+  OAUTH_REDIRECT_BASE_URL: Url('http', {
+    default: 'http://localhost:3001',
+    description: 'Базовый адрес API для callback OAuth',
+  }),
+  OAUTH_DISCORD_CLIENT_ID: Type.Optional(Text({ description: 'Клиент OAuth Discord' })),
+  OAUTH_DISCORD_CLIENT_SECRET: Type.Optional(
+    createSecretSchema({ description: 'Секрет OAuth Discord' }),
+  ),
+  OAUTH_GOOGLE_CLIENT_ID: Type.Optional(Text({ description: 'Клиент OAuth Google' })),
+  OAUTH_GOOGLE_CLIENT_SECRET: Type.Optional(
+    createSecretSchema({ description: 'Секрет OAuth Google' }),
+  ),
+};
+
 export const ApiEnvSchema = Type.Object({
   ...infra,
   API_HOST: Text({ default: '127.0.0.1', description: 'Адрес HTTP API' }),
   API_PORT: Port({ default: 3001, description: 'Порт HTTP API' }),
-  IDENTITY_JWT_SIGNING_KEYS_JSON: Type.Optional(
-    createSecretSchema({ 'x-crypto-key': true, description: 'Ключи Ed25519 (формат задаёт P04)' }),
-  ),
+  ...IdentityEnvFields,
   CORS_ALLOWED_ORIGINS: CsvList({
     default: ['http://localhost:5273'],
     description: 'Разрешённые origin через запятую',

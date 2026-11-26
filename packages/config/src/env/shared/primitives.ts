@@ -6,6 +6,7 @@ export const PROTOCOLS = {
   postgres: ['postgres', 'postgresql'],
   redis: ['redis', 'rediss'],
   nats: ['nats', 'tls'],
+  smtp: ['smtp', 'smtps'],
 } as const;
 
 /** Метаданные полей, понятные загрузчикам. */
@@ -14,6 +15,8 @@ export interface FieldMeta extends SchemaOptions {
   'x-sensitive-uri'?: boolean;
   'x-crypto-key'?: boolean;
   'x-protocols'?: readonly string[];
+  /** Поле обязательно в production, хотя вне его может отсутствовать. */
+  'x-required-in-production'?: boolean;
 }
 
 export type EnvSchema = TObject<TProperties>;

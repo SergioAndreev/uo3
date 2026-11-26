@@ -22,6 +22,7 @@ export const DOMAIN_ERROR_CODES = [
   'ERR_RULESET_SCHEMA',
   'ERR_CLOCK_REGRESSION',
   'ERR_INVALID_DICE',
+  'ERR_UNKNOWN_ACCESS_LEVEL',
 ] as const;
 
 export type DomainErrorCode = (typeof DOMAIN_ERROR_CODES)[number];

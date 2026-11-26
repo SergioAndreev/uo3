@@ -30,8 +30,12 @@ export function checkProductionInvariants(
   };
   for (const [key, field] of Object.entries(schema.properties)) {
     const value = config[key];
-    if (typeof value !== 'string') continue;
     const meta = field as FieldMeta;
+    if (value === undefined && meta['x-required-in-production'] === true) {
+      add(key, 'обязательно в production');
+      continue;
+    }
+    if (typeof value !== 'string') continue;
     if (isPlaceholder(value) || isPlaceholder(passwordOf(value))) {
       add(key, 'заглушка разработки запрещена в production');
     } else if (meta['x-crypto-key'] === true && Buffer.byteLength(value) < MIN_KEY_BYTES) {

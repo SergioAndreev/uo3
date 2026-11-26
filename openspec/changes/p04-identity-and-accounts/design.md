@@ -57,7 +57,7 @@
 ### D-06. Порты и реализации
 - `IdentityStore` — все чтения и записи таблиц identity плюс `transaction(fn)`. Реализации: `MemoryIdentityStore` (unit-тесты; транзакция — снимок и откат при исключении) и `DrizzleIdentityStore` (PostgreSQL).
 - `KeyValue` — `get`, `set(ttl)`, `del`, `incr(ttl)`, `take` (атомарное чтение с удалением). Реализации: `MemoryKeyValue` на инъецируемых часах и `ValkeyKeyValue`.
-- `MailTransport` — `log` (разработка, тесты) и `smtp` (`nodemailer`). `EventPublisher` — NATS (`identity.account.*`) или память.
+- `MailTransport` — `log` (разработка, тесты) и `smtp` (собственный SMTP-клиент). `EventPublisher` — NATS (`identity.account.*`) или память.
 - Сервисы получают часы `GameClock` и источник случайности `Entropy` (`randomBytes`); тесты подменяют оба.
 
 ### D-07. Outbox для писем и событий

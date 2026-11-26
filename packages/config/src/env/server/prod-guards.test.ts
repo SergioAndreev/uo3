@@ -3,10 +3,17 @@ import { issuesOf } from './fixture.test-helper.js';
 import { loadServerConfig } from './load.js';
 import { ApiEnvSchema } from './schemas/index.js';
 
+const KEY = 'k'.repeat(32);
+const PROD_KEYS = {
+  IDENTITY_JWT_SIGNING_KEYS_JSON: KEY,
+  IDENTITY_TOTP_KEYS_JSON: KEY,
+  IDENTITY_BACKUP_CODE_PEPPER: KEY,
+};
 const env = (extra: Record<string, string>) => ({
   DATABASE_URL: 'postgres://u:p@db/x',
   VALKEY_URL: 'redis://v',
   NATS_URL: 'nats://n',
+  ...PROD_KEYS,
   ...extra,
 });
 const load = (extra: Record<string, string>) =>
@@ -28,9 +35,23 @@ it.each<[string, Record<string, string>]>([
   for (const NODE_ENV of ['development', 'test']) expect(load({ NODE_ENV, ...extra })).toEqual([]);
 });
 
+it('production требует ключи identity', () => {
+  const issues = issuesOf(() =>
+    loadServerConfig(ApiEnvSchema, {
+      cwd: '/nonexistent',
+      env: {
+        DATABASE_URL: 'postgres://u:p@db/x',
+        VALKEY_URL: 'redis://v',
+        NATS_URL: 'nats://n',
+        NODE_ENV: 'production',
+      },
+    }),
+  );
+  expect(issues.map((i) => i.key).sort()).toEqual(Object.keys(PROD_KEYS).sort());
+});
+
 it('production принимает безопасные значения', () => {
-  const key = 'k'.repeat(32);
-  expect(load({ NODE_ENV: 'production', IDENTITY_JWT_SIGNING_KEYS_JSON: key })).toEqual([]);
+  expect(load({ NODE_ENV: 'production' })).toEqual([]);
   expect(
     load({ NODE_ENV: 'production', CORS_ALLOWED_ORIGINS: '*', CORS_ALLOW_CREDENTIALS: '0' }),
   ).toEqual([]);

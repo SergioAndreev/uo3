@@ -2,19 +2,19 @@
 
 ## 1. Права доступа в `packages/domain`
 
-- [ ] 1.1 Модуль `access`: `PERMISSIONS`, `permissionsOf`, `isStaff`, `compareLevels`, `parseAccessLevel` — проверка: тесты порядка уровней, наследования прав и отказа по неизвестному разрешению.
-- [ ] 1.2 `evaluateAccess`, `canActOn`, `canAssign`, `canSetEffective` — проверка: тесты сценариев `identity/access-levels` (эффективный уровень, бан, `mfa`, иерархия, назначение до `game-master` администратором).
-- [ ] 1.3 Документация `packages/domain/docs/access.md` с таблицей прав — проверка: тест сверяет таблицу документа с `PERMISSIONS`.
+- [x] 1.1 Модуль `access`: `PERMISSIONS`, `permissionsOf`, `isStaff`, `compareLevels`, `parseAccessLevel` — проверка: тесты порядка уровней, наследования прав и отказа по неизвестному разрешению.
+- [x] 1.2 `evaluateAccess`, `canActOn`, `canAssign`, `canSetEffective` — проверка: тесты сценариев `identity/access-levels` (эффективный уровень, бан, `mfa`, иерархия, назначение до `game-master` администратором).
+- [x] 1.3 Документация `packages/domain/docs/access.md` с таблицей прав — проверка: тест сверяет таблицу документа с `PERMISSIONS`.
 
 ## 2. Контракты в `packages/protocol`
 
-- [ ] 2.1 Коды ошибок `IDENTITY_ERRORS` с HTTP-статусами и форма ответа ошибки — проверка: тест уникальности кодов и префиксов `REG_`, `AUTH_`, `TFA_`, `SEC_`, `RBAC_`.
-- [ ] 2.2 TypeBox-схемы запросов и ответов REST, утверждения JWT, схемы событий `identity.account.*` — проверка: тесты `Value.Check` на корректных и некорректных примерах.
+- [x] 2.1 Коды ошибок `IDENTITY_ERRORS` с HTTP-статусами и форма ответа ошибки — проверка: тест уникальности кодов и префиксов `REG_`, `AUTH_`, `TFA_`, `SEC_`, `RBAC_`.
+- [x] 2.2 TypeBox-схемы запросов и ответов REST, утверждения JWT, схемы событий `identity.account.*` — проверка: тесты `Value.Check` на корректных и некорректных примерах.
 
 ## 3. Конфигурация и зависимости
 
-- [ ] 3.1 Переменные `IDENTITY_*`, `MAIL_*`, `OAUTH_*` в `ApiEnvSchema`, секреты через `*_FILE`, запрет генерации ключей в production — проверка: тесты загрузки конфигурации и `pnpm check:env`.
-- [ ] 3.2 Зависимости `@node-rs/argon2`, `nodemailer` — проверка: `pnpm check:licenses` и `pnpm audit` без новых нарушений.
+- [x] 3.1 Переменные `IDENTITY_*`, `MAIL_*`, `OAUTH_*` в `ApiEnvSchema`, секреты через `*_FILE`, запрет генерации ключей в production — проверка: тесты загрузки конфигурации и `pnpm check:env`.
+- [x] 3.2 Зависимость `@node-rs/argon2`, SMTP без сторонних пакетов — проверка: `pnpm check:licenses` и `pnpm audit` без новых нарушений.
 
 ## 4. База данных (`packages/db`)
 
