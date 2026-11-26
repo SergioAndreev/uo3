@@ -148,6 +148,24 @@ export class Identity {
     });
   }
 
+  /** Событие с произвольной темой (шарды, герои) через тот же outbox. */
+  async publish(
+    store: IdentityStore,
+    subject: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    await store.insertOutbox({
+      id: this.id(),
+      kind: 'event',
+      payload: { subject, event: { eventId: this.id(), occurredAt: this.iso(), ...payload } },
+      status: 'pending',
+      attempts: 0,
+      nextAttemptAt: this.now(),
+      lastError: null,
+      createdAt: this.now(),
+    });
+  }
+
   async securityEvent(
     store: IdentityStore,
     accountId: string | null,
