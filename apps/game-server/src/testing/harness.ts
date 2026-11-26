@@ -14,6 +14,7 @@ import {
 } from '@duskmarch/domain';
 import { EngineError } from '../engine/errors.js';
 import type { HubClaims } from '../engine/hub.js';
+import type { Entity } from '../engine/partition.js';
 import { Scheduler } from '../engine/scheduler.js';
 import type {
   ClientLink,
@@ -69,6 +70,8 @@ export class HeadlessShard {
   readonly node: ShardNode;
   readonly store: RealmStore;
   readonly heroes = new Map<string, HeroRecord & { saves: HeroSave[] }>();
+  /** Деревья владения героев по `EntityId` (хранилище мира P08). */
+  readonly heroTrees = new Map<number, Entity[]>();
   readonly sessions = new Map<string, SessionRecord>();
   readonly registry: {
     heartbeats: unknown[];
@@ -144,6 +147,8 @@ export class HeadlessShard {
               : { ok: false };
           },
           loadHero: async (id) => this.heroes.get(id) ?? null,
+          loadHeroTree: async (entityId) =>
+            (this.heroTrees.get(entityId) ?? []).map((e) => ({ ...e })),
           saveHero: async (id, save) => {
             const hero = this.heroes.get(id);
             if (hero)

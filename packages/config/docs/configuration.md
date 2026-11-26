@@ -124,6 +124,13 @@ console.log(redactConfig(ApiEnvSchema, config));
 | `GAME_PARTITION_CAPACITY` | Игроков на партицию | `500` |  |
 | `GAME_STAFF_BUFFER` | Мест персонала сверх ёмкости | `20` |  |
 | `GAME_MOTD` | Сообщение дня хаба | `Добро пожаловать на Duskmarch` |  |
+| `PERSIST_FLUSH_INTERVAL_MS` | Период фонового сохранения мира, мс (10 000..300 000) | `60000` |  |
+| `PERSIST_FLUSH_BATCH` | Строк в пакете записи (50..2 000) | `500` |  |
+| `PERSIST_CAPTURE_BUDGET_MS` | Бюджет снимка изменений на тик, мс (1..15) | `5` |  |
+| `PERSIST_MAX_UNFLUSHED_MS` | Возраст несохранённых изменений до режима `read_only_degraded`, мс | `180000` |  |
+| `PERSIST_ID_BLOCK` | Размер блока аренды `EntityId` (256..65 536) | `4096` |  |
+| `PERSIST_LOAD_MODE` | Битые ссылки контейнеров при загрузке: `quarantine` или `strict` | `quarantine` |  |
+| `PERSIST_SHUTDOWN_FLUSH_MS` | Срок финального сохранения при остановке, мс | `25000` |  |
 
 ### asset-tool
 

@@ -1,7 +1,7 @@
 import { hasAccess, isStaff, type AccessLevel, type EntityId } from '@duskmarch/domain';
 import { WS_CLOSE } from '@duskmarch/protocol';
 import type { TimerHandle } from './timing-wheel.js';
-import type { PartitionCore } from './partition.js';
+import type { Entity, PartitionCore } from './partition.js';
 import type { Scheduler } from './scheduler.js';
 
 /** Коды закрытия из реестра протокола. */
@@ -72,6 +72,8 @@ export interface SessionRecord {
 export interface SessionPorts {
   redeem(token: string): Promise<{ ok: true; claims: TicketClaims } | { ok: false }>;
   loadHero(characterId: string): Promise<HeroRecord | null>;
+  /** Дерево владения героя из хранилища мира (P08); без порта — пусто. */
+  loadHeroTree?(entityId: EntityId): Promise<Entity[]>;
   saveHero(characterId: string, save: HeroSave): Promise<void>;
   /** Захват шардовой записи: `claimed` или запись другого героя аккаунта. */
   claim(accountId: string, record: SessionRecord): Promise<'claimed' | SessionRecord>;
@@ -112,6 +114,8 @@ export interface Session {
   reconnectToken: string | null;
   onlineSinceMs: number | null;
   playtimeMs: number;
+  /** Предметы дерева героя, загруженные при входе (P08); выгружаются вместе с героем. */
+  owned: EntityId[];
   timers: {
     reconnect?: TimerHandle;
     logout?: TimerHandle;
@@ -276,6 +280,7 @@ export class SessionManager {
       onlineSinceMs: null,
       playtimeMs: 0,
       timers: {},
+      owned: [],
     };
     const claim = await this.ports.claim(c.accountId, this.record(s));
     if (claim !== 'claimed')
@@ -304,6 +309,9 @@ export class SessionManager {
       blocksSight: false,
       behaviors: [],
     });
+    const tree = (await this.ports.loadHeroTree?.(s.entityId)) ?? [];
+    for (const item of tree) this.partition.spawn(item);
+    s.owned = tree.map((e) => e.id);
     this.byAccount.set(c.accountId, s);
     this.bind(s, client);
     this.enterOnline(s);
@@ -418,7 +426,7 @@ export class SessionManager {
       playtimeDeltaS: Math.round(s.playtimeMs / 1000),
     };
     s.playtimeMs = 0;
-    this.partition.despawn(s.entityId);
+    this.despawnTree(s);
     this.unbind(s);
     this.byAccount.delete(s.accountId);
     if (pos?.kind === 'world') await this.ports.saveHero(s.characterId, save);
@@ -430,6 +438,13 @@ export class SessionManager {
     });
   }
 
+  /** Выгрузка героя и его предметов (вложенные раньше контейнеров). */
+  private despawnTree(s: Session): void {
+    for (const id of [...s.owned].reverse()) this.partition.despawn(id);
+    s.owned = [];
+    this.partition.despawn(s.entityId);
+  }
+
   /**
    * Потеря эпохи партиции: все клиенты закрываются без сохранения (запись принадлежит новому
    * владельцу), записи сессий освобождаются.
@@ -439,7 +454,7 @@ export class SessionManager {
       this.leaveOnline(s);
       this.cancelTimers(s);
       s.state = 'EXITED';
-      this.partition.despawn(s.entityId);
+      this.despawnTree(s);
       this.unbind(s)?.close(code, 'партиция передана другому узлу');
       this.byAccount.delete(s.accountId);
       await this.ports.release(s.accountId, s.sessionId);

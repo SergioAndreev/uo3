@@ -1,3 +1,4 @@
+import { loadHeroTree } from '../persistence/loader.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { characters, type Database } from '@duskmarch/db';
 import {
@@ -82,6 +83,7 @@ export function infraPorts(
         const claims = result.ok ? toClaims(result.payload) : null;
         return claims ? { ok: true, claims } : { ok: false };
       },
+      loadHeroTree: (entityId) => loadHeroTree(db, shardId, entityId),
       loadHero: async (characterId) => {
         const [row] = await db.select().from(characters).where(eq(characters.id, characterId));
         if (!row || row.shardId !== shardId) return null;

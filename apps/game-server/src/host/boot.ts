@@ -6,6 +6,8 @@ import { eq } from 'drizzle-orm';
 import type { GameServerConfig } from '../app.module.js';
 import type { Landmarks } from '../world.js';
 import type { RealmStore } from '@duskmarch/asset-formats';
+import type { Entity } from '../engine/partition.js';
+import { loadPartition, quarantineRows, type LoadMode } from '../persistence/loader.js';
 import { PartitionLease } from '../persistence/partition-lease.js';
 import { ShardNode, type NodePorts } from './node.js';
 
@@ -95,6 +97,7 @@ export async function buildNode(
     );
   }
   const partitionId = `${realm.key}-0`;
+  const bounds = { minX: 0, minY: 0, maxX: realm.width - 1, maxY: realm.height - 1 };
   if (db) {
     const lease = new PartitionLease({
       repo: new PartitionLeaseRepo(db, config.SHARD_ID, partitionId),
@@ -109,10 +112,34 @@ export async function buildNode(
     }
     node.stopHooks.push(() => lease.release());
   }
+  let initial: Entity[] = [];
+  if (db) {
+    const report = await loadPartition(db, config.SHARD_ID, realm.key, bounds, {
+      mode: config.PERSIST_LOAD_MODE as LoadMode,
+    }).catch((error: unknown) => {
+      throw new HostError('HOST_BOOT_FAILED', `загрузка партиции ${partitionId}: ${String(error)}`);
+    });
+    if (report.quarantined.length > 0) {
+      await quarantineRows(db, report.quarantined);
+      ports.log('error', 'повреждённые предметы перенесены в карантин', {
+        partitionId,
+        entityIds: report.quarantined.map((q) => q.row.entityId),
+      });
+    }
+    ports.log('info', 'партиция загружена', {
+      partitionId,
+      entities: report.entities.length,
+      batches: report.batches,
+      migrated: report.migrated.length,
+      durationMs: Math.round(report.durationMs),
+    });
+    initial = report.entities;
+  }
   node.addPartition({
     partitionId,
+    initial,
     realm: { key: realm.key, width: realm.width, height: realm.height },
-    bounds: { minX: 0, minY: 0, maxX: realm.width - 1, maxY: realm.height - 1 },
+    bounds,
     allocator,
   });
   return node;

@@ -196,6 +196,44 @@ export const GameServerEnvSchema = Type.Object({
     maxLength: 512,
     description: 'Сообщение дня хаба',
   }),
+  PERSIST_FLUSH_INTERVAL_MS: Type.Integer({
+    minimum: 10_000,
+    maximum: 300_000,
+    default: 60_000,
+    description: 'Период фонового сохранения мира, мс',
+  }),
+  PERSIST_FLUSH_BATCH: Type.Integer({
+    minimum: 50,
+    maximum: 2_000,
+    default: 500,
+    description: 'Строк в пакете записи',
+  }),
+  PERSIST_CAPTURE_BUDGET_MS: Type.Integer({
+    minimum: 1,
+    maximum: 15,
+    default: 5,
+    description: 'Бюджет снимка изменений на тик, мс',
+  }),
+  PERSIST_MAX_UNFLUSHED_MS: Type.Integer({
+    minimum: 30_000,
+    default: 180_000,
+    description: 'Возраст несохранённых изменений до режима read_only_degraded, мс',
+  }),
+  PERSIST_ID_BLOCK: Type.Integer({
+    minimum: 256,
+    maximum: 65_536,
+    default: 4_096,
+    description: 'Размер блока аренды EntityId',
+  }),
+  PERSIST_LOAD_MODE: Type.Union([Type.Literal('quarantine'), Type.Literal('strict')], {
+    default: 'quarantine',
+    description: 'Битые ссылки контейнеров при загрузке: карантин или отказ старта',
+  }),
+  PERSIST_SHUTDOWN_FLUSH_MS: Type.Integer({
+    minimum: 1_000,
+    default: 25_000,
+    description: 'Срок финального сохранения при остановке, мс',
+  }),
 });
 
 export const AssetToolEnvSchema = Type.Object({

@@ -28,6 +28,19 @@ export interface Entity {
   height: number;
   blocksSight: boolean;
   behaviors: Behavior[];
+  /** Сохраняемые данные (P08): ключ контента, количество, компоненты, версии. */
+  data?: EntityData;
+}
+
+export interface EntityData {
+  contentKey: string;
+  amount: number;
+  components: Record<string, unknown>;
+  schemaVersion: number;
+  /** Версия в БД; `0` — ещё не записана. */
+  entityVersion: number;
+  /** Владелец дерева (герой или сущность на земле). */
+  rootOwnerId: EntityId | null;
 }
 
 export interface Behavior {
