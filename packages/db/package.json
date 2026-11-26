@@ -15,6 +15,10 @@
     "./live": {
       "types": "./dist/live/index.d.ts",
       "import": "./dist/live/index.js"
+    },
+    "./world": {
+      "types": "./dist/world/index.d.ts",
+      "import": "./dist/world/index.js"
     }
   },
   "scripts": {

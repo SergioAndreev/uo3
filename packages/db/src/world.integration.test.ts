@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DbEnvSchema, loadServerConfig } from '@duskmarch/config/env/server';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createDbClient,
   itemLedger,
@@ -10,6 +10,14 @@ import {
   seedDatabase,
   worldEntities,
 } from './index.js';
+import {
+  DbIdLeaseProvider,
+  PartitionLeaseRepo,
+  loadOwnedTree,
+  streamPartition,
+  writeBatch,
+  type WriteRow,
+} from './world/index.js';
 
 const cwd = fileURLToPath(new URL('../../..', import.meta.url));
 const config = loadServerConfig(DbEnvSchema, { cwd });
@@ -158,4 +166,159 @@ it('стартовый набор героя ещё не выдан по умо�
     ['next_structure', '1'],
     ['starter_loadout_granted', 'false'],
   ]);
+});
+
+describe('репозитории мира', () => {
+  it('аренда идентификаторов: параллельные блоки без пересечений, восстановление выше надгробий', async () => {
+    const ids = new DbIdLeaseProvider(client.db, 'ember');
+    const recovered = await ids.recover();
+    expect(recovered.item).toBe(1);
+    const [a, b] = await Promise.all([ids.lease('item', 4_096), ids.lease('item', 4_096)]);
+    const blocks = [a, b].sort((x, y) => x.from - y.from);
+    expect(blocks).toEqual([
+      { kind: 'item', from: 1, to: 4_097 },
+      { kind: 'item', from: 4_097, to: 8_193 },
+    ]);
+    await client.db
+      .insert(worldEntities)
+      .values(item(0x60000000 + 9_000, { shardId: 'ember', deletedAt: now }));
+    const again = await new DbIdLeaseProvider(client.db, 'ember').recover();
+    expect(again.item).toBe(9_001);
+    expect((await ids.lease('item', 256)).from).toBe(9_001);
+    await expect(ids.lease('hero', 256)).rejects.toMatchObject({
+      code: 'PERSIST_ENTITY_ID_RANGE_EXHAUSTED',
+    });
+  });
+
+  it('аренда идентификаторов: заполнение 80/95 % и исчерпание', async () => {
+    const fills: number[] = [];
+    const ids = new DbIdLeaseProvider(client.db, 'ember', (_k, p) => fills.push(p));
+    await client.db.execute(
+      sql`update shard_entity_sequences set next_structure = ${Math.floor(0x1fffffff * 0.85)} where shard_id = 'ember'`,
+    );
+    await ids.lease('structure', 256);
+    await client.db.execute(
+      sql`update shard_entity_sequences set next_structure = ${0x1fffffff - 100} where shard_id = 'ember'`,
+    );
+    const last = await ids.lease('structure', 256);
+    expect(last.to).toBe(0x20000000);
+    expect(fills).toEqual([80, 95]);
+    await expect(ids.lease('structure', 256)).rejects.toMatchObject({
+      code: 'PERSIST_ENTITY_ID_RANGE_EXHAUSTED',
+    });
+  });
+
+  it('аренда партиции: захват, занято, устаревшая эпоха, захват после истечения', async () => {
+    const a = new PartitionLeaseRepo(client.db, 'local-dev', 'dusk-0');
+    const t0 = new Date('2026-11-26T10:00:00Z');
+    const first = await a.acquire('node-a', 15_000, t0);
+    expect(first.epoch).toBe(1);
+    await expect(a.acquire('node-b', 15_000, new Date(t0.getTime() + 5_000))).rejects.toMatchObject(
+      {
+        code: 'PERSIST_PARTITION_LEASE_HELD',
+        details: { ownerNodeId: 'node-a' },
+      },
+    );
+    expect(await a.renew(1, 15_000, new Date(t0.getTime() + 5_000))).toBe(true);
+    const second = await a.acquire('node-b', 15_000, new Date(t0.getTime() + 21_000));
+    expect(second.epoch).toBe(2);
+    expect(await a.renew(1, 15_000)).toBe(false);
+    await expect(client.db.transaction((tx) => a.assertEpoch(tx, 1))).rejects.toMatchObject({
+      code: 'PERSIST_FENCING_TOKEN_STALE',
+    });
+    await client.db.transaction((tx) => a.assertEpoch(tx, 2));
+    await a.release(2);
+    expect((await a.acquire('node-c', 15_000)).epoch).toBe(3);
+  });
+
+  it('пакетная запись: вставка, обновление по версии, конфликт, повтор идентификатора', async () => {
+    const row = (entityId: number, extra: Partial<WriteRow['row']> = {}): WriteRow['row'] => ({
+      ...item(entityId, { shardId: 'ember', realm: 'dusk' }),
+      ...extra,
+    });
+    const first = await writeBatch(client.db, [
+      { row: row(0x60010001), expectedVersion: 0 },
+      {
+        row: row(0x60010002, {
+          placement: 'container',
+          parentId: 0x60010001,
+          rootOwnerId: 0x60010001,
+          realm: null,
+          x: null,
+          y: null,
+          h: null,
+        }),
+        expectedVersion: 0,
+      },
+    ]);
+    expect(first.written.sort()).toEqual([0x60010001, 0x60010002]);
+    const second = await writeBatch(client.db, [
+      { row: row(0x60010001, { x: 11 }), expectedVersion: 1 },
+      {
+        row: row(0x60010002, {
+          amount: 5,
+          placement: 'container',
+          parentId: 0x60010001,
+          rootOwnerId: 0x60010001,
+          realm: null,
+          x: null,
+          y: null,
+          h: null,
+        }),
+        expectedVersion: 3,
+      },
+      { row: row(0x6000012a, { shardId: 'local-dev' }), expectedVersion: 0 },
+    ]);
+    expect(second.written).toEqual([0x60010001]);
+    expect(second.conflicts.sort()).toEqual([0x6000012a, 0x60010002]);
+    const tree = await loadOwnedTree(client.db, 'ember', 0x60010001);
+    expect(tree.map((r) => [r.entityId, r.entityVersion])).toEqual([[0x60010002, 1]]);
+  });
+
+  it('потоковая загрузка: только план и границы, содержимое контейнеров, пакеты', async () => {
+    const rows: WriteRow[] = [];
+    for (let i = 0; i < 30; i++)
+      rows.push({
+        row: item(0x60020000 + i, {
+          shardId: 'ember',
+          realm: i < 20 ? 'dusk' : 'dawn',
+          x: 100 + i,
+          y: 100,
+        }),
+        expectedVersion: 0,
+      });
+    rows.push({
+      row: item(0x60020100, { shardId: 'ember', realm: 'dusk', x: 5_000, y: 5_000 }),
+      expectedVersion: 0,
+    });
+    rows.push({
+      row: item(0x60020200, {
+        shardId: 'ember',
+        placement: 'container',
+        parentId: 0x60020003,
+        rootOwnerId: 0x60020003,
+        realm: null,
+        x: null,
+        y: null,
+        h: null,
+      }),
+      expectedVersion: 0,
+    });
+    await writeBatch(client.db, rows);
+    const batches: number[][] = [];
+    for await (const batch of streamPartition(
+      client.db,
+      'ember',
+      'dusk',
+      { minX: 0, minY: 0, maxX: 1_023, maxY: 1_023 },
+      8,
+    )) {
+      batches.push(batch.map((r) => r.entityId));
+    }
+    const all = batches.flat();
+    expect(all).toContain(0x60020200);
+    expect(all).not.toContain(0x60020100);
+    expect(all.filter((id) => id >= 0x60020000 && id < 0x60020100)).toHaveLength(20);
+    expect(batches.length).toBeGreaterThan(2);
+  });
 });

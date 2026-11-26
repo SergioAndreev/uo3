@@ -1,0 +1,325 @@
+import {
+  KIND_CODES,
+  KIND_SHIFT,
+  MAX_SEQ,
+  checkLeaseSize,
+  type IdLease,
+  type IdLeaseProvider,
+  type WorldEntityKind,
+} from '@duskmarch/domain';
+import { and, asc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import type { Database } from '../client.js';
+import { partitionLeases, shardEntitySequences, worldEntities } from '../schema/index.js';
+
+/** Ошибка хранилища мира с кодом `PERSIST_*` (сопоставляется с `PersistError` протокола). */
+export class WorldStoreError extends Error {
+  constructor(
+    readonly code: string,
+    message: string = code,
+    readonly details: Record<string, unknown> = {},
+  ) {
+    super(message);
+    this.name = 'WorldStoreError';
+  }
+}
+
+type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
+type Executor = Database | Tx;
+
+const COLUMN = {
+  creature: shardEntitySequences.nextCreature,
+  item: shardEntitySequences.nextItem,
+  structure: shardEntitySequences.nextStructure,
+} as const;
+const COLUMN_NAME = {
+  creature: 'next_creature',
+  item: 'next_item',
+  structure: 'next_structure',
+} as const;
+type LeasedKind = keyof typeof COLUMN;
+
+const idBase = (kind: WorldEntityKind): number => (KIND_CODES[kind] << KIND_SHIFT) >>> 0;
+
+/**
+ * Аренда блоков номеров `EntityId` в `shard_entity_sequences`; номера героев выдаёт P05.
+ * Граница при старте поднимается выше всех существующих записей, включая надгробия.
+ */
+export class DbIdLeaseProvider implements IdLeaseProvider {
+  constructor(
+    private readonly db: Database,
+    private readonly shardId: string,
+    private readonly onFill?: (kind: WorldEntityKind, percent: 80 | 95) => void,
+  ) {}
+
+  /** Восстановление границ: `max(saved, maxExisting + 1)` по каждому виду. */
+  async recover(): Promise<Record<LeasedKind, number>> {
+    const out = {} as Record<LeasedKind, number>;
+    await this.db
+      .insert(shardEntitySequences)
+      .values({ shardId: this.shardId })
+      .onConflictDoNothing();
+    for (const kind of Object.keys(COLUMN) as LeasedKind[]) {
+      const base = idBase(kind);
+      const [row] = await this.db
+        .select({ max: sql<string | null>`max(${worldEntities.entityId})` })
+        .from(worldEntities)
+        .where(
+          and(
+            eq(worldEntities.shardId, this.shardId),
+            sql`${worldEntities.entityId} BETWEEN ${base} AND ${base + MAX_SEQ}`,
+          ),
+        );
+      const maxSeq = row?.max ? Number(row.max) - base : 0;
+      const [updated] = await this.db
+        .execute<{ next: number }>(
+          sql`UPDATE shard_entity_sequences SET ${sql.raw(COLUMN_NAME[kind])} = GREATEST(${sql.raw(COLUMN_NAME[kind])}, ${maxSeq + 1})
+            WHERE shard_id = ${this.shardId} RETURNING ${sql.raw(COLUMN_NAME[kind])} AS next`,
+        )
+        .then((r) => r.rows);
+      out[kind] = Number(updated?.next ?? 1);
+    }
+    return out;
+  }
+
+  async lease(kind: WorldEntityKind, size: number): Promise<IdLease> {
+    checkLeaseSize(size);
+    if (kind === 'hero')
+      throw new WorldStoreError('PERSIST_ENTITY_ID_RANGE_EXHAUSTED', 'номера героев выдаёт P05');
+    const column = COLUMN_NAME[kind as LeasedKind];
+    const rows = await this.db.execute<{ from: number; to: number }>(
+      sql`UPDATE shard_entity_sequences AS t SET ${sql.raw(column)} = LEAST(o.prev + ${size}, ${MAX_SEQ + 1})
+          FROM (SELECT ${sql.raw(column)} AS prev FROM shard_entity_sequences WHERE shard_id = ${this.shardId} FOR UPDATE) AS o
+          WHERE t.shard_id = ${this.shardId} AND o.prev <= ${MAX_SEQ}
+          RETURNING o.prev AS "from", t.${sql.raw(column)} AS "to"`,
+    );
+    const row = rows.rows[0] as { from: number; to: number } | undefined;
+    if (!row)
+      throw new WorldStoreError('PERSIST_ENTITY_ID_RANGE_EXHAUSTED', `${kind}: диапазон исчерпан`);
+    const from = Number(row.from);
+    const to = Number(row.to);
+    const used = (to - 1) / MAX_SEQ;
+    if (used >= 0.95) this.onFill?.(kind, 95);
+    else if (used >= 0.8) this.onFill?.(kind, 80);
+    return { kind, from, to };
+  }
+}
+
+export interface PartitionLeaseInfo {
+  epoch: number;
+  expiresAt: Date;
+}
+
+/** Аренда партиции с эпохой: захват истёкшей или свободной, продление, проверка. */
+export class PartitionLeaseRepo {
+  constructor(
+    private readonly db: Database,
+    private readonly shardId: string,
+    private readonly partitionId: string,
+  ) {}
+
+  async acquire(nodeId: string, ttlMs: number, now = new Date()): Promise<PartitionLeaseInfo> {
+    const expiresAt = new Date(now.getTime() + ttlMs);
+    const rows = await this.db.execute<{ epoch: string; expires_at: Date }>(
+      sql`INSERT INTO partition_leases (shard_id, partition_id, owner_node_id, epoch, acquired_at, expires_at)
+          VALUES (${this.shardId}, ${this.partitionId}, ${nodeId}, 1, ${now}, ${expiresAt})
+          ON CONFLICT (shard_id, partition_id) DO UPDATE
+            SET owner_node_id = excluded.owner_node_id, epoch = partition_leases.epoch + 1,
+                acquired_at = excluded.acquired_at, expires_at = excluded.expires_at
+            WHERE partition_leases.expires_at < ${now} OR partition_leases.owner_node_id = excluded.owner_node_id
+          RETURNING epoch, expires_at`,
+    );
+    const row = rows.rows[0];
+    if (row) return { epoch: Number(row.epoch), expiresAt: new Date(row.expires_at) };
+    const [held] = await this.db
+      .select()
+      .from(partitionLeases)
+      .where(
+        and(
+          eq(partitionLeases.shardId, this.shardId),
+          eq(partitionLeases.partitionId, this.partitionId),
+        ),
+      );
+    throw new WorldStoreError('PERSIST_PARTITION_LEASE_HELD', 'партиция занята', {
+      ownerNodeId: held?.ownerNodeId,
+      leaseExpiresAt: held?.expiresAt.toISOString(),
+    });
+  }
+
+  /** Продление; `false` — эпоха устарела (партицию захватил другой узел). */
+  async renew(epoch: number, ttlMs: number, now = new Date()): Promise<boolean> {
+    const rows = await this.db
+      .update(partitionLeases)
+      .set({ expiresAt: new Date(now.getTime() + ttlMs) })
+      .where(
+        and(
+          eq(partitionLeases.shardId, this.shardId),
+          eq(partitionLeases.partitionId, this.partitionId),
+          eq(partitionLeases.epoch, epoch),
+        ),
+      )
+      .returning({ epoch: partitionLeases.epoch });
+    return rows.length === 1;
+  }
+
+  /** Проверка эпохи внутри транзакции записи (блокирует строку от смены владельца). */
+  async assertEpoch(tx: Executor, epoch: number): Promise<void> {
+    const rows = await tx.execute<{ epoch: string }>(
+      sql`SELECT epoch FROM partition_leases WHERE shard_id = ${this.shardId} AND partition_id = ${this.partitionId} FOR SHARE`,
+    );
+    const current = rows.rows[0] ? Number(rows.rows[0].epoch) : null;
+    if (current !== epoch) {
+      throw new WorldStoreError('PERSIST_FENCING_TOKEN_STALE', 'эпоха партиции устарела', {
+        epoch,
+        current,
+      });
+    }
+  }
+
+  async release(epoch: number): Promise<void> {
+    await this.db
+      .update(partitionLeases)
+      .set({ expiresAt: new Date(0) })
+      .where(
+        and(
+          eq(partitionLeases.shardId, this.shardId),
+          eq(partitionLeases.partitionId, this.partitionId),
+          eq(partitionLeases.epoch, epoch),
+        ),
+      );
+  }
+}
+
+export type WorldRow = typeof worldEntities.$inferSelect;
+export type WorldInsert = typeof worldEntities.$inferInsert;
+
+export interface Bounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+/**
+ * Потоковая загрузка партиции: сущности на земле плана в границах и их содержимое
+ * (по `root_owner_id`), пакетами по `batch` строк в порядке `entity_id`.
+ */
+export async function* streamPartition(
+  db: Database,
+  shardId: string,
+  realm: string,
+  bounds: Bounds,
+  batch = 5_000,
+): AsyncGenerator<WorldRow[]> {
+  let after = -1;
+  for (;;) {
+    const roots = await db
+      .select()
+      .from(worldEntities)
+      .where(
+        and(
+          eq(worldEntities.shardId, shardId),
+          eq(worldEntities.placement, 'world'),
+          eq(worldEntities.realm, realm),
+          sql`${worldEntities.x} BETWEEN ${bounds.minX} AND ${bounds.maxX}`,
+          sql`${worldEntities.y} BETWEEN ${bounds.minY} AND ${bounds.maxY}`,
+          isNull(worldEntities.deletedAt),
+          gt(worldEntities.entityId, after),
+        ),
+      )
+      .orderBy(asc(worldEntities.entityId))
+      .limit(batch);
+    if (roots.length === 0) return;
+    after = (roots.at(-1) as WorldRow).entityId;
+    const ids = roots.map((r) => r.entityId);
+    const children = await db
+      .select()
+      .from(worldEntities)
+      .where(
+        and(
+          eq(worldEntities.shardId, shardId),
+          inArray(worldEntities.rootOwnerId, ids),
+          sql`${worldEntities.placement} <> 'world'`,
+          isNull(worldEntities.deletedAt),
+        ),
+      )
+      .orderBy(asc(worldEntities.entityId));
+    yield [...roots, ...children];
+    if (roots.length < batch) return;
+  }
+}
+
+/** Дерево владения героя или постройки одним запросом. */
+export async function loadOwnedTree(
+  db: Executor,
+  shardId: string,
+  ownerId: number,
+): Promise<WorldRow[]> {
+  return db
+    .select()
+    .from(worldEntities)
+    .where(
+      and(
+        eq(worldEntities.shardId, shardId),
+        eq(worldEntities.rootOwnerId, ownerId),
+        isNull(worldEntities.deletedAt),
+      ),
+    )
+    .orderBy(asc(worldEntities.entityId));
+}
+
+/** Строка пакета: новое состояние и ожидаемая версия в БД (`0` — вставка). */
+export interface WriteRow {
+  row: Omit<WorldInsert, 'entityVersion'>;
+  expectedVersion: number;
+}
+
+export interface WriteResult {
+  written: number[];
+  /** Пропущенные: версия в БД другая (критическая транзакция успела раньше) или повтор идентификатора. */
+  conflicts: number[];
+}
+
+/**
+ * Пакетная запись одним оператором: вставка или обновление при совпадении версии.
+ * Строки без совпадения не пишутся и возвращаются как конфликты.
+ */
+export async function writeBatch(tx: Executor, rows: readonly WriteRow[]): Promise<WriteResult> {
+  if (rows.length === 0) return { written: [], conflicts: [] };
+  const values = rows.map(({ row, expectedVersion }) => ({
+    ...row,
+    entityVersion: expectedVersion + 1,
+  }));
+  const written = await tx
+    .insert(worldEntities)
+    .values(values)
+    .onConflictDoUpdate({
+      target: [worldEntities.shardId, worldEntities.entityId],
+      set: {
+        kind: sql`excluded.kind`,
+        contentKey: sql`excluded.content_key`,
+        placement: sql`excluded.placement`,
+        realm: sql`excluded.realm`,
+        x: sql`excluded.x`,
+        y: sql`excluded.y`,
+        h: sql`excluded.h`,
+        parentId: sql`excluded.parent_id`,
+        slot: sql`excluded.slot`,
+        rootOwnerId: sql`excluded.root_owner_id`,
+        rect: sql`excluded.rect`,
+        amount: sql`excluded.amount`,
+        components: sql`excluded.components`,
+        schemaVersion: sql`excluded.schema_version`,
+        entityVersion: sql`excluded.entity_version`,
+        changeSeq: sql`excluded.change_seq`,
+        updatedAt: sql`excluded.updated_at`,
+        deletedAt: sql`excluded.deleted_at`,
+      },
+      setWhere: sql`${worldEntities.entityVersion} = excluded.entity_version - 1 AND excluded.entity_version > 1`,
+    })
+    .returning({ id: worldEntities.entityId });
+  const ok = new Set(written.map((w) => w.id));
+  return {
+    written: [...ok],
+    conflicts: rows.map((r) => r.row.entityId).filter((id) => !ok.has(id)),
+  };
+}
