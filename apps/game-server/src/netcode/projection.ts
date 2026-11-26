@@ -296,9 +296,16 @@ export class ProjectionSync {
     this.dirty.add(id);
   }
 
-  /** Конец тика: перенос изменённых полей в схему. */
-  flush(): void {
-    for (const id of this.dirty) {
+  /** Грязные сущности, ожидающие переноса. */
+  get pending(): ReadonlySet<EntityId> {
+    return this.dirty;
+  }
+
+  /** Конец тика: перенос изменённых полей в схему; отложенные (`due` = false) остаются грязными. */
+  flush(due: (id: EntityId) => boolean = () => true): void {
+    for (const id of [...this.dirty]) {
+      if (!due(id)) continue;
+      this.dirty.delete(id);
       const entry = this.shared.get(id);
       if (entry?.kind === 'being') {
         const v = this.views.being(id);
@@ -317,7 +324,6 @@ export class ProjectionSync {
       const pv = client && this.views.privateOf(id);
       if (client && pv) assign(client.priv as unknown as Obj, pv as unknown as Obj);
     }
-    this.dirty.clear();
   }
 
   /** Метаданные партиции. */

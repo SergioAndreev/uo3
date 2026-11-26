@@ -255,6 +255,22 @@ export class InterestManager {
     if (this.observers.has(id)) this.dirtyObservers.add(id);
   }
 
+  /** Расстояние Чебышёва от наблюдателя до сущности; `null` — другой план или нет сущности. */
+  distanceTo(observerId: EntityId, entityId: EntityId): number | null {
+    const st = this.observers.get(observerId);
+    const e = this.entities.get(entityId);
+    if (!st || !e || e.realm !== st.observer.realm) return null;
+    return this.distance(st.observer, e);
+  }
+
+  /** Наблюдатели, видящие сущность. */
+  watchersOf(entityId: EntityId): EntityId[] {
+    const out: EntityId[] = [];
+    for (const st of this.observers.values())
+      if (st.visible.has(entityId)) out.push(st.observer.id);
+    return out;
+  }
+
   visibleTo(id: EntityId): ReadonlyMap<EntityId, AoiKind> {
     return this.observers.get(id)?.visible ?? new Map();
   }
