@@ -47,6 +47,16 @@ const toShard = (r: typeof shards.$inferSelect): ShardRecord => ({
   archivedAt: ms(r.archivedAt),
 });
 
+/** Столбцы игрового сервера (P06), которых нет в записи героя API. */
+function omitRuntime(r: typeof characters.$inferSelect) {
+  const row: Partial<typeof r> = { ...r };
+  delete row.health;
+  delete row.verve;
+  delete row.resonance;
+  delete row.playtimeSeconds;
+  return row as Omit<typeof r, 'health' | 'verve' | 'resonance' | 'playtimeSeconds'>;
+}
+
 /** Шарды и герои в PostgreSQL. */
 export class DrizzleGameStore implements GameStore {
   constructor(
@@ -109,8 +119,10 @@ export class DrizzleGameStore implements GameStore {
         .from(characterSkills)
         .where(eq(characterSkills.characterId, r.id))
         .orderBy(sql`${characterSkills.tenths} desc`, asc(characterSkills.skill));
+      // Текущие ресурсы и время игры ведёт игровой сервер (P06); в записи API их нет.
+      const row = omitRuntime(r);
       out.push({
-        ...r,
+        ...row,
         status: r.status as CharacterRecord['status'],
         stats: r.stats as CharacterRecord['stats'],
         appearance: r.appearance as CharacterRecord['appearance'],

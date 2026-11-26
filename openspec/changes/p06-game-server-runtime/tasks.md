@@ -39,4 +39,4 @@
 ## 8. Завершение
 
 - [x] 8.1 Документация `apps/game-server/docs/runtime.md`, глоссарий, ROADMAP, CONCEPT §6, changeset — проверка: `scripts/glossary.test.ts`.
-- [ ] 8.2 Полный локальный контур и `openspec validate p06-game-server-runtime --strict` — проверка: всё зелёное.
+- [x] 8.2 Полный локальный контур и `openspec validate p06-game-server-runtime --strict` — проверка: всё зелёное.
