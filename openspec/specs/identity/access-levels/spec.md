@@ -26,11 +26,11 @@
 
 #### Scenario: Права модератора
 - **WHEN** вычисляются разрешения уровня `moderator`
-- **THEN** сверх прав `helper` набор содержит `account.inspect`, `account.sessions.revoke`, `account.ban.temp` (до 30 суток) и `world.observe`
+- **THEN** сверх прав `helper` набор содержит `account.inspect`, `account.sessions.revoke`, `account.ban.temp` (до 30 суток), `world.observe` и `character.manage` (блокировка и принудительное переименование героев)
 
 #### Scenario: Права ведущего
 - **WHEN** вычисляются разрешения уровня `game-master`
-- **THEN** сверх прав `moderator` набор содержит `world.events.manage`, `world.edit` (патчи мира) и `beacon.manage` (маяки), но не `account.ban.permanent`
+- **THEN** сверх прав `moderator` набор содержит `world.events.manage`, `world.edit` (патчи мира), `beacon.manage` (маяки) и `character.restore` (восстановление удалённых героев), но не `account.ban.permanent`
 
 #### Scenario: Права администратора и владельца
 - **WHEN** вычисляются разрешения уровней `administrator` и `owner`
