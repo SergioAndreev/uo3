@@ -1,6 +1,6 @@
 import type { TSchema, Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
-import type { IdentityErrorCode } from '@duskmarch/protocol';
+import type { ApiErrorCode } from '@duskmarch/protocol';
 import { IdentityError, type Principal, type RequestMeta } from '../core/index.js';
 
 /** Нужная часть запроса Express. */
@@ -70,7 +70,7 @@ export function bearerOf(req: HttpRequest): string | undefined {
 export function parse<T extends TSchema>(
   schema: T,
   value: unknown,
-  code: IdentityErrorCode = 'SEC_VALIDATION_FAILED',
+  code: ApiErrorCode = 'SEC_VALIDATION_FAILED',
 ): Static<T> {
   if (Value.Check(schema, value)) return value;
   const fields = [...Value.Errors(schema, value)].slice(0, 10).map((e) => e.path || '/');

@@ -89,7 +89,7 @@
 
 ## Migration Plan
 
-Миграция `0002_shards_characters.sql`; `seed` добавляет шард разработки `proving` (видимость `staff`, пресет `proving`) и `ember` (пресет `standard`). Профиль `duskmarch` переходит на версию 2; отпечаток меняется, клиенты P09 ещё не существуют.
+Миграция `0002_shards_characters.sql`; `seed` добавляет шарды разработки `local-dev` (пресет `proving`, совпадает с `SHARD_ID` игрового сервера по умолчанию) и `ember` (пресет `standard`). Профиль `duskmarch` переходит на версию 2; отпечаток меняется, клиенты P09 ещё не существуют.
 
 ## Open Questions
 

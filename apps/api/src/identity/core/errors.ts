@@ -1,4 +1,4 @@
-import { IDENTITY_ERRORS, type IdentityErrorCode } from '@duskmarch/protocol';
+import { API_ERRORS, type ApiErrorCode } from '@duskmarch/protocol';
 
 /** Ошибка identity с кодом из реестра протокола. */
 export class IdentityError extends Error {
@@ -6,7 +6,7 @@ export class IdentityError extends Error {
   readonly status: number;
 
   constructor(
-    readonly code: IdentityErrorCode,
+    readonly code: ApiErrorCode,
     message: string = code,
     readonly options: {
       status?: number;
@@ -18,7 +18,7 @@ export class IdentityError extends Error {
     } = {},
   ) {
     super(message);
-    this.status = options.status ?? IDENTITY_ERRORS[code];
+    this.status = options.status ?? API_ERRORS[code];
   }
 }
 

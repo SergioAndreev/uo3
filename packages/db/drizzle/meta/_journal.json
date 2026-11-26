@@ -15,6 +15,13 @@
       "when": 1795699723927,
       "tag": "0001_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795703442655,
+      "tag": "0002_shards_characters",
+      "breakpoints": true
     }
   ]
 }

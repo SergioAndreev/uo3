@@ -47,13 +47,18 @@ it('DbEnvSchema отклоняет чужой протокол', () => {
 
 it('seed записывает уникальные строки в транзакции', async () => {
   const onConflictDoUpdate = vi.fn();
-  const values = vi.fn(() => ({ onConflictDoUpdate }));
+  const onConflictDoNothing = vi.fn();
+  const values = vi.fn(() => ({ onConflictDoUpdate, onConflictDoNothing }));
   const transaction = vi.fn(async (body: (tx: unknown) => Promise<void>) =>
     body({ insert: () => ({ values }) }),
   );
   await seedDatabase({ transaction } as unknown as Database);
   expect(values).toHaveBeenCalledWith([...SEED_ROWS]);
   expect(onConflictDoUpdate).toHaveBeenCalledOnce();
+  expect(onConflictDoNothing).toHaveBeenCalledTimes(2);
+  expect(values).toHaveBeenCalledWith(
+    expect.arrayContaining([expect.objectContaining({ id: 'local-dev', preset: 'proving' })]),
+  );
   expect(new Set(SEED_ROWS.map((row) => row.key)).size).toBe(SEED_ROWS.length);
 });
 
