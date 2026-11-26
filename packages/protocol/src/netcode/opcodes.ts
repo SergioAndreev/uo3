@@ -51,3 +51,14 @@ export const MAX_FRAME_BYTES = 16_384;
 export const MAX_LARGE_FRAME_BYTES = 65_536;
 export const HANDSHAKE_TIMEOUT_MS = 5_000;
 export const IDLE_TIMEOUT_MS = 30_000;
+
+/** Коды закрытия сетевого слоя (реестр, таблица 2). */
+export const NETCODE_CLOSE = {
+  PROTOCOL_ERROR: 4100,
+  WORLD_DATA_MISMATCH: 4107,
+  RATE_LIMIT_EXCEEDED: 4108,
+  PROTOCOL_VERSION_MISMATCH: 4111,
+  HANDSHAKE_TIMEOUT: 4129,
+  SLOW_CONSUMER: 4130,
+  HEARTBEAT_TIMEOUT: 4131,
+} as const;

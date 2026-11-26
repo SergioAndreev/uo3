@@ -11,7 +11,7 @@ export const SessionHello = Type.Object(
     protocolVersion: SemVer,
     rulesetFingerprint: Hex64,
     worldVersion: Hex64,
-    missingPatchIds: Type.Optional(Type.Array(Type.String({ maxLength: 64 }), { maxItems: 64 })),
+    patchIds: Type.Optional(Type.Array(Type.String({ maxLength: 64 }), { maxItems: 64 })),
   },
   { additionalProperties: false },
 );
@@ -19,6 +19,9 @@ export type SessionHello = Static<typeof SessionHello>;
 
 export const SessionWelcome = Type.Object({
   negotiatedProtocolVersion: SemVer,
+  minSupportedProtocolVersion: SemVer,
+  compatibility: Type.Union([Type.Literal('OK'), Type.Literal('PATCH_DIFF_WARNING')]),
+  missingPatchIds: Type.Array(Type.String()),
   rulesetFingerprint: Hex64,
   ruleset: Type.Unknown(),
   worldVersion: Hex64,
@@ -26,6 +29,7 @@ export const SessionWelcome = Type.Object({
   serverTimeMs: Type.Number(),
   tickIntervalMs: Type.Integer(),
 });
+export type SessionWelcome = Static<typeof SessionWelcome>;
 
 export const TimePing = Type.Object(
   { seq: Type.Integer({ minimum: 0, maximum: 0xffff_ffff }), clientSendMs: Type.Number() },

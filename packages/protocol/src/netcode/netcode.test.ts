@@ -6,6 +6,7 @@ import {
   BASE_CATALOG,
   BASE_INTENTS,
   CmdError,
+  NETCODE_CLOSE,
   NETCODE_ERRORS,
   NETCODE_OPCODES,
   SessionHello,
@@ -29,6 +30,9 @@ describe('опкоды и ошибки P07', () => {
       expect(registry, name).toContain(
         `\`0x${code.toString(16).toUpperCase().padStart(4, '0')}\` | \`${name}\``,
       );
+    }
+    for (const [key, code] of Object.entries(NETCODE_CLOSE)) {
+      expect(registry, key).toContain(`| \`${code}\` | \`WS_CLOSE_${key}\``);
     }
     const codes = Object.values(NETCODE_ERRORS).map((e) => e.code);
     expect(new Set(codes).size).toBe(codes.length);
