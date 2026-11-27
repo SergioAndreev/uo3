@@ -35,7 +35,7 @@ export const shards = pgTable('shards', {
   softCapacity: integer('soft_capacity').notNull().default(1000),
   hardCapacity: integer('hard_capacity').notNull().default(1200),
   staffBuffer: integer('staff_buffer').notNull().default(20),
-  protocolRange: varchar('protocol_range', { length: 64 }).notNull().default('>=0.1.0 <1.0.0'),
+  protocolRange: varchar('protocol_range', { length: 64 }).notNull().default('>=1.0.0 <2.0.0'),
   startCities: text('start_cities').array().notNull(),
   sortOrder: integer('sort_order').notNull().default(100),
   createdAt: at('created_at').notNull(),

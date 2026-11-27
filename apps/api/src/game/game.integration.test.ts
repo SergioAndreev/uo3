@@ -1,3 +1,4 @@
+import { PROTOCOL_VERSION } from '@duskmarch/protocol';
 import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import type { INestApplication } from '@nestjs/common';
@@ -59,7 +60,10 @@ afterAll(async () => {
 });
 
 async function call(method: string, path: string, body?: unknown, token?: string) {
-  const headers: Record<string, string> = { origin: ORIGIN, 'x-duskmarch-protocol': '0.1.0' };
+  const headers: Record<string, string> = {
+    origin: ORIGIN,
+    'x-duskmarch-protocol': PROTOCOL_VERSION,
+  };
   if (body !== undefined) headers['content-type'] = 'application/json';
   if (token) headers['authorization'] = `Bearer ${token}`;
   const response = await fetch(`${base}${path}`, {

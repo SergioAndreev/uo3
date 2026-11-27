@@ -43,6 +43,13 @@
       "when": 1795743628830,
       "tag": "0005_client_profiles",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795745048910,
+      "tag": "0006_protocol_range",
+      "breakpoints": true
     }
   ]
 }

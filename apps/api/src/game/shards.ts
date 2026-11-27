@@ -241,7 +241,7 @@ export class ShardService {
       softCapacity: 1000,
       hardCapacity: 1200,
       staffBuffer: 20,
-      protocolRange: '>=0.1.0 <1.0.0',
+      protocolRange: '>=1.0.0 <2.0.0',
       startCities: input.preset === 'proving' ? ['proving-camp'] : ['lad', 'kremnev', 'solyar'],
       sortOrder: 100,
       ...input,
