@@ -3,7 +3,9 @@ import { App, bootstrap } from './app.js';
 import { browserProbe, checkCapabilities } from './app/capabilities.js';
 import { readConfig } from './config.js';
 import { createBrowserServices } from './session/browser.js';
+import { captureSensitive } from './app/sensitive.js';
 
+captureSensitive(location.href, history);
 const host = document.getElementById('root');
 if (!host) throw new Error('Нет элемента #root');
 bootstrap(document.documentElement);

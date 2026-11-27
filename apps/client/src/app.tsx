@@ -6,6 +6,7 @@ import { ErrorBoundary } from './app/errors.js';
 import { appRoutes, type SessionKind } from './app/routes.js';
 import type { AppConfig } from './config.js';
 import { SCREEN_MODULES } from './screens/index.js';
+import { ServicesProvider, type Services } from './services.js';
 import { shellSignals } from './session/browser.js';
 import type { Connectivity } from './session/connectivity.js';
 
@@ -92,6 +93,7 @@ export interface AppProps {
   capabilities: CapabilityReport;
   session?: () => SessionKind;
   connectivity?: Connectivity;
+  services?: Services;
   /** Тесты: маршрутизатор в памяти. */
   initialPath?: string;
 }
@@ -102,6 +104,7 @@ export function App({
   session = () => 'guest',
   initialPath,
   connectivity,
+  services,
 }: AppProps) {
   const router = useMemo(() => {
     const routes = appRoutes({
@@ -118,7 +121,13 @@ export function App({
   if (!capabilities.ok || !config) return <Incompatible report={capabilities} />;
   return (
     <ErrorBoundary level="root" route={() => location.pathname} clientVersion={CLIENT_VERSION}>
-      <RouterProvider router={router} />
+      {services ? (
+        <ServicesProvider services={services}>
+          <RouterProvider router={router} />
+        </ServicesProvider>
+      ) : (
+        <RouterProvider router={router} />
+      )}
     </ErrorBoundary>
   );
 }

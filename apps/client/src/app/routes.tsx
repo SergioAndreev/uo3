@@ -45,7 +45,7 @@ const PATHS: Record<ScreenKey, string> = {
   register: '/register',
   verifyEmail: '/verify-email',
   resetPassword: '/reset-password',
-  oauthCallback: '/oauth/callback',
+  oauthCallback: '/oauth/callback/:provider',
   oauthOnboarding: '/oauth/onboarding',
   twoFactorSetup: '/2fa-setup',
   assets: '/assets',

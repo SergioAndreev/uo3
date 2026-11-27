@@ -17,7 +17,8 @@ export interface HistoryLike {
  */
 export function takeSensitiveParams(href: string, history: HistoryLike): Record<string, string> {
   const url = new URL(href);
-  if (!SENSITIVE_ROUTES.some((r) => url.pathname === r)) return {};
+  if (!SENSITIVE_ROUTES.some((r) => url.pathname === r || url.pathname.startsWith(`${r}/`)))
+    return {};
   const taken: Record<string, string> = {};
   for (const key of SENSITIVE_PARAMS) {
     const value = url.searchParams.get(key);
@@ -30,3 +31,21 @@ export function takeSensitiveParams(href: string, history: HistoryLike): Record<
     history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
   return taken;
 }
+
+/** Изъятые параметры текущей загрузки страницы (только память). */
+let captured: Record<string, string> = {};
+
+export const captureSensitive = (href: string, history: HistoryLike): void => {
+  captured = takeSensitiveParams(href, history);
+};
+
+/** Однократное чтение параметра: после чтения значение забывается. */
+export function consumeSensitive(key: string): string | null {
+  const value = captured[key] ?? null;
+  delete captured[key];
+  return value;
+}
+
+export const setSensitiveForTests = (values: Record<string, string>): void => {
+  captured = { ...values };
+};
