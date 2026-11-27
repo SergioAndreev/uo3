@@ -2,6 +2,7 @@ import { Value } from '@sinclair/typebox/value';
 import { describe, expect, it } from 'vitest';
 import { IDENTITY_ERRORS } from '../identity/errors.js';
 import { PERSIST_ERRORS } from '../persistence/errors.js';
+import { PROFILE_ERRORS } from '../settings/index.js';
 import {
   API_ERRORS,
   CharacterCreateRequest,
@@ -22,7 +23,8 @@ describe('контракты P05', () => {
     expect(Object.keys(API_ERRORS)).toHaveLength(
       Object.keys(IDENTITY_ERRORS).length +
         Object.keys(SHARD_ERRORS).length +
-        Object.keys(PERSIST_ERRORS).length,
+        Object.keys(PERSIST_ERRORS).length +
+        Object.keys(PROFILE_ERRORS).length,
     );
   });
 

@@ -1,5 +1,6 @@
 import { IDENTITY_ERRORS } from '../identity/errors.js';
 import { PERSIST_ERRORS } from '../persistence/errors.js';
+import { PROFILE_ERRORS } from '../settings/index.js';
 
 /** Коды ошибок шардов, героев и билетов (P05) с HTTP-статусами. */
 export const SHARD_ERRORS = {
@@ -54,5 +55,10 @@ export const SHARD_ERRORS = {
 export type ShardErrorCode = keyof typeof SHARD_ERRORS;
 
 /** Все коды ошибок API. */
-export const API_ERRORS = { ...IDENTITY_ERRORS, ...SHARD_ERRORS, ...PERSIST_ERRORS } as const;
+export const API_ERRORS = {
+  ...IDENTITY_ERRORS,
+  ...SHARD_ERRORS,
+  ...PERSIST_ERRORS,
+  ...PROFILE_ERRORS,
+} as const;
 export type ApiErrorCode = keyof typeof API_ERRORS;

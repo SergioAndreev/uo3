@@ -61,6 +61,15 @@ export const ShardStatusRequest = Type.Object(
   strict,
 );
 
+/** Требование шарда к пакету ассетов: идентификатор `pack.<имя>` и минимальная версия. */
+export const AssetPackRequirement = Type.Object(
+  {
+    id: Type.String({ pattern: '^pack\\.[a-z0-9-]+$', maxLength: 64 }),
+    minVersion: Type.String({ pattern: '^\\d+\\.\\d+\\.\\d+$', maxLength: 32 }),
+  },
+  strict,
+);
+
 export const ShardSummary = Type.Object({
   id: Type.String(),
   name: Type.String(),
@@ -76,6 +85,8 @@ export const ShardSummary = Type.Object({
   myCharacters: Type.Optional(Type.Integer()),
   canEnter: Type.Optional(Type.Boolean()),
   entryBlockedReason: Type.Optional(Type.String()),
+  /** Требование к пакету ассетов P02 (P09). */
+  assetPack: Type.Optional(AssetPackRequirement),
 });
 
 export const StatsSchema = Type.Object(
