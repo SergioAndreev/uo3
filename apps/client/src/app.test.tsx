@@ -51,3 +51,27 @@ it('без WebGL2 — блокирующий экран с кодом; без OP
 it('отклоняет невалидный URL', () => {
   expect(() => readConfig({ ...env, VITE_API_BASE_URL: 'ftp://x' })).toThrow('VITE_API_BASE_URL');
 });
+
+it('офлайн — баннер; 426 — блокирующее окно новой версии', async () => {
+  const { Connectivity } = await import('./session/connectivity.js');
+  const { shellSignals } = await import('./session/browser.js');
+  const handlers: Record<string, () => void> = {};
+  const connectivity = new Connectivity({
+    addEventListener: ((t: string, h: () => void) => (handlers[t] = h)) as never,
+    navigator: { onLine: true },
+  });
+  const host = await mount(
+    <App
+      config={readConfig(env)}
+      capabilities={ok}
+      initialPath="/login"
+      connectivity={connectivity}
+    />,
+  );
+  await act(async () => handlers['offline']?.());
+  expect(host.textContent).toContain('Нет подключения к сети');
+  await act(async () => handlers['online']?.());
+  expect(host.textContent).not.toContain('Нет подключения к сети');
+  await act(async () => shellSignals.raise({ minVersion: '1.2.0' }));
+  expect(host.querySelector('[role=dialog]')?.textContent).toContain('1.2.0');
+});
