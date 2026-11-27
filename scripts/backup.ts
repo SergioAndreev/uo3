@@ -21,7 +21,13 @@ import { join, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { pathToFileURL } from 'node:url';
 import { createDbClient } from '@duskmarch/db';
-import { backups, checkWorldInvariants, insertRestorePoint } from '@duskmarch/db/world';
+import { KEYS, REVOKE_TTL_MS } from '@duskmarch/db/live';
+import {
+  backups,
+  checkWorldInvariants,
+  insertRestorePoint,
+  reconcileShard,
+} from '@duskmarch/db/world';
 import { readRootEnv } from './lib/env-files.js';
 
 export type BackupKind = 'daily' | 'weekly' | 'monthly' | 'adhoc';
@@ -393,6 +399,32 @@ export async function restorePoint(
   return lsn;
 }
 
+/** Живое состояние шарда в Valkey после PITR: сессии, билеты, резервы мест; эпоха отзыва билетов. */
+export function valkeyCleanup(ctx: Ctx, shardId: string, now = Date.now()): number {
+  const container = `${ctx.env['COMPOSE_PROJECT_NAME'] ?? 'duskmarch'}-valkey-1`;
+  const auth = ctx.env['VALKEY_PASSWORD']
+    ? ['-a', ctx.env['VALKEY_PASSWORD'], '--no-auth-warning']
+    : [];
+  const cli = (...args: string[]) => docker(['exec', container, 'valkey-cli', ...auth, ...args]);
+  let removed = 0;
+  for (const pattern of [
+    KEYS.session(shardId, '*'),
+    KEYS.accountBundle(shardId, '*'),
+    KEYS.reservations(shardId, '*'),
+  ]) {
+    const keys = cli('--scan', '--pattern', pattern).split('\n').filter(Boolean);
+    for (const key of keys) removed += Number(cli('DEL', key) || 0);
+  }
+  cli('SET', KEYS.revoke('shard', shardId), String(now), 'PX', String(REVOKE_TTL_MS));
+  return removed;
+}
+
+/** Сверка после полного PITR: БД (аренды, границы, таймеры, инварианты) и Valkey. */
+export async function reconcile(ctx: Ctx, shardId: string, downtimeMs: number) {
+  const report = await withDb(ctx, (db) => reconcileShard(db, shardId, downtimeMs));
+  return { report, valkeyKeysRemoved: valkeyCleanup(ctx, shardId) };
+}
+
 /** Ротация: истёкшие снимки удаляются из хранилища, запись — `expired`. */
 export async function prune(ctx: Ctx, now = new Date()): Promise<number> {
   return withDb(ctx, async (db) => {
@@ -436,10 +468,16 @@ async function main(argv: string[]): Promise<void> {
         ),
       }),
     );
+  else if (command === 'reconcile')
+    console.log(
+      JSON.stringify(
+        await reconcile(ctx, flag('shard') ?? 'local-dev', Number(flag('downtime-ms') ?? 0)),
+      ),
+    );
   else if (command === 'prune') console.log(JSON.stringify({ expired: await prune(ctx) }));
   else {
     console.error(
-      'usage: backup snapshot [kind] | drill [--backup id] [--target iso] | restore-point <name> --reason r --actor uuid | prune',
+      'usage: backup snapshot [kind] | drill [--backup id] [--target iso] | restore-point <name> --reason r --actor uuid | reconcile --shard id --downtime-ms n | prune',
     );
     process.exitCode = 2;
   }

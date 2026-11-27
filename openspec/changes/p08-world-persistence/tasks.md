@@ -31,5 +31,5 @@
 
 ## 6. Документация и проверка
 
-- [ ] 6.1 `apps/game-server/docs/persistence.md`, `docs/operations/backup.md`, глоссарий, конфигурация, changeset — проверка: `scripts/glossary.test.ts`, `check:env`.
+- [x] 6.1 `apps/game-server/docs/persistence.md`, `docs/operations/backup.md`, глоссарий, конфигурация, changeset — проверка: `scripts/glossary.test.ts`, `check:env`.
 - [ ] 6.2 Полный локальный контур и `openspec validate p08-world-persistence --strict` — проверка: всё зелёное.

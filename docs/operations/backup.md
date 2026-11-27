@@ -31,4 +31,14 @@ PITR требует хотя бы одного коммита в WAL после 
 1. Шард в обслуживание (`POST /api/v1/admin/shards/:id/status` → `maintenance`), узлы игрового сервера остановить.
 2. Проверить метку: `pnpm backup drill --target <метка>` должен дать `verified`.
 3. Остановить `postgres`, заменить каталог данных распакованным снимком, положить `recovery.signal` и настройки из `recoveryConf(<метка>)`, запустить.
-4. Сверка до открытия входа (P08 5.3): аренды партиций и живые сессии сброшены, границы `EntityId` подняты на `+4096`, таймеры распада продлены, инварианты проверены; при дефекте шард остаётся в `maintenance`.
+4. Сверка до открытия входа: `pnpm backup reconcile --shard <id> --downtime-ms <простой>` — аренды партиций сброшены, границы `EntityId` подняты на `+4096`, таймеры распада продлены, инварианты проверены; в Valkey удалены сессии, билеты и резервы мест шарда, выставлена эпоха отзыва билетов. При дефекте — `PERSIST_RECONCILIATION_FAILED`, шард остаётся в `maintenance`.
+
+## Точечный откат героя и предмета
+
+1. Поднять клон на метку: `pnpm backup drill --target <метка> --keep` — в ответе `cloneUrl` (пароль скрыт) и имя контейнера.
+2. Указать клон API: `PERSIST_RESTORE_SOURCE_URL` (только чтение), перезапустить API.
+3. Предпросмотр (ведущий, `character.restore`): `POST …/persistence/rollbacks/character/preview { characterId, targetTime }` → разница и `previewToken` на 15 минут.
+4. Применение (администратор, свежее подтверждение личности): `POST …/rollbacks/character/apply { characterId, previewToken, kickIfOnline, reason }`. Герой в мире блокируется (выход, отказ во входе), после отката блокировка снимается.
+5. Предмет: `POST …/rollbacks/item { itemId, toCharacterId, mode, reason }` — `strict_no_conflict` (по умолчанию: отказ, если предмет или его производные стопки активны), `reclaim_original` (изъятие у текущего владельца вне мира), `reissue_new_id` (новый `EntityId`, компенсационная эмиссия в журнале).
+6. Отмена в течение 30 суток: `POST …/restore-operations/:operationId/undo { reason }`.
+7. Клон удалить: `docker rm -f <container>`.
