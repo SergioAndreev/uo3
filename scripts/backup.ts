@@ -238,6 +238,9 @@ export interface DrillResult {
   invariants?: unknown;
   error?: string;
   log?: string[];
+  /** Клон оставлен работать (`--keep`): адрес для `PERSIST_RESTORE_SOURCE_URL` (пароль скрыт). */
+  cloneUrl?: string;
+  container?: string;
 }
 
 /** Учебное восстановление: снимок и хвост WAL во временный экземпляр, инварианты, RTO. */
@@ -246,6 +249,7 @@ export async function drill(
   backupId?: string,
   target?: string,
   rtoLimitMs = 900_000,
+  keep = false,
 ): Promise<DrillResult> {
   const started = Date.now();
   const row = await withDb(ctx, async (db) =>
@@ -262,8 +266,10 @@ export async function drill(
       const logs = spawnSync('docker', ['logs', '--tail', '20', name], { encoding: 'utf8' });
       result = { ...result, log: `${logs.stdout}${logs.stderr}`.split('\n').slice(-20) };
     }
-    spawnSync('docker', ['rm', '-f', name], { stdio: 'ignore' });
-    rmSync(tmp, { recursive: true, force: true });
+    if (!(keep && ok)) {
+      spawnSync('docker', ['rm', '-f', name], { stdio: 'ignore' });
+      rmSync(tmp, { recursive: true, force: true });
+    }
     await withDb(ctx, (db) =>
       backups.update(db, row.id, {
         status: ok ? 'verified' : 'failed',
@@ -351,7 +357,11 @@ export async function drill(
     const client = createDbClient(url.href);
     try {
       const invariants = await checkWorldInvariants(client.db);
-      return await finish({ ok: invariants.ok, invariants });
+      return await finish({
+        ok: invariants.ok,
+        invariants,
+        ...(keep ? { cloneUrl: url.href.replace(/:[^:@/]+@/, ':***@'), container: name } : {}),
+      });
     } finally {
       await client.close();
     }
@@ -409,7 +419,11 @@ async function main(argv: string[]): Promise<void> {
       }),
     );
   else if (command === 'drill')
-    console.log(JSON.stringify(await drill(ctx, flag('backup'), flag('target'))));
+    console.log(
+      JSON.stringify(
+        await drill(ctx, flag('backup'), flag('target'), undefined, rest.includes('--keep')),
+      ),
+    );
   else if (command === 'restore-point')
     console.log(
       JSON.stringify({

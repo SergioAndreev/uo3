@@ -134,6 +134,11 @@ export const ApiEnvSchema = Type.Object({
   }),
   CORS_ALLOW_CREDENTIALS: Flag({ default: true, description: 'Разрешить cookie в CORS' }),
   ENABLE_SWAGGER: Flag({ default: false, description: 'Публиковать OpenAPI UI' }),
+  PERSIST_RESTORE_SOURCE_URL: Type.Optional(
+    createSensitiveUriSchema('postgres', {
+      description: 'Клон PITR (только чтение) для предпросмотра точечного отката героя',
+    }),
+  ),
 });
 
 export const GameServerEnvSchema = Type.Object({

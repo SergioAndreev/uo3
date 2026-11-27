@@ -717,3 +717,4 @@ export async function createRestorePoint(
   await insertRestorePoint(db, { ...row, lsn, createdAt: now });
   return { lsn };
 }
+export * from './restore.js';

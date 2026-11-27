@@ -9,7 +9,9 @@ import type { Infra } from '@duskmarch/db/infra';
 import type { IdentityServices } from '../identity/core/index.js';
 import { IDENTITY } from '../identity/http/tokens.js';
 import { InfraConnectionsModule } from '../infra-connections.module.js';
-import { INFRA } from '../tokens.js';
+import { CONFIG, INFRA } from '../tokens.js';
+import type { ApiConfig } from '../platform-config.module.js';
+import { createDbClient } from '@duskmarch/db';
 import {
   AdminShardsController,
   ShardsController,
@@ -17,8 +19,15 @@ import {
 } from './http/shards.controller.js';
 import { GAME } from './http/tokens.js';
 import { IdentityError } from '../identity/core/errors.js';
-import { AdminPersistenceController, PERSISTENCE } from '../persistence/controller.js';
+import { AdminPersistenceController, PERSISTENCE, RESTORE } from '../persistence/controller.js';
 import {
+  CloneRestoreSource,
+  DrizzleRestoreStore,
+  RestoreAdmin,
+  unavailableRestoreStore,
+} from '../persistence/restore.js';
+import {
+  DrizzleBackupCards,
   DrizzleLedgerStore,
   DrizzleRestorePoints,
   MemoryLedgerStore,
@@ -42,6 +51,7 @@ export interface GameModuleOptions {
   jobs: boolean;
   /** Администрирование персистентности (P08); в тестах — свои порты. */
   persistence?: PersistenceAdmin;
+  restore?: RestoreAdmin;
 }
 
 /** Шарды, герои и билеты (P05). */
@@ -88,8 +98,36 @@ export class GameModule implements OnModuleInit, OnModuleDestroy {
                     new NatsFlushRequester(infra.nats),
                     undefined,
                     new DrizzleRestorePoints(infra.db),
+                    new DrizzleBackupCards(infra.db),
                   ),
                 inject: [IDENTITY, INFRA],
+              },
+        options.restore
+          ? { provide: RESTORE, useValue: options.restore }
+          : options.services || options.memory
+            ? {
+                provide: RESTORE,
+                useFactory: (identity: IdentityServices, game: GameServices) =>
+                  new RestoreAdmin(identity, game, unavailableRestoreStore, null),
+                inject: [IDENTITY, GAME],
+              }
+            : {
+                provide: RESTORE,
+                useFactory: (
+                  identity: IdentityServices,
+                  game: GameServices,
+                  infra: Infra,
+                  config: ApiConfig,
+                ) =>
+                  new RestoreAdmin(
+                    identity,
+                    game,
+                    new DrizzleRestoreStore(infra.db),
+                    config.PERSIST_RESTORE_SOURCE_URL
+                      ? new CloneRestoreSource(createDbClient(config.PERSIST_RESTORE_SOURCE_URL).db)
+                      : null,
+                  ),
+                inject: [IDENTITY, GAME, INFRA, CONFIG],
               },
         options.services
           ? { provide: GAME, useValue: options.services }

@@ -1,5 +1,6 @@
 import type { Database } from '@duskmarch/db';
 import {
+  backups,
   createRestorePoint,
   ledgerLineage,
   ledgerOfItem,
@@ -20,6 +21,23 @@ export interface LedgerStore {
     shardId: string,
     filter: LedgerFilter,
   ): Promise<{ events: LedgerRow[]; next: number | null }>;
+}
+
+/** Карточки резервных копий. */
+export interface BackupCards {
+  get(id: string): Promise<Record<string, unknown> | null>;
+}
+
+export class DrizzleBackupCards implements BackupCards {
+  constructor(private readonly db: Database) {}
+  async get(id: string) {
+    if (!/^[0-9a-f-]{36}$/.test(id)) return null;
+    const row = await backups.get(this.db, id);
+    if (!row) return null;
+    const { location: _location, ...card } = row;
+    void _location;
+    return card;
+  }
 }
 
 /** Точки восстановления (P08). */
@@ -150,7 +168,19 @@ export class PersistenceAdmin {
     private readonly flusher: FlushRequester,
     private readonly now: () => number = () => Date.now(),
     private readonly points: RestorePointStore = new MemoryRestorePoints(),
+    private readonly cards: BackupCards = { get: async () => null },
   ) {}
+
+  /** Карточка копии: идентификатор ключа и LSN, без ключевого материала и пути хранения. */
+  async backup(principal: Principal, meta: RequestMeta, id: string) {
+    await this.identity.staff.authorize(principal, 'character.restore', 'backup.read', meta);
+    const card = await this.cards.get(id);
+    if (!card)
+      throw new IdentityError('PERSIST_PITR_WINDOW_UNAVAILABLE', 'копия не найдена', {
+        status: 404,
+      });
+    return card;
+  }
 
   /** Точка восстановления: внеочередное сохранение мира, затем точка в WAL. */
   async restorePoint(

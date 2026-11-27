@@ -93,6 +93,7 @@ console.log(redactConfig(ApiEnvSchema, config));
 | `CORS_ALLOWED_ORIGINS` | Разрешённые origin через запятую | `http://localhost:5273` |  |
 | `CORS_ALLOW_CREDENTIALS` | Разрешить cookie в CORS | `true` |  |
 | `ENABLE_SWAGGER` | Публиковать OpenAPI UI | `false` |  |
+| `PERSIST_RESTORE_SOURCE_URL` | Клон PITR (только чтение) для предпросмотра точечного отката героя (`pnpm backup drill --keep`) | — | да |
 
 ### game-server
 

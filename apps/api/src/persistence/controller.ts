@@ -1,11 +1,23 @@
 import { Controller, Get, HttpCode, Inject, Param, Post, Req, UseGuards } from '@nestjs/common';
-import { FlushRequest, LedgerQuery, RestorePointRequest } from '@duskmarch/protocol';
+import {
+  CharacterRollbackApply,
+  CharacterRollbackPreview,
+  FlushRequest,
+  ItemRestoreRequest,
+  LedgerQuery,
+  Reason,
+  RestorePointRequest,
+} from '@duskmarch/protocol';
+import { Type } from '@sinclair/typebox';
 import { IdentityError } from '../identity/core/errors.js';
 import { IdentityGuard, principalOf } from '../identity/http/guard.js';
 import { metaOf, parse, type HttpRequest } from '../identity/http/request.js';
 import type { PersistenceAdmin } from './index.js';
+import type { RestoreAdmin } from './restore.js';
 
 export const PERSISTENCE = Symbol('persistence');
+export const RESTORE = Symbol('restore');
+const UndoRequest = Type.Object({ reason: Reason }, { additionalProperties: false });
 
 const itemIdOf = (raw: string): number => {
   const id = Number(raw);
@@ -29,7 +41,57 @@ function queryOf(req: HttpRequest): Record<string, unknown> {
 @Controller('api/v1/admin/shards/:shardId/persistence')
 @UseGuards(IdentityGuard)
 export class AdminPersistenceController {
-  constructor(@Inject(PERSISTENCE) private readonly admin: PersistenceAdmin) {}
+  constructor(
+    @Inject(PERSISTENCE) private readonly admin: PersistenceAdmin,
+    @Inject(RESTORE) private readonly restore: RestoreAdmin,
+  ) {}
+
+  @Get('backups/:backupId')
+  backup(
+    @Param('shardId') _shardId: string,
+    @Param('backupId') backupId: string,
+    @Req() req: HttpRequest,
+  ) {
+    return this.admin.backup(principalOf(req), metaOf(req), backupId);
+  }
+
+  @Post('rollbacks/character/preview')
+  @HttpCode(200)
+  preview(@Param('shardId') shardId: string, @Req() req: HttpRequest) {
+    const body = parse(CharacterRollbackPreview, req.body ?? {});
+    return this.restore.preview(
+      principalOf(req),
+      metaOf(req),
+      shardId,
+      body.characterId,
+      new Date(body.targetTime),
+    );
+  }
+
+  @Post('rollbacks/character/apply')
+  @HttpCode(200)
+  applyCharacter(@Param('shardId') shardId: string, @Req() req: HttpRequest) {
+    const body = parse(CharacterRollbackApply, req.body ?? {});
+    return this.restore.applyCharacter(principalOf(req), metaOf(req), shardId, body);
+  }
+
+  @Post('rollbacks/item')
+  @HttpCode(200)
+  restoreItem(@Param('shardId') shardId: string, @Req() req: HttpRequest) {
+    const body = parse(ItemRestoreRequest, req.body ?? {});
+    return this.restore.restoreItem(principalOf(req), metaOf(req), shardId, body);
+  }
+
+  @Post('restore-operations/:operationId/undo')
+  @HttpCode(200)
+  undo(
+    @Param('shardId') shardId: string,
+    @Param('operationId') operationId: string,
+    @Req() req: HttpRequest,
+  ) {
+    const body = parse(UndoRequest, req.body ?? {});
+    return this.restore.undo(principalOf(req), metaOf(req), shardId, operationId, body.reason);
+  }
 
   @Get('ledger/items/:itemId')
   item(
