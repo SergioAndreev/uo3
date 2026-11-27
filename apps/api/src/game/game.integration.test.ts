@@ -90,7 +90,8 @@ async function mailedToken(to: string): Promise<string> {
 
 it('регистрация → герой → билет → погашение игровым сервером', async () => {
   const email = `hero-${process.pid}@example.com`;
-  const docs = (await call('GET', '/api/v1/auth/documents')).body;
+  const { tosVersion, privacyVersion } = (await call('GET', '/api/v1/auth/documents')).body;
+  const docs = { tosVersion, privacyVersion };
   await call('POST', '/api/v1/auth/register', {
     email,
     password: PASSWORD,

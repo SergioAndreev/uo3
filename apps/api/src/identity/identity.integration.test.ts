@@ -94,7 +94,8 @@ async function mailedToken(to: string): Promise<string> {
 }
 
 it('полный цикл на PostgreSQL, Valkey и NATS', async () => {
-  const docs = (await call('GET', '/api/v1/auth/documents')).body;
+  const { tosVersion, privacyVersion } = (await call('GET', '/api/v1/auth/documents')).body;
+  const docs = { tosVersion, privacyVersion };
   const email = `int-${process.pid}@example.com`;
   expect(
     (

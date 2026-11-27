@@ -59,9 +59,7 @@ describe('identity/authentication: OAuth', () => {
     const { url, txId } = await h.oauth.start('google');
     const params = new URL(url).searchParams;
     expect(params.get('code_challenge_method')).toBe('S256');
-    expect(params.get('redirect_uri')).toBe(
-      'http://localhost:3001/api/v1/auth/oauth/google/callback',
-    );
+    expect(params.get('redirect_uri')).toBe('http://localhost:3001/oauth/callback/google');
     const result = await h.oauth.callback(
       'google',
       p.authorize(url, google('g-1', 'New@Example.com')),

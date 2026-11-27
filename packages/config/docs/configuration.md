@@ -85,7 +85,7 @@ console.log(redactConfig(ApiEnvSchema, config));
 | `MAIL_TRANSPORT` | log — письма в журнал, smtp — отправка | `log` |  |
 | `MAIL_SMTP_URL` | Адрес SMTP-сервера | — | да |
 | `MAIL_FROM` | Отправитель писем | `Duskmarch <no-reply@duskmarch.invalid>` |  |
-| `OAUTH_REDIRECT_BASE_URL` | Базовый адрес API для callback OAuth | `http://localhost:3001` |  |
+| `OAUTH_REDIRECT_BASE_URL` | Адрес клиента для возврата из OAuth (`/oauth/callback/:provider`) | `http://localhost:5273` |  |
 | `OAUTH_DISCORD_CLIENT_ID` | Клиент OAuth Discord | — |  |
 | `OAUTH_DISCORD_CLIENT_SECRET` | Секрет OAuth Discord | — | да |
 | `OAUTH_GOOGLE_CLIENT_ID` | Клиент OAuth Google | — |  |

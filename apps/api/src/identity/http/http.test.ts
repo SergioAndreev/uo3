@@ -87,7 +87,13 @@ describe('HTTP identity', () => {
     const docs = await call('GET', '/api/v1/auth/documents');
     expect(docs).toMatchObject({ status: 200, body: { tosVersion: '2026-11-01' } });
     const reg = await call('POST', '/api/v1/auth/register', {
-      body: { email: 'web@example.com', password: PASSWORD, tosAccepted: true, ...docs.body },
+      body: {
+        email: 'web@example.com',
+        password: PASSWORD,
+        tosAccepted: true,
+        tosVersion: docs.body.tosVersion,
+        privacyVersion: docs.body.privacyVersion,
+      },
     });
     expect(reg).toMatchObject({ status: 202, body: { status: 'verification_required' } });
     await h.flush();

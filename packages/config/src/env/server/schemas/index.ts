@@ -110,8 +110,8 @@ const IdentityEnvFields = {
     description: 'Отправитель писем',
   }),
   OAUTH_REDIRECT_BASE_URL: Url('http', {
-    default: 'http://localhost:3001',
-    description: 'Базовый адрес API для callback OAuth',
+    default: 'http://localhost:5273',
+    description: 'Адрес клиента для возврата из OAuth (`/oauth/callback/:provider`)',
   }),
   OAUTH_DISCORD_CLIENT_ID: Type.Optional(Text({ description: 'Клиент OAuth Discord' })),
   OAUTH_DISCORD_CLIENT_SECRET: Type.Optional(

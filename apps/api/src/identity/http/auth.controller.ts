@@ -70,7 +70,10 @@ export class AuthController {
   @Get('documents')
   @Public()
   documents() {
-    return this.identity.registration.documents();
+    return {
+      ...this.identity.registration.documents(),
+      oauthProviders: this.identity.oauth.enabled(),
+    };
   }
 
   @Post('register')

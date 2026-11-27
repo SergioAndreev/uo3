@@ -96,8 +96,17 @@ export class OAuthService {
     return { name: provider as OAuthProvider, client };
   }
 
+  /** Включённые провайдеры для экрана входа. */
+  enabled(): string[] {
+    return Object.entries(this.settings.clients)
+      .filter(([, client]) => client)
+      .map(([name]) => name)
+      .sort();
+  }
+
   private redirectUri(provider: string): string {
-    return `${this.settings.redirectBaseUrl.replace(/\/$/, '')}/api/v1/auth/oauth/${provider}/callback`;
+    // Провайдер возвращает игрока в клиент; клиент передаёт код и state в API (P09).
+    return `${this.settings.redirectBaseUrl.replace(/\/$/, '')}/oauth/callback/${provider}`;
   }
 
   /** Адрес провайдера и идентификатор транзакции для cookie. */
