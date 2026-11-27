@@ -15,6 +15,9 @@
 ### D1. Маршрутизация — `react-router` (Data Router) с охранниками-загрузчиками
 Маршруты из `client/app-shell` описаны одним деревом; охранник — загрузчик, возвращающий `redirect`. `returnTo` принимается только как относительный путь, начинающийся с одиночного `/`. Экраны — `lazy()` с границей ошибок и повтором загрузки чанка.
 
+### D1a. Возврат из OAuth через клиент
+Провайдер возвращает игрока на `<клиент>/oauth/callback/:provider` (`OAUTH_REDIRECT_BASE_URL` — адрес клиента); клиент изымает `code` и `state` из адреса и вызывает `GET /api/v1/auth/oauth/:provider/callback` с cookie транзакции. Список включённых провайдеров — поле `oauthProviders` ответа `GET /api/v1/auth/documents`. Правка API P04 сделана в этой фазе.
+
 ### D2. Сессия: Access JWT в памяти, одно обновление на все вкладки
 `SessionStore` держит токен в замыкании модуля. Обновление (`POST /api/v1/auth/refresh`, cookie `httpOnly`) за 60 с до истечения выполняется под `navigator.locks.request('dm-refresh')`; результат и выход рассылаются через `BroadcastChannel('dm-session')`. Без Web Locks — выбор лидера через `BroadcastChannel` с таймаутом. Повтор токена (`AUTH_TOKEN_REUSE_DETECTED`) или отзыв — выход во всех вкладках.
 

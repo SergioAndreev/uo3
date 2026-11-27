@@ -37,7 +37,7 @@
 - **THEN** экран сообщает об истёкшей ссылке и предлагает запросить новую (`POST /api/v1/auth/password-reset/request`)
 
 ### Requirement: Вход и регистрация через OAuth
-Экран входа SHALL показывать кнопки только включённых провайдеров (`discord`, `google`) и начинать поток через `GET /api/v1/auth/oauth/:provider/start`. На `/oauth/callback` клиент MUST обрабатывать выдачу сессии, второй фактор (`mfa_required`) и принятие документов (`tos_acceptance_required` → `/oauth/onboarding` → `POST /api/v1/auth/oauth/onboard`).
+Экран входа SHALL показывать кнопки только включённых провайдеров (`discord`, `google`) и начинать поток через `GET /api/v1/auth/oauth/:provider/start`. На `/oauth/callback/:provider` клиент MUST обрабатывать выдачу сессии, второй фактор (`mfa_required`) и принятие документов (`tos_acceptance_required` → `/oauth/onboarding` → `POST /api/v1/auth/oauth/onboard`).
 
 #### Scenario: Первая регистрация через OAuth с принятием документов
 - **WHEN** после возврата от провайдера статус — `tos_acceptance_required` с токеном онбординга

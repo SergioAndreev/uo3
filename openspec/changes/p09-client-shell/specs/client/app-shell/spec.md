@@ -7,7 +7,7 @@
 ## ADDED Requirements
 
 ### Requirement: Декларативная маршрутизация экранов и обработка неизвестных адресов
-Оболочка SHALL поддерживать маршруты `/login`, `/register`, `/verify-email`, `/reset-password`, `/oauth/callback`, `/oauth/onboarding`, `/2fa-setup`, `/assets`, `/shards`, `/shards/:shardId/characters`, `/shards/:shardId/characters/new`, `/play/:shardId/:characterId` и `/settings` с синхронизацией истории браузера. Неизвестный путь MUST показывать экран 404 с возвратом на стартовый экран.
+Оболочка SHALL поддерживать маршруты `/login`, `/register`, `/verify-email`, `/reset-password`, `/oauth/callback/:provider`, `/oauth/onboarding`, `/2fa-setup`, `/assets`, `/shards`, `/shards/:shardId/characters`, `/shards/:shardId/characters/new`, `/play/:shardId/:characterId` и `/settings` с синхронизацией истории браузера. Неизвестный путь MUST показывать экран 404 с возвратом на стартовый экран.
 
 #### Scenario: Навигация по каноническим маршрутам и истории браузера
 - **WHEN** аутентифицированный игрок с готовыми ассетами переходит с `/shards` на `/shards/ember/characters` и нажимает кнопку «Назад» в браузере
@@ -38,7 +38,7 @@
 - **THEN** охранник маршрутов немедленно перенаправляет его на `/2fa-setup`, не допуская отображения защищённых экранов
 
 ### Requirement: Очистка чувствительных токенов из адресной строки браузера
-При открытии маршрутов `/verify-email`, `/reset-password`, `/oauth/callback` или `/oauth/onboarding` с одноразовыми токенами или кодами в query-параметрах оболочка MUST считать их в оперативную память и немедленно удалить из адресной строки до отправки сетевых запросов. Чувствительные параметры SHALL NOT сохраняться в `localStorage`, `sessionStorage` или отчётах диагностики.
+При открытии маршрутов `/verify-email`, `/reset-password`, `/oauth/callback/:provider` или `/oauth/onboarding` с одноразовыми токенами или кодами в query-параметрах оболочка MUST считать их в оперативную память и немедленно удалить из адресной строки до отправки сетевых запросов. Чувствительные параметры SHALL NOT сохраняться в `localStorage`, `sessionStorage` или отчётах диагностики.
 
 #### Scenario: Удаление токена сброса пароля из URL при загрузке страницы
 - **WHEN** пользователь переходит по ссылке `/reset-password?token=secret-one-time-token`
