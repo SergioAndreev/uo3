@@ -14,12 +14,8 @@ import {
   worldEntities,
   worldTimers,
 } from '../schema/index.js';
-import {
-  WorldStoreError,
-  checkWorldInvariants,
-  type InvariantReport,
-  type WorldRow,
-} from './index.js';
+import { WorldStoreError, type WorldRow } from './common.js';
+import { checkWorldInvariants, type InvariantReport } from './invariants.js';
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 type Executor = Database | Tx;

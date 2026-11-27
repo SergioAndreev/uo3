@@ -54,7 +54,11 @@ function omitRuntime(r: typeof characters.$inferSelect) {
   delete row.verve;
   delete row.resonance;
   delete row.playtimeSeconds;
-  return row as Omit<typeof r, 'health' | 'verve' | 'resonance' | 'playtimeSeconds'>;
+  delete row.starterLoadoutGranted;
+  return row as Omit<
+    typeof r,
+    'health' | 'verve' | 'resonance' | 'playtimeSeconds' | 'starterLoadoutGranted'
+  >;
 }
 
 /** Шарды и герои в PostgreSQL. */
