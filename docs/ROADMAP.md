@@ -36,6 +36,7 @@ flowchart TD
   P07 --> P08
   P02 --> P09
   P05 --> P09
+  P07 --> P09
   P03 --> P10
   P09 --> P10
   P10 --> P11
@@ -145,13 +146,13 @@ flowchart TD
 - `persistence/critical-transactions` — синхронные атомарные операции и журнал предметов.
 - `persistence/backup-and-restore` — снимки, PITR, откат героя или предмета.
 
-### P09 — `p09-client-shell` — Оболочка клиента
-**Зависит от:** P02, P05
+### P09 — `p09-client-shell` — Оболочка клиента (ревизия выполнена)
+**Зависит от:** P02, P05, P07
 - `client/app-shell` — маршрутизация экранов, загрузчики, обработка ошибок, PWA-манифест.
 - `client/login-and-character-select` — вход, выбор шарда, выбор/создание/удаление персонажа.
-- `client/asset-bootstrap` — мастер подключения клиентских файлов, прогресс декодирования.
+- `client/asset-bootstrap` — загрузка собственного пакета ассетов P02, проверка SHA-256, кэш в OPFS, совместимость с шардом.
 - `client/settings-profile` — настройки клиента, синхронизация профиля с аккаунтом.
-- `assets/web-asset-cache` — перенесено из P02: декодирование в Web Workers, кэш в OPFS с инвалидацией по хэшу записи пакета.
+- `assets/web-asset-cache` — перенесено из P02, вошло в `client/asset-bootstrap`: загрузка в Web Worker, кэш в OPFS с проверкой хэша записи пакета.
 
 ### P10 — `p10-world-renderer` — Рендерер мира
 **Зависит от:** P03, P09
