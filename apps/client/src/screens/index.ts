@@ -13,6 +13,7 @@ const oauth =
     import('./oauth-2fa.js').then((m) => ({ default: m[name] }));
 
 const READY: Partial<Record<ScreenKey, Loader>> = {
+  shards: () => import('./shards.js').then((m) => ({ default: m.ShardsScreen })),
   login: auth('LoginScreen'),
   register: auth('RegisterScreen'),
   verifyEmail: auth('VerifyEmailScreen'),

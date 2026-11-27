@@ -61,6 +61,8 @@ describe('shard/shard-directory', () => {
       preset: 'standard',
       version: 2,
       fingerprint: expect.stringMatching(/^[0-9a-f]{64}$/),
+      caps: { statTotal: 240, statMax: 120, skillTotalTenths: 6_000, skillMaxTenths: 1_000 },
+      gameHourMs: 240_000,
     });
     expect(card.startCities.map((c) => c.name)).toEqual(['Ладь', 'Кремнёв', 'Соляр']);
     await g.store.insertShard(

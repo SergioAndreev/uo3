@@ -4,7 +4,7 @@ import { Outlet, RouterProvider, createMemoryRouter } from 'react-router';
 import { ApiClient } from '../api/client.js';
 import { appRoutes } from '../app/routes.js';
 import { SCREEN_MODULES } from '../screens/index.js';
-import { ServicesProvider } from '../services.js';
+import { ServicesProvider, type Services } from '../services.js';
 import { SessionStore, type Channel } from '../session/store.js';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -59,7 +59,7 @@ const quietChannel = (): Channel => ({
 export async function shell(
   path: string,
   api: ReturnType<typeof fakeApi>,
-  opts: { state?: unknown } = {},
+  opts: { state?: unknown; signedIn?: boolean; services?: Partial<Services> } = {},
 ) {
   const store = new SessionStore({
     refresh: async () => ({ ok: false, code: 'AUTH_UNAUTHENTICATED' }),
@@ -70,6 +70,8 @@ export async function shell(
     setTimer: (cb, ms) => setTimeout(cb, Math.min(ms, 1_000_000)),
     clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
   });
+  if (opts.signedIn)
+    store.accept({ accessToken: 'test-access', expiresIn: 900, kind: 'full' }, false);
   const client = new ApiClient({
     baseUrl: 'http://api.test',
     fetch: api.fetch,
@@ -94,7 +96,9 @@ export async function shell(
   document.body.append(host);
   await act(async () =>
     createRoot(host).render(
-      <ServicesProvider services={{ api: client, store, apiBaseUrl: 'http://api.test' }}>
+      <ServicesProvider
+        services={{ api: client, store, apiBaseUrl: 'http://api.test', ...opts.services }}
+      >
         <RouterProvider router={router} />
       </ServicesProvider>,
     ),
@@ -109,8 +113,8 @@ export async function shell(
   return { host, router, store, api, text: () => host.textContent ?? '' };
 }
 
-export async function settle(n = 15): Promise<void> {
-  for (let i = 0; i < n; i++) await act(async () => new Promise((r) => setTimeout(r, 2)));
+export async function settle(n = 40): Promise<void> {
+  for (let i = 0; i < n; i++) await act(async () => new Promise((r) => setTimeout(r, 5)));
 }
 
 const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;

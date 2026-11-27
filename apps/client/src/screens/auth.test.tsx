@@ -258,7 +258,7 @@ describe('client/login-and-character-select: регистрация, email, па
     expect(s.router.state.location.pathname).toBe('/oauth/onboarding');
     await check(s.host, 'Принимаю');
     await submit(s.host);
-    expect(api.calls.at(-1)?.body).toMatchObject({
+    expect(api.calls.find((c) => c.path === '/api/v1/auth/oauth/onboard')?.body).toMatchObject({
       onboardingToken: 'onboarding-token-01',
       tosAccepted: true,
     });

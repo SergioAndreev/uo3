@@ -8,6 +8,12 @@ export interface Services {
   /** Базовый адрес API (кнопки OAuth ведут на `…/oauth/:provider/start`). */
   apiBaseUrl: string;
   now?: () => number;
+  /** Активный пакет ассетов (P09 4.1); без него — пакет не загружен. */
+  assets?: { active(): { id: string; version: string } | null };
+  /** Период опроса каталога, мс (по умолчанию 15 000). */
+  pollMs?: number;
+  /** Видимость вкладки (тесты подменяют). */
+  visibility?: { visible(): boolean; subscribe(listener: () => void): () => void };
 }
 
 const Context = createContext<Services | null>(null);

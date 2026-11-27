@@ -88,6 +88,8 @@ export const ShardSummary = Type.Object({
   entryBlockedReason: Type.Optional(Type.String()),
   /** Требование к пакету ассетов P02 (P09). */
   assetPack: Type.Optional(AssetPackRequirement),
+  /** Шард виден только персоналу. */
+  staffOnly: Type.Optional(Type.Boolean()),
 });
 
 export const StatsSchema = Type.Object(

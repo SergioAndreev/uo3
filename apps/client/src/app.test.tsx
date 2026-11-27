@@ -15,11 +15,11 @@ async function mount(node: React.ReactNode) {
   return host;
 }
 
-it('игрок открывает корень — шарды', async () => {
+it('игрок открывает защищённый экран', async () => {
   const host = await mount(
-    <App config={readConfig(env)} capabilities={ok} initialPath="/" session={() => 'full'} />,
+    <App config={readConfig(env)} capabilities={ok} initialPath="/assets" session={() => 'full'} />,
   );
-  expect(host.querySelector('[data-screen]')?.getAttribute('data-screen')).toBe('shards');
+  expect(host.querySelector('[data-screen]')?.getAttribute('data-screen')).toBe('assets');
 });
 
 it('без WebGL2 — блокирующий экран с кодом; без OPFS — предупреждение режима памяти', async () => {
@@ -36,7 +36,7 @@ it('без WebGL2 — блокирующий экран с кодом; без OP
     <App
       config={readConfig(env)}
       capabilities={{ ok: true, failures: [], warnings: ['storage_memory_only'] }}
-      initialPath="/shards"
+      initialPath="/assets"
       session={() => 'full'}
     />,
   );
@@ -67,7 +67,7 @@ it('офлайн — баннер; 426 — блокирующее окно но�
     <App
       config={readConfig(env)}
       capabilities={ok}
-      initialPath="/shards"
+      initialPath="/assets"
       session={() => 'full'}
       connectivity={connectivity}
     />,

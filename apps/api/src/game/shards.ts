@@ -125,6 +125,7 @@ export class ShardService {
       load: view.load,
       onlineCount: view.online,
       protocolRange: shard.protocolRange,
+      ...(shard.visibility === 'staff' ? { staffOnly: true } : {}),
       ...(shard.assetPack ? { assetPack: shard.assetPack } : {}),
       ...(viewer.protocol ? { compatible: satisfies(viewer.protocol, shard.protocolRange) } : {}),
       ...(viewer.principal
@@ -178,6 +179,13 @@ export class ShardService {
         features: profile.features,
         creationOpen: shard.creationOpen,
         renamePolicy: shard.renamePolicy,
+        caps: {
+          statTotal: profile.stats.totalCap,
+          statMax: profile.stats.max,
+          skillTotalTenths: profile.skills.totalCapTenths,
+          skillMaxTenths: profile.skills.maxTenths,
+        },
+        gameHourMs: profile.time.gameHourMs,
       },
       startCities: shard.startCities.map((key) => ({ key, name: startCity(key)?.name ?? key })),
       maintenance:
