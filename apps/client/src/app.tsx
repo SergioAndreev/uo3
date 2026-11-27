@@ -1,26 +1,80 @@
-import { PACKAGE_ID as assetFormats } from '@duskmarch/asset-formats';
-import { PACKAGE_ID as domain } from '@duskmarch/domain';
-import { PACKAGE_ID as protocol } from '@duskmarch/protocol';
-import { DUSKMARCH, PACKAGE_ID as rules, publicProfile } from '@duskmarch/rules';
-import { PlatformBadge } from '@duskmarch/ui-kit';
+import { applyTokens, injectBaseStyles, Notice, Panel } from '@duskmarch/ui-kit';
+import { useMemo } from 'react';
+import { Outlet, RouterProvider, createBrowserRouter, createMemoryRouter } from 'react-router';
+import type { CapabilityReport } from './app/capabilities.js';
+import { ErrorBoundary } from './app/errors.js';
+import { appRoutes, type SessionKind } from './app/routes.js';
 import type { AppConfig } from './config.js';
+import { SCREEN_MODULES } from './screens/index.js';
 
-const MODULES = [domain, rules, protocol, assetFormats];
-// До P05 клиент строит срез сам; затем срез будет приходить с сервера.
-const RULESET = publicProfile(DUSKMARCH);
+export const CLIENT_VERSION = '0.9.0';
 
-export function App({ config }: { config: AppConfig }) {
+/** Блокирующий экран несовместимости браузера или конфигурации. */
+export function Incompatible({ report }: { report: CapabilityReport }) {
   return (
-    <main>
-      <PlatformBadge label={`Duskmarch · ${config.VITE_APP_ENV}`} />
-      <ul>
-        {MODULES.map((id) => (
-          <li key={id}>{id}</li>
+    <Panel title="Браузер не поддерживается">
+      <ul data-testid="incompatible">
+        {report.failures.map((code) => (
+          <li key={code}>
+            {code}
+            {code === 'ERR_SHELL_WEBGL2_UNAVAILABLE'
+              ? ' — включите аппаратное ускорение графики'
+              : ''}
+          </li>
         ))}
       </ul>
-      <p data-testid="ruleset">
-        Правила {RULESET.id} v{RULESET.version} · {RULESET.fingerprint.slice(0, 12)}
-      </p>
-    </main>
+    </Panel>
   );
+}
+
+function Layout({ warnings }: { warnings: CapabilityReport['warnings'] }) {
+  return (
+    <div className="dm-root">
+      {warnings.includes('storage_memory_only') && (
+        <Notice tone="warning">
+          Хранилище браузера недоступно: пакет ассетов будет храниться только до закрытия вкладки.
+        </Notice>
+      )}
+      <ErrorBoundary
+        level="screen"
+        route={() => location.pathname}
+        clientVersion={CLIENT_VERSION}
+        onRecover={() => location.assign('/shards')}
+      >
+        <Outlet />
+      </ErrorBoundary>
+    </div>
+  );
+}
+
+export interface AppProps {
+  config: AppConfig | null;
+  capabilities: CapabilityReport;
+  session?: () => SessionKind;
+  /** Тесты: маршрутизатор в памяти. */
+  initialPath?: string;
+}
+
+export function App({ config, capabilities, session = () => 'guest', initialPath }: AppProps) {
+  const router = useMemo(() => {
+    const routes = appRoutes({
+      session,
+      screens: SCREEN_MODULES,
+      layout: () => <Layout warnings={capabilities.warnings} />,
+    });
+    return initialPath
+      ? createMemoryRouter(routes, { initialEntries: [initialPath] })
+      : createBrowserRouter(routes);
+  }, [session, capabilities, initialPath]);
+  if (!capabilities.ok || !config) return <Incompatible report={capabilities} />;
+  return (
+    <ErrorBoundary level="root" route={() => location.pathname} clientVersion={CLIENT_VERSION}>
+      <RouterProvider router={router} />
+    </ErrorBoundary>
+  );
+}
+
+export function bootstrap(root: HTMLElement): void {
+  injectBaseStyles();
+  applyTokens(root);
 }
