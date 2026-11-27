@@ -220,3 +220,14 @@ export const identityOutbox = pgTable(
   },
   (t) => [index('identity_outbox_due_idx').on(t.status, t.nextAttemptAt)],
 );
+
+/** Профиль настроек клиента аккаунта (P09). */
+export const accountClientProfiles = pgTable('account_client_profiles', {
+  accountId: uuid('account_id')
+    .primaryKey()
+    .references(() => accounts.id, { onDelete: 'cascade' }),
+  schemaVersion: integer('schema_version').notNull(),
+  revision: integer('revision').notNull(),
+  profile: jsonb('profile').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull(),
+});

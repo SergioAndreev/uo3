@@ -32,6 +32,8 @@ export interface ShardRecord {
   createdAt: Ms;
   updatedAt: Ms;
   archivedAt: Ms | null;
+  /** Требование к пакету ассетов P02 (P09). */
+  assetPack?: { id: string; minVersion: string } | null;
 }
 
 export type CharacterStatus =

@@ -40,6 +40,7 @@ const toShard = (r: typeof shards.$inferSelect): ShardRecord => ({
   rulesetOverride: r.rulesetOverride as Record<string, unknown>,
   visibility: r.visibility as ShardRecord['visibility'],
   manualStatus: r.manualStatus as ShardRecord['manualStatus'],
+  assetPack: (r.assetPack ?? null) as { id: string; minVersion: string } | null,
   renamePolicy: r.renamePolicy as ShardRecord['renamePolicy'],
   maintenanceEta: ms(r.maintenanceEta),
   createdAt: r.createdAt.getTime(),

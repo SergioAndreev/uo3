@@ -36,6 +36,13 @@
       "when": 1795724770351,
       "tag": "0004_world_persistence",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795743628830,
+      "tag": "0005_client_profiles",
+      "breakpoints": true
     }
   ]
 }

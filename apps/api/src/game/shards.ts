@@ -125,6 +125,7 @@ export class ShardService {
       load: view.load,
       onlineCount: view.online,
       protocolRange: shard.protocolRange,
+      ...(shard.assetPack ? { assetPack: shard.assetPack } : {}),
       ...(viewer.protocol ? { compatible: satisfies(viewer.protocol, shard.protocolRange) } : {}),
       ...(viewer.principal
         ? {

@@ -41,6 +41,8 @@ export const shards = pgTable('shards', {
   createdAt: at('created_at').notNull(),
   updatedAt: at('updated_at').notNull(),
   archivedAt: at('archived_at'),
+  /** Требование к пакету ассетов P02: `{ id, minVersion }` (P09). */
+  assetPack: jsonb('asset_pack'),
 });
 
 /** Последовательность номеров героев шарда (`EntityId` вида hero). */

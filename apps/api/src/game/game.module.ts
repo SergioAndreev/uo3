@@ -18,6 +18,8 @@ import {
   StaffCharactersController,
 } from './http/shards.controller.js';
 import { GAME } from './http/tokens.js';
+import { ClientProfileController, PROFILES } from '../settings/controller.js';
+import { DrizzleProfileStore, MemoryProfileStore, ProfileService } from '../settings/index.js';
 import { IdentityError } from '../identity/core/errors.js';
 import { AdminPersistenceController, PERSISTENCE, RESTORE } from '../persistence/controller.js';
 import {
@@ -73,9 +75,23 @@ export class GameModule implements OnModuleInit, OnModuleDestroy {
         AdminShardsController,
         StaffCharactersController,
         AdminPersistenceController,
+        ClientProfileController,
       ],
       providers: [
         { provide: OPTIONS, useValue: options },
+        options.services || options.memory
+          ? {
+              provide: PROFILES,
+              useFactory: (identity: IdentityServices) =>
+                new ProfileService(identity, new MemoryProfileStore()),
+              inject: [IDENTITY],
+            }
+          : {
+              provide: PROFILES,
+              useFactory: (identity: IdentityServices, infra: Infra) =>
+                new ProfileService(identity, new DrizzleProfileStore(infra.db)),
+              inject: [IDENTITY, INFRA],
+            },
         options.persistence
           ? { provide: PERSISTENCE, useValue: options.persistence }
           : options.services || options.memory

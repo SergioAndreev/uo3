@@ -3,7 +3,7 @@
 ## 1. Контракты и сервер (`packages/protocol`, `packages/db`, `apps/api`)
 
 - [x] 1.1 Схема профиля настроек (категории, границы, `schemaVersion`), коды `PROFILE_*`, поле `assetPack` карточки шарда — проверка: тесты схем.
-- [ ] 1.2 Миграция `0005_client_profiles` и поле требования пакета у шарда; эндпоинты `GET/PUT/PATCH /api/v1/account/client-profile`, `POST …/reset` с ревизиями, размером и частотой — проверка: e2e-тесты сценариев хранения и конфликтов.
+- [x] 1.2 Миграция `0005_client_profiles` и поле требования пакета у шарда; эндпоинты `GET/PUT/PATCH /api/v1/account/client-profile`, `POST …/reset` с ревизиями, размером и частотой — проверка: e2e-тесты сценариев хранения и конфликтов.
 
 ## 2. Основа клиента (`packages/ui-kit`, `apps/client`)
 

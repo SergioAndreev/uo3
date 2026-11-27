@@ -30,6 +30,15 @@ export const RenamePolicy = Type.Union([
 ]);
 
 /** Создание шарда администратором. */
+/** Требование шарда к пакету ассетов: идентификатор `pack.<имя>` и минимальная версия. */
+export const AssetPackRequirement = Type.Object(
+  {
+    id: Type.String({ pattern: '^pack\\.[a-z0-9-]+$', maxLength: 64 }),
+    minVersion: Type.String({ pattern: '^\\d+\\.\\d+\\.\\d+$', maxLength: 32 }),
+  },
+  strict,
+);
+
 export const ShardCreateRequest = Type.Object(
   {
     id: Slug,
@@ -48,6 +57,7 @@ export const ShardCreateRequest = Type.Object(
     protocolRange: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
     startCities: Type.Optional(Type.Array(Slug, { minItems: 1, maxItems: 16 })),
     sortOrder: Type.Optional(Int(0, 10_000)),
+    assetPack: Type.Optional(Type.Union([AssetPackRequirement, Type.Null()])),
   },
   strict,
 );
@@ -57,15 +67,6 @@ export const ShardStatusRequest = Type.Object(
     status: ShardManualStatus,
     etaAt: Type.Optional(IsoTime),
     message: Type.Optional(Type.String({ maxLength: 500 })),
-  },
-  strict,
-);
-
-/** Требование шарда к пакету ассетов: идентификатор `pack.<имя>` и минимальная версия. */
-export const AssetPackRequirement = Type.Object(
-  {
-    id: Type.String({ pattern: '^pack\\.[a-z0-9-]+$', maxLength: 64 }),
-    minVersion: Type.String({ pattern: '^\\d+\\.\\d+\\.\\d+$', maxLength: 32 }),
   },
   strict,
 );
